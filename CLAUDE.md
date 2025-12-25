@@ -13,6 +13,11 @@ Google Apps Script 기반 광고 대시보드를 Supabase + Horizon UI 템플릿
 - Backend: Supabase (PostgreSQL)
 - 배포: 웹 호스팅 (Vercel/Netlify 등)
 
+### 아키텍처 특징
+- **멀티 테넌트 구조**: 여러 광고주가 동일 시스템 사용
+- **데이터 격리**: 광고주별 데이터 완전 분리
+- **확장 가능**: 단일 광고주부터 다수 광고주까지 대응
+
 ---
 
 ## 기술 스택
@@ -229,37 +234,152 @@ REACT_APP_SUPABASE_URL=https://your-project.supabase.co
 REACT_APP_SUPABASE_ANON_KEY=your-anon-key
 ```
 
-### 4. 데이터 페칭 예시
+### 4. 인증 상태 관리
+**파일 생성**: `src/contexts/AuthContext.js`
+```javascript
+import { createContext, useContext, useEffect, useState } from 'react';
+import { supabase } from 'lib/supabaseClient';
+
+const AuthContext = createContext();
+
+export const AuthProvider = ({ children }) => {
+  const [user, setUser] = useState(null);
+  const [advertiserId, setAdvertiserId] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    // 현재 세션 확인
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setUser(session?.user ?? null);
+      if (session?.user) {
+        fetchAdvertiserId(session.user.id);
+      } else {
+        setLoading(false);
+      }
+    });
+
+    // 인증 상태 변경 감지
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user ?? null);
+      if (session?.user) {
+        fetchAdvertiserId(session.user.id);
+      } else {
+        setAdvertiserId(null);
+        setLoading(false);
+      }
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  const fetchAdvertiserId = async (userId) => {
+    const { data, error } = await supabase
+      .from('users')
+      .select('advertiser_id')
+      .eq('id', userId)
+      .single();
+
+    if (data) setAdvertiserId(data.advertiser_id);
+    setLoading(false);
+  };
+
+  return (
+    <AuthContext.Provider value={{ user, advertiserId, loading }}>
+      {children}
+    </AuthContext.Provider>
+  );
+};
+
+export const useAuth = () => useContext(AuthContext);
+```
+
+### 5. 데이터 페칭 예시 (멀티 테넌트)
 ```javascript
 import { supabase } from "lib/supabaseClient";
+import { useAuth } from "contexts/AuthContext";
 import { useEffect, useState } from "react";
 
 const [data, setData] = useState([]);
+const { advertiserId } = useAuth();
 
 useEffect(() => {
+  if (!advertiserId) return;
+
   const fetchData = async () => {
     const { data, error } = await supabase
       .from('ad_performance')
       .select('*')
+      .eq('advertiser_id', advertiserId)  // 광고주 필터링
       .gte('date', startDate)
-      .lte('date', endDate);
+      .lte('date', endDate)
+      .order('date', { ascending: false });
 
     if (error) console.error(error);
     else setData(data);
   };
 
   fetchData();
-}, [startDate, endDate]);
+}, [advertiserId, startDate, endDate]);
 ```
+
+**RLS 정책이 활성화되어 있으면 `eq('advertiser_id', advertiserId)` 없이도 자동 필터링되지만, 명시적으로 작성하는 것을 권장합니다.**
 
 ---
 
 ## 데이터베이스 스키마 (예정)
 
+### 멀티 테넌트 구조
+
+**핵심 원칙:**
+- 모든 테이블에 `advertiser_id` 필드 포함
+- Supabase RLS (Row Level Security)로 광고주별 데이터 격리
+- 로그인한 사용자는 본인 광고주 데이터만 조회 가능
+
+---
+
+### advertisers (광고주 마스터)
+```sql
+create table advertisers (
+  id uuid primary key default uuid_generate_v4(),
+  name text not null,           -- 광고주명
+  business_number text,         -- 사업자번호
+  contact_email text,
+  created_at timestamp default now(),
+  updated_at timestamp default now()
+);
+
+-- 인덱스
+create index idx_advertisers_name on advertisers(name);
+```
+
+### users (사용자 계정)
+```sql
+create table users (
+  id uuid primary key references auth.users(id),
+  advertiser_id uuid references advertisers(id) not null,
+  email text not null,
+  name text,
+  role text default 'viewer',  -- admin, editor, viewer
+  created_at timestamp default now(),
+  updated_at timestamp default now()
+);
+
+-- 인덱스
+create index idx_users_advertiser on users(advertiser_id);
+
+-- RLS 정책
+alter table users enable row level security;
+
+create policy "사용자는 본인 광고주의 사용자 목록만 조회"
+  on users for select
+  using (advertiser_id = (select advertiser_id from users where id = auth.uid()));
+```
+
 ### ad_performance (광고 성과 데이터)
 ```sql
 create table ad_performance (
   id uuid primary key default uuid_generate_v4(),
+  advertiser_id uuid references advertisers(id) not null,
   date date not null,
   media text not null,        -- 네이버, 구글, 메타, 카카오
   campaign text,
@@ -272,12 +392,29 @@ create table ad_performance (
   roas numeric,
   created_at timestamp default now()
 );
+
+-- 인덱스
+create index idx_ad_performance_advertiser on ad_performance(advertiser_id);
+create index idx_ad_performance_date on ad_performance(advertiser_id, date desc);
+create index idx_ad_performance_media on ad_performance(advertiser_id, media);
+
+-- RLS 정책
+alter table ad_performance enable row level security;
+
+create policy "광고주는 본인 데이터만 조회"
+  on ad_performance for select
+  using (advertiser_id = (select advertiser_id from users where id = auth.uid()));
+
+create policy "광고주는 본인 데이터만 입력"
+  on ad_performance for insert
+  with check (advertiser_id = (select advertiser_id from users where id = auth.uid()));
 ```
 
 ### creative_performance (크리에이티브 성과)
 ```sql
 create table creative_performance (
   id uuid primary key default uuid_generate_v4(),
+  advertiser_id uuid references advertisers(id) not null,
   ad_name text not null,
   media text not null,
   campaign text,
@@ -291,18 +428,41 @@ create table creative_performance (
   date_range daterange,
   created_at timestamp default now()
 );
+
+-- 인덱스
+create index idx_creative_performance_advertiser on creative_performance(advertiser_id);
+create index idx_creative_performance_media on creative_performance(advertiser_id, media);
+
+-- RLS 정책
+alter table creative_performance enable row level security;
+
+create policy "광고주는 본인 크리에이티브만 조회"
+  on creative_performance for select
+  using (advertiser_id = (select advertiser_id from users where id = auth.uid()));
 ```
 
 ### purchase_demographics (구매 인구통계)
 ```sql
 create table purchase_demographics (
   id uuid primary key default uuid_generate_v4(),
+  advertiser_id uuid references advertisers(id) not null,
   date date not null,
   age_group text,             -- 18-24, 25-34, 35-44, 45-64, 65+
   gender text,                -- 남성, 여성, 알수없음
   purchase_count integer,
   created_at timestamp default now()
 );
+
+-- 인덱스
+create index idx_purchase_demographics_advertiser on purchase_demographics(advertiser_id);
+create index idx_purchase_demographics_date on purchase_demographics(advertiser_id, date desc);
+
+-- RLS 정책
+alter table purchase_demographics enable row level security;
+
+create policy "광고주는 본인 구매 데이터만 조회"
+  on purchase_demographics for select
+  using (advertiser_id = (select advertiser_id from users where id = auth.uid()));
 ```
 
 ---
@@ -315,6 +475,64 @@ create table purchase_demographics (
 3. **GenderPurchasePie**: 차트 크기 증가, 회색 배경 제거 (CSS sx prop 사용)
 4. **AgeGenderPurchase**: 총 구매수 섹션 제거, 차트만 표시
 5. **차트 레이아웃 순서 수정**: WeeklyConversions → GenderPurchasePie → AgeGenderPurchase
+6. **CLAUDE.md 작성**: 프로젝트 전체 문서화
+7. **멀티 테넌트 구조 추가**: 광고주별 데이터 격리, RLS 정책, 인증 시스템
+
+---
+
+## 멀티 테넌트 아키텍처 상세
+
+### 데이터 격리 전략
+
+**1. 데이터베이스 레벨**
+- 모든 데이터 테이블에 `advertiser_id` 컬럼 필수
+- Foreign Key로 advertisers 테이블 참조
+- RLS 정책으로 쿼리 레벨에서 자동 필터링
+
+**2. 애플리케이션 레벨**
+- AuthContext로 현재 사용자의 advertiser_id 전역 관리
+- 모든 데이터 조회 시 advertiser_id 필터 적용
+- 컴포넌트는 AuthContext에서 advertiserId를 가져와 사용
+
+**3. 보안**
+- Supabase RLS로 백엔드 레벨 보안 보장
+- 악의적인 클라이언트에서 다른 광고주 데이터 조회 불가
+- auth.uid()로 현재 로그인 사용자 확인
+
+### 사용자 흐름
+
+1. **로그인**
+   - 이메일/비밀번호로 Supabase Auth 인증
+   - auth.uid() 획득
+
+2. **광고주 확인**
+   - users 테이블에서 auth.uid()로 advertiser_id 조회
+   - AuthContext에 저장
+
+3. **데이터 조회**
+   - 모든 쿼리에 advertiser_id 필터 자동 적용
+   - RLS 정책으로 2중 보안
+
+4. **로그아웃**
+   - Supabase Auth 세션 종료
+   - AuthContext 초기화
+
+### 확장 시나리오
+
+**단일 광고주 (초기)**
+- advertiser_id는 항상 동일
+- 사용자 1명
+- RLS 정책은 있지만 실질적으로 모든 데이터 조회 가능
+
+**다수 광고주 (확장)**
+- 광고주별로 users 레코드 생성
+- 각 광고주는 본인 데이터만 조회
+- 관리자 계정으로 여러 광고주 전환 가능
+
+**엔터프라이즈 (미래)**
+- 조직(organization) 개념 추가
+- 조직 내 여러 광고주 그룹핑
+- 세분화된 권한 관리 (팀별, 부서별)
 
 ---
 
@@ -322,28 +540,50 @@ create table purchase_demographics (
 
 ### Phase 1: Supabase 설정
 1. Supabase 프로젝트 생성
-2. 테이블 스키마 생성 (ad_performance, creative_performance, purchase_demographics)
+2. 테이블 스키마 생성
+   - advertisers (광고주 마스터)
+   - users (사용자 계정)
+   - ad_performance (광고 성과)
+   - creative_performance (크리에이티브)
+   - purchase_demographics (구매 인구통계)
 3. RLS (Row Level Security) 정책 설정
-4. API 키 발급
+   - 모든 테이블에 advertiser_id 기반 정책 적용
+   - auth.uid()로 현재 사용자의 광고주 확인
+4. 인덱스 생성 (advertiser_id, date 등)
+5. API 키 발급
 
-### Phase 2: 데이터 마이그레이션
-1. Google Sheets 데이터 export
-2. Supabase 테이블에 import
-3. 데이터 검증
+### Phase 2: 인증 시스템 구축
+1. Supabase Auth 설정 (이메일 로그인)
+2. AuthContext 구현 (`src/contexts/AuthContext.js`)
+3. 로그인/로그아웃 페이지 추가
+4. Protected Route 구현 (미로그인 시 대시보드 접근 차단)
+5. 광고주 선택 기능 (관리자용, 여러 광고주 관리 시)
 
-### Phase 3: Frontend 연동
+### Phase 3: 데이터 마이그레이션
+1. 광고주 데이터 생성 (advertisers 테이블)
+2. 사용자 계정 생성 및 광고주 연결
+3. Google Sheets 데이터 export
+4. advertiser_id 추가하여 Supabase 테이블에 import
+5. 데이터 검증
+
+### Phase 4: Frontend 연동
 1. `@supabase/supabase-js` 설치 및 초기화
-2. 각 컴포넌트별 데이터 페칭 로직 추가
-   - TotalSpent: 일자별 매출 조회
-   - MediaAdCost: 매체별 비용 집계
-   - BestCreatives: 성과 상위 6개 조회
-   - AllCreatives: 전체 목록 + 필터링/정렬
-   - GenderPurchasePie: 성별 구매 통계
-   - AgeGenderPurchase: 연령대×성별 구매 통계
-3. 로딩 상태 및 에러 처리 추가
-4. Mock 데이터 제거
+2. AuthProvider로 App 감싸기
+3. 각 컴포넌트별 데이터 페칭 로직 추가
+   - TotalSpent: 일자별 매출 조회 (advertiser_id 필터)
+   - MediaAdCost: 매체별 비용 집계 (advertiser_id 필터)
+   - BestCreatives: 성과 상위 6개 조회 (advertiser_id 필터)
+   - AllCreatives: 전체 목록 + 필터링/정렬 (advertiser_id 필터)
+   - GenderPurchasePie: 성별 구매 통계 (advertiser_id 필터)
+   - AgeGenderPurchase: 연령대×성별 구매 통계 (advertiser_id 필터)
+4. 로딩 상태 및 에러 처리 추가
+5. Mock 데이터 제거
 
-### Phase 4: 실시간 업데이트 (선택)
+### Phase 5: 권한 관리 (선택)
+1. 사용자 역할별 기능 제한 (admin, editor, viewer)
+2. 관리자 페이지 추가 (사용자 관리, 광고주 관리)
+
+### Phase 6: 실시간 업데이트 (선택)
 1. Supabase Realtime 구독
 2. 데이터 변경 시 자동 리렌더링
 
