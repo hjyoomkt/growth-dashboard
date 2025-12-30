@@ -6,3 +6,13 @@ body {
 option {
   color: black;
 }
+
+/* Remove default focus outline */
+*:focus {
+  outline: none !important;
+}
+
+/* Remove focus visible outline */
+*:focus-visible {
+  outline: none !important;
+}
