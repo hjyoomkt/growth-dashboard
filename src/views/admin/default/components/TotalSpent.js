@@ -156,13 +156,13 @@ export default function TotalSpent(props) {
       w='100%'
       mb='0px'
       {...rest}>
-      <Flex w='100%' px='15px' py='10px'>
+      <Flex justify='space-between' align='start' w='100%' px='15px' py='10px'>
         <Text color={textColor} fontSize='lg' fontWeight='700' lineHeight='100%'>
           총매출
         </Text>
       </Flex>
-      <Flex w='100%' flexDirection={{ base: "column", lg: "row" }}>
-        <Flex flexDirection='column' ps='25px' pe='20px' pt='5px'>
+      <Flex w='100%' flexDirection='column'>
+        <Flex flexDirection='column' ps='25px' pe='20px' pt='5px' pb='15px'>
           <Text
             color={textColor}
             fontSize='34px'
@@ -179,7 +179,7 @@ export default function TotalSpent(props) {
             매출액
           </Text>
         </Flex>
-        <Box minH='260px' minW='75%' mt='auto' ps='10px'>
+        <Box h='260px' w='100%' px='15px' pb='15px'>
           <LineChart
             key={`${startDate}-${endDate}`}
             chartData={chartData}

@@ -7,6 +7,8 @@ import {
   MdHome,
   MdVpnKey,
   MdDashboard,
+  MdBusiness,
+  MdAnnouncement,
 } from 'react-icons/md';
 
 // Superadmin Imports
@@ -14,6 +16,8 @@ import SuperAdminDashboard from 'views/superadmin/default';
 import UserManagement from 'views/superadmin/users';
 import PermissionManagement from 'views/superadmin/permissions';
 import APIManagement from 'views/superadmin/api-management';
+import OrganizationManagement from 'views/superadmin/organizations';
+import Board from 'views/shared/board';
 
 const superadminRoutes = [
   {
@@ -32,18 +36,28 @@ const superadminRoutes = [
     component: <SuperAdminDashboard />,
   },
   {
-    name: '회원 관리',
+    name: '조직 관리',
     layout: '/superadmin',
-    path: '/users',
-    icon: <Icon as={MdPeople} width="20px" height="20px" color="inherit" />,
-    component: <UserManagement />,
+    path: '/organizations',
+    icon: <Icon as={MdBusiness} width="20px" height="20px" color="inherit" />,
+    component: <OrganizationManagement />,
+    masterOnly: true, // Master 권한만 접근 가능
   },
   {
     name: '권한 관리',
     layout: '/superadmin',
+    path: '/users',
+    icon: <Icon as={MdPeople} width="20px" height="20px" color="inherit" />,
+    component: <UserManagement />,
+    orgAdminOnly: true, // 조직 레벨 관리자만 접근 (advertiser_admin 제외)
+  },
+  {
+    name: '권한 관리 (구버전)',
+    layout: '/superadmin',
     path: '/permissions',
     icon: <Icon as={MdSecurity} width="20px" height="20px" color="inherit" />,
     component: <PermissionManagement />,
+    hidden: true, // 메뉴에서 숨김
   },
   {
     name: 'API 관리',
@@ -51,7 +65,13 @@ const superadminRoutes = [
     path: '/api-management',
     icon: <Icon as={MdVpnKey} width="20px" height="20px" color="inherit" />,
     component: <APIManagement />,
-    superAdminOnly: true, // 최고 관리자 전용
+  },
+  {
+    name: '게시판',
+    layout: '/superadmin',
+    path: '/board',
+    icon: <Icon as={MdAnnouncement} width="20px" height="20px" color="inherit" />,
+    component: <Board />,
   },
 ];
 

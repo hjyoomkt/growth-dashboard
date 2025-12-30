@@ -56,15 +56,15 @@ export default function Settings() {
           columnsData={columnsDataDevelopment}
           tableData={tableDataDevelopment}
         />
-        <CheckTable columnsData={columnsDataCheck} tableData={tableDataCheck} />
+        {/* <CheckTable columnsData={columnsDataCheck} tableData={tableDataCheck} /> */}
         <ColumnsTable
           columnsData={columnsDataColumns}
           tableData={tableDataColumns}
         />
-        <ComplexTable
+        {/* <ComplexTable
           columnsData={columnsDataComplex}
           tableData={tableDataComplex}
-        />
+        /> */}
       </SimpleGrid>
     </Box>
   );

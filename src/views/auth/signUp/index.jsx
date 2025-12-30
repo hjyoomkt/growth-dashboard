@@ -1,73 +1,42 @@
-/* eslint-disable */
-/*!
-  _   _  ___  ____  ___ ________  _   _   _   _ ___
- | | | |/ _ \|  _ \|_ _|__  / _ \| \ | | | | | |_ _|
- | |_| | | | | |_) || |  / / | | |  \| | | | | || |
- |  _  | |_| |  _ < | | / /| |_| | |\  | | |_| || |
- |_| |_|\___/|_| \_\___/____\___/|_| \_|  \___/|___|
-
-=========================================================
-* Horizon UI - v1.1.0
-=========================================================
-
-* Product Page: https://www.horizon-ui.com/
-* Copyright 2023 Horizon UI (https://www.horizon-ui.com/)
-
-* Designed and Coded by Simmmple
-
-=========================================================
-
-* The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
-
-*/
-
-import React from "react";
-import { NavLink } from "react-router-dom";
-// Chakra imports
+import React, { useState, useEffect } from "react";
+import { useSearchParams, NavLink, useNavigate } from "react-router-dom";
 import {
   Box,
   Button,
-  Checkbox,
   Flex,
-  FormControl,
-  FormLabel,
   Heading,
-  Icon,
-  Input,
-  InputGroup,
-  InputRightElement,
   Text,
-  useColorModeValue,
   Image,
+  useColorModeValue,
+  Link,
+  Icon,
 } from "@chakra-ui/react";
-// Assets
+import { MdLock } from "react-icons/md";
 import illustration from "assets/img/auth/auth.png";
-import { FcGoogle } from "react-icons/fc";
-import { MdOutlineRemoveRedEye } from "react-icons/md";
-import { RiEyeCloseLine } from "react-icons/ri";
+import InviteSignUpForm from "./components/InviteSignUpForm";
+import SelfSignUpForm from "./components/SelfSignUpForm";
 
 function SignUp() {
-  // Chakra color mode
+  const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
+  const urlInviteCode = searchParams.get('code');
+  const [mode, setMode] = useState(urlInviteCode ? 'invite' : 'self');
+  // 'invite': 초대 코드로 가입
+  // 'self': 셀프 회원가입 (새 조직 생성)
+
   const textColor = useColorModeValue("navy.700", "white");
   const textColorSecondary = "gray.400";
   const textColorBrand = useColorModeValue("brand.500", "white");
-  const socialBtnBg = useColorModeValue("white", "navy.800");
-  const socialBtnBorder = useColorModeValue("gray.200", "whiteAlpha.200");
-  const socialBtnHover = useColorModeValue(
-    { bg: "gray.50" },
-    { bg: "whiteAlpha.100" }
-  );
-  const [showPassword, setShowPassword] = React.useState(false);
-  const [showConfirmPassword, setShowConfirmPassword] = React.useState(false);
-  const handlePasswordClick = () => setShowPassword(!showPassword);
-  const handleConfirmPasswordClick = () => setShowConfirmPassword(!showConfirmPassword);
+  const boxBg = useColorModeValue("gray.50", "navy.800");
+
+  // Phase 1 설정: 셀프 회원가입 차단 여부
+  const PHASE_1_INVITE_ONLY = true; // true: 초대 전용, false: 셀프 회원가입 허용
 
   return (
     <Flex
       w="100vw"
-      h="100vh"
+      minH="100vh"
       bg={useColorModeValue("white", "navy.900")}
-      overflow="hidden"
     >
       {/* 왼쪽: 회원가입 폼 */}
       <Flex
@@ -77,213 +46,156 @@ function SignUp() {
         align="center"
         px={{ base: "20px", md: "50px", lg: "80px" }}
         py={{ base: "40px", md: "60px" }}
-        overflowY="auto"
       >
-        <Box w="100%" maxW="440px">
-          {/* Welcome to ExploreMe */}
+        <Box w="100%" maxW="480px">
+          {/* Welcome Header */}
           <Heading
             color={textColor}
             fontSize={{ base: "28px", md: "36px" }}
             mb="10px"
             fontWeight="700"
           >
-            Welcome to ExploreMe 👋
+            {mode === 'invite'
+              ? 'Welcome to Growth Dashboard'
+              : 'Start Your Growth Journey'}
           </Heading>
           <Text
-            mb="36px"
+            mb="24px"
             color={textColorSecondary}
             fontWeight="400"
             fontSize={{ base: "sm", md: "md" }}
           >
-            Kindly fill in your details below to create an account
+            {mode === 'invite'
+              ? '초대받으신 것을 환영합니다!'
+              : '새로운 조직으로 시작하세요'}
           </Text>
 
-          {/* Full Name 입력 */}
-          <FormControl mb="20px">
-            <FormLabel
-              fontSize="sm"
-              fontWeight="500"
-              color={textColor}
-              mb="8px"
-            >
-              Full Name
-            </FormLabel>
-            <Input
-              isRequired={true}
-              variant="auth"
-              fontSize="sm"
-              type="text"
-              placeholder="Enter your full name"
-              fontWeight="500"
-              size="lg"
-              borderRadius="10px"
-            />
-          </FormControl>
-
-          {/* Email Address 입력 */}
-          <FormControl mb="20px">
-            <FormLabel
-              fontSize="sm"
-              fontWeight="500"
-              color={textColor}
-              mb="8px"
-            >
-              Email Address*
-            </FormLabel>
-            <Input
-              isRequired={true}
-              variant="auth"
-              fontSize="sm"
-              type="email"
-              placeholder="Enter your email address"
-              fontWeight="500"
-              size="lg"
-              borderRadius="10px"
-            />
-          </FormControl>
-
-          {/* Password 입력 */}
-          <FormControl mb="20px">
-            <FormLabel
-              fontSize="sm"
-              fontWeight="500"
-              color={textColor}
-              mb="8px"
-            >
-              Password
-            </FormLabel>
-            <InputGroup size="md">
-              <Input
-                isRequired={true}
-                fontSize="sm"
-                placeholder="Create your password"
-                size="lg"
-                type={showPassword ? "text" : "password"}
-                variant="auth"
-                borderRadius="10px"
+          {/* Phase 1: 셀프 회원가입 차단 화면 */}
+          {PHASE_1_INVITE_ONLY && mode === 'self' ? (
+            <Box textAlign="center" py="40px">
+              <Icon
+                as={MdLock}
+                boxSize="60px"
+                color="brand.500"
+                mb="24px"
               />
-              <InputRightElement display="flex" alignItems="center" mt="4px">
-                <Icon
-                  color={textColorSecondary}
-                  _hover={{ cursor: "pointer" }}
-                  as={showPassword ? RiEyeCloseLine : MdOutlineRemoveRedEye}
-                  onClick={handlePasswordClick}
-                />
-              </InputRightElement>
-            </InputGroup>
-          </FormControl>
-
-          {/* Confirm Password 입력 */}
-          <FormControl mb="20px">
-            <FormLabel
-              fontSize="sm"
-              fontWeight="500"
-              color={textColor}
-              mb="8px"
-            >
-              Confirm Password
-            </FormLabel>
-            <InputGroup size="md">
-              <Input
-                isRequired={true}
-                fontSize="sm"
-                placeholder="Confirm your password"
-                size="lg"
-                type={showConfirmPassword ? "text" : "password"}
-                variant="auth"
-                borderRadius="10px"
-              />
-              <InputRightElement display="flex" alignItems="center" mt="4px">
-                <Icon
-                  color={textColorSecondary}
-                  _hover={{ cursor: "pointer" }}
-                  as={showConfirmPassword ? RiEyeCloseLine : MdOutlineRemoveRedEye}
-                  onClick={handleConfirmPasswordClick}
-                />
-              </InputRightElement>
-            </InputGroup>
-          </FormControl>
-
-          {/* Terms & Conditions */}
-          <Flex mb="24px" align="center">
-            <Checkbox
-              colorScheme="brand"
-              me="10px"
-            />
-            <Text
-              color={textColorSecondary}
-              fontSize="sm"
-              fontWeight="400"
-            >
-              I agree to terms & conditions
-            </Text>
-          </Flex>
-
-          {/* Register Account 버튼 */}
-          <Button
-            fontSize="sm"
-            variant="brand"
-            fontWeight="500"
-            w="100%"
-            h="50px"
-            mb="20px"
-            borderRadius="10px"
-          >
-            Register Account
-          </Button>
-
-          {/* Or Register with */}
-          <Flex align="center" mb="20px">
-            <Box flex="1" h="1px" bg="gray.200" />
-            <Text color="gray.400" mx="14px" fontSize="sm">
-              Or Register with
-            </Text>
-            <Box flex="1" h="1px" bg="gray.200" />
-          </Flex>
-
-          {/* Social 로그인 버튼 */}
-          <Button
-            w="100%"
-            fontSize="sm"
-            fontWeight="500"
-            h="50px"
-            borderRadius="10px"
-            bg={socialBtnBg}
-            border="1px solid"
-            borderColor={socialBtnBorder}
-            _hover={socialBtnHover}
-            leftIcon={<Icon as={FcGoogle} w="20px" h="20px" />}
-            mb="24px"
-          >
-            Register with Google
-          </Button>
-
-          {/* Already have account */}
-          <Text
-            color={textColorSecondary}
-            fontWeight="400"
-            fontSize="14px"
-            textAlign="center"
-          >
-            Already have an account?{" "}
-            <NavLink to="/auth/sign-in">
-              <Text
-                color={textColorBrand}
-                as="span"
-                fontWeight="600"
-                _hover={{ textDecoration: "underline" }}
-              >
-                Sign in
+              <Heading size="md" mb="16px" color={textColor}>
+                초대 전용 서비스
+              </Heading>
+              <Text color={textColorSecondary} mb="24px" fontSize="sm">
+                Growth Dashboard는 현재 초대받은 분만 가입할 수 있습니다.
               </Text>
-            </NavLink>
-          </Text>
+
+              <Box
+                bg={boxBg}
+                p="24px"
+                borderRadius="12px"
+                mb="24px"
+              >
+                <Heading size="sm" mb="12px" color={textColor}>
+                  서비스 도입을 원하시나요?
+                </Heading>
+                <Text color={textColorSecondary} fontSize="sm" mb="16px">
+                  영업팀에 문의하시면 데모와 함께 자세한 안내를 드립니다.
+                </Text>
+                <Button
+                  as="a"
+                  href="mailto:sales@yourdomain.com"
+                  colorScheme="brand"
+                  size="lg"
+                  w="100%"
+                >
+                  영업팀 문의하기
+                </Button>
+                <Text mt="12px" fontSize="xs" color={textColorSecondary}>
+                  또는 02-1234-5678로 전화주세요
+                </Text>
+              </Box>
+
+              <Button
+                variant="link"
+                colorScheme="brand"
+                onClick={() => setMode('invite')}
+              >
+                초대 코드로 가입하기 →
+              </Button>
+
+              <Text
+                mt="32px"
+                color={textColorSecondary}
+                fontWeight="400"
+                fontSize="14px"
+              >
+                Already have an account?{" "}
+                <NavLink to="/auth/sign-in">
+                  <Text
+                    color={textColorBrand}
+                    as="span"
+                    fontWeight="600"
+                    _hover={{ textDecoration: "underline" }}
+                  >
+                    Sign in
+                  </Text>
+                </NavLink>
+              </Text>
+            </Box>
+          ) : (
+            <>
+              {/* 토글 버튼 (URL에 code 없을 때만 표시) */}
+              {!urlInviteCode && (
+                <Button
+                  variant="link"
+                  colorScheme="brand"
+                  onClick={() => setMode(mode === 'invite' ? 'self' : 'invite')}
+                  mb="20px"
+                  fontSize="sm"
+                >
+                  {mode === 'invite'
+                    ? '→ 새 조직으로 등록하기'
+                    : '→ 초대 코드로 가입하기'}
+                </Button>
+              )}
+
+              {/* 회원가입 폼 */}
+              {mode === 'invite' ? (
+                <InviteSignUpForm
+                  initialCode={urlInviteCode}
+                  onSuccess={() => navigate('/admin/default')}
+                />
+              ) : (
+                <SelfSignUpForm
+                  onSuccess={() => navigate('/admin/default')}
+                />
+              )}
+
+              {/* Already have account */}
+              <Text
+                mt="32px"
+                color={textColorSecondary}
+                fontWeight="400"
+                fontSize="14px"
+                textAlign="center"
+              >
+                Already have an account?{" "}
+                <NavLink to="/auth/sign-in">
+                  <Text
+                    color={textColorBrand}
+                    as="span"
+                    fontWeight="600"
+                    _hover={{ textDecoration: "underline" }}
+                  >
+                    Sign in
+                  </Text>
+                </NavLink>
+              </Text>
+            </>
+          )}
         </Box>
       </Flex>
 
       {/* 우측: 이미지 영역 (데스크탑만) */}
       <Box
         w="50%"
-        h="100%"
         display={{ base: "none", lg: "flex" }}
         alignItems="center"
         justifyContent="center"
@@ -291,10 +203,10 @@ function SignUp() {
       >
         <Image
           src={illustration}
-          alt="Auth Background"
+          alt="Growth Dashboard Illustration"
           w="100%"
           h="100%"
-          objectFit="cover"
+          objectFit="contain"
           borderRadius="20px"
         />
       </Box>

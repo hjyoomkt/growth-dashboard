@@ -1,39 +1,46 @@
-/*!
-  _   _  ___  ____  ___ ________  _   _   _   _ ___
- | | | |/ _ \|  _ \|_ _|__  / _ \| \ | | | | | |_ _|
- | |_| | | | | |_) || |  / / | | |  \| | | | | || |
- |  _  | |_| |  _ < | | / /| |_| | |\  | | |_| || |
- |_| |_|\___/|_| \_\___/____\___/|_| \_|  \___/|___|
-
-=========================================================
-* Horizon UI - v1.1.0
-=========================================================
-
-* Product Page: https://www.horizon-ui.com/
-* Copyright 2023 Horizon UI (https://www.horizon-ui.com/)
-
-* Designed and Coded by Simmmple
-
-=========================================================
-
-* The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
-
-*/
-
 // Chakra imports
-import { Box, SimpleGrid } from "@chakra-ui/react";
+import { Box, Button, Text, useDisclosure, Flex, useColorModeValue } from "@chakra-ui/react";
 import UserTable from "views/admin/users/components/UserTable";
+import InviteUserModal from "views/admin/users/components/InviteUserModal";
 import React from "react";
+import { useAuth } from "contexts/AuthContext";
 
 export default function UserManagement() {
+  const { isOpen, onOpen, onClose } = useDisclosure();
+  const { isOrgAdmin, isAgency } = useAuth();
+  const textColor = useColorModeValue('secondaryGray.900', 'white');
+
   return (
     <Box pt={{ base: "130px", md: "80px", xl: "80px" }}>
-      <SimpleGrid
-        mb='20px'
-        columns={{ sm: 1 }}
-        spacing={{ base: "20px", xl: "20px" }}>
-        <UserTable />
-      </SimpleGrid>
+      {/* Page Header */}
+      <Flex justify="space-between" align="center" mb="20px" px="27px">
+        <Box>
+          <Text
+            color={textColor}
+            fontSize="2xl"
+            fontWeight="700"
+            lineHeight="100%"
+            mb="10px"
+          >
+            {isAgency() ? '직원 관리' : '팀원 관리'}
+          </Text>
+          <Text color="secondaryGray.600" fontSize="md" fontWeight="400">
+            {isAgency()
+              ? '대행사 직원을 초대하고 관리할 수 있습니다.'
+              : '팀원을 초대하고 관리할 수 있습니다.'}
+          </Text>
+        </Box>
+
+        {isOrgAdmin() && (
+          <Button colorScheme="brand" onClick={onOpen}>
+            + {isAgency() ? '직원 초대' : '팀원 초대'}
+          </Button>
+        )}
+      </Flex>
+
+      <UserTable />
+
+      <InviteUserModal isOpen={isOpen} onClose={onClose} />
     </Box>
   );
 }

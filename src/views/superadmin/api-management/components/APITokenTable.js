@@ -41,6 +41,10 @@ import {
   Radio,
   RadioGroup,
   Stack,
+  Menu,
+  MenuButton,
+  MenuItem,
+  MenuList,
 } from '@chakra-ui/react';
 import {
   createColumnHelper,
@@ -51,15 +55,21 @@ import {
 } from '@tanstack/react-table';
 import Card from 'components/card/Card';
 import * as React from 'react';
-import { MdEdit, MdDelete, MdAdd, MdSearch, MdLink, MdCheckCircle, MdOutlineError, MdSchedule, MdSync } from 'react-icons/md';
+import { MdEdit, MdDelete, MdAdd, MdSearch, MdLink, MdCheckCircle, MdOutlineError, MdSchedule, MdSync, MdKeyboardArrowDown } from 'react-icons/md';
+import { useAuth } from 'contexts/AuthContext';
+import { checkYesterdayData, getYesterdayDate, isAfter10AM } from 'utils/dataCollectionChecker';
 
 const columnHelper = createColumnHelper();
 
 export default function APITokenTable(props) {
   const { ...rest } = props;
+  const { isAgency, advertiserId, availableAdvertisers } = useAuth();
   const [sorting, setSorting] = React.useState([]);
   const textColor = useColorModeValue('secondaryGray.900', 'white');
   const borderColor = useColorModeValue('gray.200', 'whiteAlpha.100');
+  const inputBg = useColorModeValue('white', 'navy.700');
+  const bgHover = useColorModeValue('secondaryGray.100', 'whiteAlpha.100');
+  const brandColor = useColorModeValue('brand.500', 'white');
   const toast = useToast();
 
   const { isOpen, onOpen, onClose } = useDisclosure();
@@ -81,6 +91,7 @@ export default function APITokenTable(props) {
   // Form states
   const [formData, setFormData] = React.useState({
     advertiser: '',
+    accountDescription: '', // 계정 설명/메모
     platform: '',
     // Google Ads 전용 필드
     customerId: '',
@@ -109,44 +120,97 @@ export default function APITokenTable(props) {
   const [selectedConversionActions, setSelectedConversionActions] = React.useState([]);
 
   // Mock 데이터 (향후 Supabase로 교체 예정)
-  const [data, setData] = React.useState([
+  // TODO: Supabase 연동 시 아래 내용으로 교체
+  // - useEffect에서 Supabase의 api_tokens 테이블 조회
+  // - 실시간 구독으로 데이터 변경 감지
+  // - 오전 10시 이후 자동으로 dataCollectionStatus 업데이트
+  const [allData, setAllData] = React.useState([
     {
       id: 1,
-      advertiser: '광고주 A',
+      advertiserId: 'adv-nike',
+      advertiser: '나이키',
       platform: 'Google Ads',
       customerId: '7521796943',
       refreshToken: '1//06***...***ts',
       lastUpdated: '2024.12.01',
       status: 'active',
-      dataCollectionStatus: 'success', // success, error, pending
+      dataCollectionStatus: 'success', // success, error, pending (오전 10시 기준으로 전일자 데이터 체크)
     },
     {
       id: 2,
-      advertiser: '광고주 B',
+      advertiserId: 'adv-adidas',
+      advertiser: '아디다스',
       platform: 'Meta Ads',
       accountId: 'act_9876543210',
       apiToken: 'meta_*********************abc',
       lastUpdated: '2024.11.28',
       status: 'active',
-      dataCollectionStatus: 'error', // 데이터 수집 실패
+      dataCollectionStatus: 'error', // 데이터 수집 실패 (오전 10시 이후 전일자 데이터 없음)
     },
     {
       id: 3,
-      advertiser: '광고주 C',
+      advertiserId: 'adv-peppertux',
+      advertiser: '페퍼툭스',
       platform: 'Naver Ads',
       accountId: 'naver-123456',
       apiToken: 'naver_********************def',
       lastUpdated: '2024.11.15',
       status: 'inactive',
-      dataCollectionStatus: 'pending',
+      dataCollectionStatus: 'pending', // 오전 10시 이전 또는 데이터 수집 대기중
     },
   ]);
+
+  // 권한에 따라 데이터 필터링
+  const data = React.useMemo(() => {
+    // 대행사는 모든 데이터 접근
+    if (isAgency()) {
+      return allData;
+    }
+    // 클라이언트는 자신의 브랜드 데이터만 접근
+    return allData.filter(item => item.advertiserId === advertiserId);
+  }, [allData, isAgency, advertiserId]);
+
+  // TODO: Supabase 연동 후 주석 해제
+  // 컴포넌트 마운트 시 데이터 수집 상태 체크
+  // React.useEffect(() => {
+  //   const checkDataStatus = async () => {
+  //     const yesterday = getYesterdayDate();
+  //     const isAfter10 = isAfter10AM();
+  //
+  //     console.log(`데이터 체크 시작: ${yesterday} (오전 10시 ${isAfter10 ? '이후' : '이전'})`);
+  //
+  //     // 각 활성 토큰에 대해 전일자 데이터 체크
+  //     const updatedData = await Promise.all(
+  //       allData.map(async (token) => {
+  //         if (token.status !== 'active') {
+  //           return token;
+  //         }
+  //
+  //         const status = await checkYesterdayData(token.advertiserId, token.platform);
+  //         return {
+  //           ...token,
+  //           dataCollectionStatus: status,
+  //         };
+  //       })
+  //     );
+  //
+  //     setAllData(updatedData);
+  //   };
+  //
+  //   checkDataStatus();
+  //
+  //   // 매 시간마다 재체크 (오전 10시 이후에 상태가 바뀔 수 있으므로)
+  //   const interval = setInterval(checkDataStatus, 60 * 60 * 1000); // 1시간
+  //
+  //   return () => clearInterval(interval);
+  // }, []);
 
   const handleAdd = () => {
     setEditMode(false);
     setSelectedToken(null);
     setFormData({
       advertiser: '',
+      accountDescription: '',
       platform: '',
       customerId: '',
       managerAccountId: '',
@@ -283,7 +347,7 @@ export default function APITokenTable(props) {
 
   const handleDelete = (tokenId) => {
     // Mock 삭제 (향후 Supabase API 호출로 교체)
-    setData(prevData => prevData.filter(item => item.id !== tokenId));
+    setAllData(prevData => prevData.filter(item => item.id !== tokenId));
     toast({
       title: 'API 토큰 삭제 완료',
       description: 'API 토큰이 삭제되었습니다.',
@@ -319,7 +383,7 @@ export default function APITokenTable(props) {
 
     if (editMode && selectedToken) {
       // Mock 수정 (향후 Supabase API 호출로 교체)
-      setData(prevData =>
+      setAllData(prevData =>
         prevData.map(item =>
           item.id === selectedToken.id
             ? {
@@ -340,11 +404,12 @@ export default function APITokenTable(props) {
     } else {
       // Mock 추가 (향후 Supabase API 호출로 교체)
       const newToken = {
-        id: data.length + 1,
+        id: allData.length + 1,
+        advertiserId: advertiserId, // 현재 로그인한 사용자의 브랜드 ID
         ...formData,
         lastUpdated: new Date().toISOString().split('T')[0].replace(/-/g, '.'),
       };
-      setData(prevData => [...prevData, newToken]);
+      setAllData(prevData => [...prevData, newToken]);
       toast({
         title: 'API 토큰 추가 완료',
         description: '새로운 API 토큰이 추가되었습니다.',
@@ -691,62 +756,182 @@ export default function APITokenTable(props) {
           <ModalHeader>{editMode ? 'API 토큰 수정' : 'API 토큰 추가'}</ModalHeader>
           <ModalCloseButton />
           <ModalBody pb={6}>
-            <FormControl mb={4}>
-              <FormLabel>광고주</FormLabel>
-              <Input
-                placeholder="광고주 이름"
-                value={formData.advertiser}
-                onChange={(e) => setFormData({ ...formData, advertiser: e.target.value })}
-              />
+            <FormControl mb={4} isRequired>
+              <FormLabel fontSize="sm" fontWeight="500" mb={2}>
+                브랜드명 선택 *
+              </FormLabel>
+              <Menu>
+                {({ isOpen: isMenuOpen, onClose: onMenuClose }) => (
+                  <>
+                    <MenuButton
+                      as={Button}
+                      rightIcon={<Icon as={MdKeyboardArrowDown} />}
+                      bg={inputBg}
+                      border='1px solid'
+                      borderColor={borderColor}
+                      color={textColor}
+                      fontWeight='500'
+                      fontSize='sm'
+                      _hover={{ bg: bgHover }}
+                      _active={{ bg: bgHover }}
+                      px='16px'
+                      h='44px'
+                      borderRadius='12px'
+                      textAlign='left'>
+                      {formData.advertiser || '브랜드를 선택하세요'}
+                    </MenuButton>
+                    <MenuList minW='auto' w='fit-content' px='8px' py='8px'>
+                      {availableAdvertisers && availableAdvertisers.map((adv) => (
+                        <MenuItem
+                          key={adv.id}
+                          onClick={() => setFormData({ ...formData, advertiser: adv.name })}
+                          bg={formData.advertiser === adv.name ? brandColor : 'transparent'}
+                          color={formData.advertiser === adv.name ? 'white' : textColor}
+                          _hover={{
+                            bg: formData.advertiser === adv.name ? brandColor : bgHover,
+                          }}
+                          fontWeight={formData.advertiser === adv.name ? '600' : '500'}
+                          fontSize='sm'
+                          px='12px'
+                          py='8px'
+                          borderRadius='8px'
+                          justifyContent='center'
+                          textAlign='center'
+                          minH='auto'>
+                          {adv.name}
+                        </MenuItem>
+                      ))}
+                      {/* 직접 입력 구분선 */}
+                      <Box borderTop='1px solid' borderColor={borderColor} my='8px' />
+                      {/* 직접 입력 필드 */}
+                      <Box px='4px' py='4px'>
+                        <Input
+                          placeholder="브랜드명 직접 입력"
+                          value={formData.advertiser && !availableAdvertisers?.find(a => a.name === formData.advertiser) ? formData.advertiser : ''}
+                          onChange={(e) => setFormData({ ...formData, advertiser: e.target.value })}
+                          onClick={(e) => e.stopPropagation()}
+                          bg={inputBg}
+                          fontSize="sm"
+                          size="sm"
+                          borderRadius='8px'
+                        />
+                      </Box>
+                    </MenuList>
+                  </>
+                )}
+              </Menu>
             </FormControl>
 
             <FormControl mb={4}>
-              <FormLabel>플랫폼</FormLabel>
-              <Select
-                placeholder="플랫폼 선택"
-                value={formData.platform}
-                onChange={(e) => setFormData({ ...formData, platform: e.target.value })}
-              >
-                <option value="Google Ads">Google Ads</option>
-                <option value="Meta Ads">Meta Ads</option>
-                <option value="Naver Ads">Naver Ads</option>
-                <option value="Kakao Ads">Kakao Ads</option>
-              </Select>
+              <FormLabel fontSize="sm" fontWeight="500" mb={2}>
+                계정 설명 (선택)
+              </FormLabel>
+              <Input
+                placeholder="예: 메인 계정, 리타게팅 전용, 신상품 캠페인용"
+                value={formData.accountDescription}
+                onChange={(e) => setFormData({ ...formData, accountDescription: e.target.value })}
+                
+                fontSize="sm"
+              />
+              <Text fontSize="xs" color="secondaryGray.600" mt={2}>
+                같은 광고주의 여러 계정을 구분하기 위한 메모입니다.
+              </Text>
+            </FormControl>
+
+            <FormControl mb={4}>
+              <FormLabel fontSize="sm" fontWeight="500" mb={2}>
+                플랫폼
+              </FormLabel>
+              <Menu>
+                <MenuButton
+                  as={Button}
+                  rightIcon={<Icon as={MdKeyboardArrowDown} />}
+                  bg={inputBg}
+                  border='1px solid'
+                  borderColor={borderColor}
+                  color={textColor}
+                  fontWeight='500'
+                  fontSize='sm'
+                  _hover={{ bg: bgHover }}
+                  _active={{ bg: bgHover }}
+                  px='16px'
+                  h='44px'
+                  borderRadius='12px'
+                  textAlign='left'>
+                  {formData.platform || '플랫폼 선택'}
+                </MenuButton>
+                <MenuList minW='auto' w='fit-content' px='8px' py='8px'>
+                  {['Google Ads', 'Meta Ads', 'Naver Ads', 'Kakao Ads'].map((platform) => (
+                    <MenuItem
+                      key={platform}
+                      onClick={() => setFormData({ ...formData, platform })}
+                      bg={formData.platform === platform ? brandColor : 'transparent'}
+                      color={formData.platform === platform ? 'white' : textColor}
+                      _hover={{
+                        bg: formData.platform === platform ? brandColor : bgHover,
+                      }}
+                      fontWeight={formData.platform === platform ? '600' : '500'}
+                      fontSize='sm'
+                      px='12px'
+                      py='8px'
+                      borderRadius='8px'
+                      justifyContent='center'
+                      textAlign='center'
+                      minH='auto'>
+                      {platform}
+                    </MenuItem>
+                  ))}
+                </MenuList>
+              </Menu>
             </FormControl>
 
             {/* Google Ads 전용 필드 */}
             {formData.platform === 'Google Ads' ? (
               <>
                 <FormControl mb={4} isRequired>
-                  <FormLabel>광고 계정 ID *</FormLabel>
+                  <FormLabel fontSize="sm" fontWeight="500" mb={2}>
+                    광고 계정 ID *
+                  </FormLabel>
                   <Input
                     placeholder="Customer ID (예: 1234567890)"
                     value={formData.customerId}
                     onChange={(e) => setFormData({ ...formData, customerId: e.target.value })}
+                    
+                    fontSize="sm"
                   />
                 </FormControl>
 
                 <FormControl mb={4} isRequired>
-                  <FormLabel>MCC ID *</FormLabel>
+                  <FormLabel fontSize="sm" fontWeight="500" mb={2}>
+                    MCC ID *
+                  </FormLabel>
                   <Input
                     placeholder="Manager Account ID"
                     value={formData.managerAccountId}
                     onChange={(e) => setFormData({ ...formData, managerAccountId: e.target.value })}
+                    
+                    fontSize="sm"
                   />
                 </FormControl>
 
                 <FormControl mb={4} isRequired>
-                  <FormLabel>MCC 개발자 토큰 *</FormLabel>
+                  <FormLabel fontSize="sm" fontWeight="500" mb={2}>
+                    MCC 개발자 토큰 *
+                  </FormLabel>
                   <Input
                     type="password"
                     placeholder="Developer Token"
                     value={formData.developerToken}
                     onChange={(e) => setFormData({ ...formData, developerToken: e.target.value })}
+                    
+                    fontSize="sm"
                   />
                 </FormControl>
 
                 <FormControl mb={4} isRequired>
-                  <FormLabel>구글애즈 전환 액션 ID *</FormLabel>
+                  <FormLabel fontSize="sm" fontWeight="500" mb={2}>
+                    구글애즈 전환 액션 ID *
+                  </FormLabel>
                   <VStack align="stretch" spacing={2}>
                     {formData.targetConversionActionId.length > 0 && (
                       <Flex flexWrap="wrap" gap={2} mb={2}>
@@ -782,13 +967,17 @@ export default function APITokenTable(props) {
                 </FormControl>
 
                 <FormControl mb={4} isRequired>
-                  <FormLabel>리프레쉬 토큰 *</FormLabel>
+                  <FormLabel fontSize="sm" fontWeight="500" mb={2}>
+                    리프레쉬 토큰 *
+                  </FormLabel>
                   <VStack align="stretch" spacing={2}>
                     <Input
                       type="password"
                       placeholder="Refresh Token"
                       value={formData.refreshToken}
                       onChange={(e) => setFormData({ ...formData, refreshToken: e.target.value })}
+                      
+                      fontSize="sm"
                     />
                     <HStack>
                       <Button
@@ -810,21 +999,29 @@ export default function APITokenTable(props) {
                 </FormControl>
 
                 <FormControl mb={4} isRequired>
-                  <FormLabel>GCP Client ID *</FormLabel>
+                  <FormLabel fontSize="sm" fontWeight="500" mb={2}>
+                    GCP Client ID *
+                  </FormLabel>
                   <Input
                     placeholder="Client ID"
                     value={formData.clientId}
                     onChange={(e) => setFormData({ ...formData, clientId: e.target.value })}
+                    
+                    fontSize="sm"
                   />
                 </FormControl>
 
                 <FormControl mb={4} isRequired>
-                  <FormLabel>GCP Client Secret *</FormLabel>
+                  <FormLabel fontSize="sm" fontWeight="500" mb={2}>
+                    GCP Client Secret *
+                  </FormLabel>
                   <Input
                     type="password"
                     placeholder="Client Secret"
                     value={formData.clientSecret}
                     onChange={(e) => setFormData({ ...formData, clientSecret: e.target.value })}
+                    
+                    fontSize="sm"
                   />
                 </FormControl>
               </>
@@ -832,31 +1029,43 @@ export default function APITokenTable(props) {
               <>
                 {/* Naver Ads 전용 필드 */}
                 <FormControl mb={4} isRequired>
-                  <FormLabel>네이버 커스터머 ID *</FormLabel>
+                  <FormLabel fontSize="sm" fontWeight="500" mb={2}>
+                    네이버 커스터머 ID *
+                  </FormLabel>
                   <Input
                     placeholder="네이버 커스터머 ID 입력"
                     value={formData.accountId}
                     onChange={(e) => setFormData({ ...formData, accountId: e.target.value })}
+                    
+                    fontSize="sm"
                   />
                 </FormControl>
 
                 <FormControl mb={4} isRequired>
-                  <FormLabel>API 토큰 *</FormLabel>
+                  <FormLabel fontSize="sm" fontWeight="500" mb={2}>
+                    API 토큰 *
+                  </FormLabel>
                   <Input
                     type="password"
                     placeholder="API 토큰 입력"
                     value={formData.apiToken}
                     onChange={(e) => setFormData({ ...formData, apiToken: e.target.value })}
+                    
+                    fontSize="sm"
                   />
                 </FormControl>
 
                 <FormControl mb={4} isRequired>
-                  <FormLabel>Secret Key *</FormLabel>
+                  <FormLabel fontSize="sm" fontWeight="500" mb={2}>
+                    Secret Key *
+                  </FormLabel>
                   <Input
                     type="password"
                     placeholder="Secret Key 입력"
                     value={formData.secretKey}
                     onChange={(e) => setFormData({ ...formData, secretKey: e.target.value })}
+                    
+                    fontSize="sm"
                   />
                 </FormControl>
               </>
@@ -864,35 +1073,79 @@ export default function APITokenTable(props) {
               <>
                 {/* 기타 플랫폼 필드 */}
                 <FormControl mb={4} isRequired>
-                  <FormLabel>계정 ID *</FormLabel>
+                  <FormLabel fontSize="sm" fontWeight="500" mb={2}>
+                    계정 ID *
+                  </FormLabel>
                   <Input
                     placeholder="광고 계정 ID"
                     value={formData.accountId}
                     onChange={(e) => setFormData({ ...formData, accountId: e.target.value })}
+                    
+                    fontSize="sm"
                   />
                 </FormControl>
 
                 <FormControl mb={4} isRequired>
-                  <FormLabel>API 토큰 *</FormLabel>
+                  <FormLabel fontSize="sm" fontWeight="500" mb={2}>
+                    API 토큰 *
+                  </FormLabel>
                   <Input
                     type="password"
                     placeholder="API 토큰 입력"
                     value={formData.apiToken}
                     onChange={(e) => setFormData({ ...formData, apiToken: e.target.value })}
+                    
+                    fontSize="sm"
                   />
                 </FormControl>
               </>
             )}
 
             <FormControl>
-              <FormLabel>상태</FormLabel>
-              <Select
-                value={formData.status}
-                onChange={(e) => setFormData({ ...formData, status: e.target.value })}
-              >
-                <option value="active">활성</option>
-                <option value="inactive">비활성</option>
-              </Select>
+              <FormLabel fontSize="sm" fontWeight="500" mb={2}>
+                상태
+              </FormLabel>
+              <Menu>
+                <MenuButton
+                  as={Button}
+                  rightIcon={<Icon as={MdKeyboardArrowDown} />}
+                  bg={inputBg}
+                  border='1px solid'
+                  borderColor={borderColor}
+                  color={textColor}
+                  fontWeight='500'
+                  fontSize='sm'
+                  _hover={{ bg: bgHover }}
+                  _active={{ bg: bgHover }}
+                  px='16px'
+                  h='44px'
+                  borderRadius='12px'
+                  textAlign='left'>
+                  {formData.status === 'active' ? '활성' : formData.status === 'inactive' ? '비활성' : '상태 선택'}
+                </MenuButton>
+                <MenuList minW='auto' w='fit-content' px='8px' py='8px'>
+                  {[{value: 'active', label: '활성'}, {value: 'inactive', label: '비활성'}].map((status) => (
+                    <MenuItem
+                      key={status.value}
+                      onClick={() => setFormData({ ...formData, status: status.value })}
+                      bg={formData.status === status.value ? brandColor : 'transparent'}
+                      color={formData.status === status.value ? 'white' : textColor}
+                      _hover={{
+                        bg: formData.status === status.value ? brandColor : bgHover,
+                      }}
+                      fontWeight={formData.status === status.value ? '600' : '500'}
+                      fontSize='sm'
+                      px='12px'
+                      py='8px'
+                      borderRadius='8px'
+                      justifyContent='center'
+                      textAlign='center'
+                      minH='auto'>
+                      {status.label}
+                    </MenuItem>
+                  ))}
+                </MenuList>
+              </Menu>
             </FormControl>
           </ModalBody>
 
@@ -970,37 +1223,86 @@ export default function APITokenTable(props) {
       <Modal isOpen={isSyncModalOpen} onClose={onSyncModalClose} size="xl">
         <ModalOverlay />
         <ModalContent>
-          <ModalHeader>데이터 연동</ModalHeader>
+          <ModalHeader fontSize="md" fontWeight="600">데이터 연동</ModalHeader>
           <ModalCloseButton />
           <ModalBody pb={6}>
             <VStack spacing={4} align="stretch">
               <FormControl isRequired>
-                <FormLabel>매체 선택 *</FormLabel>
-                <Select
-                  placeholder="연동할 매체를 선택하세요"
-                  value={syncConfig.selectedPlatform}
-                  onChange={(e) => setSyncConfig({ ...syncConfig, selectedPlatform: e.target.value })}
-                >
-                  {data.filter(token => token.status === 'active').map((token) => (
-                    <option key={token.id} value={token.platform}>
-                      {token.advertiser} - {token.platform}
-                    </option>
-                  ))}
-                </Select>
+                <FormLabel fontSize="sm" fontWeight="500" mb={2}>
+                  매체 선택 *
+                </FormLabel>
+                <Menu>
+                  <MenuButton
+                    as={Button}
+                    rightIcon={<Icon as={MdKeyboardArrowDown} />}
+                    bg={inputBg}
+                    border='1px solid'
+                    borderColor={borderColor}
+                    color={textColor}
+                    fontWeight='500'
+                    fontSize='sm'
+                    _hover={{ bg: bgHover }}
+                    _active={{ bg: bgHover }}
+                    px='16px'
+                    h='44px'
+                    borderRadius='12px'
+                    w='100%'
+                    textAlign='left'>
+                    {syncConfig.selectedPlatform ?
+                      data.find(token => token.platform === syncConfig.selectedPlatform) ?
+                        `${data.find(token => token.platform === syncConfig.selectedPlatform).advertiser} - ${syncConfig.selectedPlatform}`
+                        : syncConfig.selectedPlatform
+                      : '연동할 매체를 선택하세요'}
+                  </MenuButton>
+                  <MenuList minW='auto' w='fit-content' px='8px' py='8px' maxH='300px' overflowY='auto'>
+                    {data.filter(token => token.status === 'active').map((token) => (
+                      <MenuItem
+                        key={token.id}
+                        onClick={() => setSyncConfig({ ...syncConfig, selectedPlatform: token.platform })}
+                        bg={syncConfig.selectedPlatform === token.platform ? brandColor : 'transparent'}
+                        color={syncConfig.selectedPlatform === token.platform ? 'white' : textColor}
+                        _hover={{
+                          bg: syncConfig.selectedPlatform === token.platform ? brandColor : bgHover,
+                        }}
+                        fontWeight={syncConfig.selectedPlatform === token.platform ? '600' : '500'}
+                        fontSize='sm'
+                        px='12px'
+                        py='8px'
+                        borderRadius='8px'
+                        justifyContent='center'
+                        textAlign='center'
+                        minH='auto'>
+                        {token.advertiser} - {token.platform}
+                      </MenuItem>
+                    ))}
+                  </MenuList>
+                </Menu>
               </FormControl>
 
               <FormControl isRequired>
-                <FormLabel>기간 선택 *</FormLabel>
+                <FormLabel fontSize="sm" fontWeight="500" mb={2}>
+                  기간 선택 *
+                </FormLabel>
                 <RadioGroup
                   value={syncConfig.dateRange}
                   onChange={(value) => setSyncConfig({ ...syncConfig, dateRange: value })}
                 >
-                  <Stack spacing={3}>
-                    <Radio value="yesterday">어제</Radio>
-                    <Radio value="lastWeek">지난주 (최근 7일)</Radio>
-                    <Radio value="lastMonth">지난달 (최근 30일)</Radio>
-                    <Radio value="all">전체 데이터</Radio>
-                    <Radio value="custom">사용자 지정</Radio>
+                  <Stack spacing={2}>
+                    <Radio value="yesterday" colorScheme="brand" size="sm">
+                      <Text fontSize="sm" fontWeight="400">어제</Text>
+                    </Radio>
+                    <Radio value="lastWeek" colorScheme="brand" size="sm">
+                      <Text fontSize="sm" fontWeight="400">지난주 (최근 7일)</Text>
+                    </Radio>
+                    <Radio value="lastMonth" colorScheme="brand" size="sm">
+                      <Text fontSize="sm" fontWeight="400">지난달 (최근 30일)</Text>
+                    </Radio>
+                    <Radio value="all" colorScheme="brand" size="sm">
+                      <Text fontSize="sm" fontWeight="400">전체 데이터</Text>
+                    </Radio>
+                    <Radio value="custom" colorScheme="brand" size="sm">
+                      <Text fontSize="sm" fontWeight="400">사용자 지정</Text>
+                    </Radio>
                   </Stack>
                 </RadioGroup>
               </FormControl>
@@ -1008,43 +1310,53 @@ export default function APITokenTable(props) {
               {syncConfig.dateRange === 'custom' && (
                 <HStack spacing={4}>
                   <FormControl>
-                    <FormLabel>시작일</FormLabel>
+                    <FormLabel fontSize="sm" fontWeight="500" mb={2}>
+                      시작일
+                    </FormLabel>
                     <Input
                       type="date"
                       value={syncConfig.startDate}
                       onChange={(e) => setSyncConfig({ ...syncConfig, startDate: e.target.value })}
+                      fontSize="sm"
+                      h="44px"
                     />
                   </FormControl>
                   <FormControl>
-                    <FormLabel>종료일</FormLabel>
+                    <FormLabel fontSize="sm" fontWeight="500" mb={2}>
+                      종료일
+                    </FormLabel>
                     <Input
                       type="date"
                       value={syncConfig.endDate}
                       onChange={(e) => setSyncConfig({ ...syncConfig, endDate: e.target.value })}
+                      fontSize="sm"
+                      h="44px"
                     />
                   </FormControl>
                 </HStack>
               )}
 
               <FormControl isRequired>
-                <FormLabel>데이터 처리 방식 *</FormLabel>
+                <FormLabel fontSize="sm" fontWeight="500" mb={2}>
+                  데이터 처리 방식 *
+                </FormLabel>
                 <RadioGroup
                   value={syncConfig.updateMode}
                   onChange={(value) => setSyncConfig({ ...syncConfig, updateMode: value })}
                 >
-                  <Stack spacing={3}>
-                    <Radio value="skipExisting">
+                  <Stack spacing={2}>
+                    <Radio value="skipExisting" colorScheme="brand" size="sm">
                       <VStack align="start" spacing={0}>
-                        <Text fontWeight="500">기존 데이터 건너뛰기</Text>
-                        <Text fontSize="xs" color="gray.500">
+                        <Text fontSize="sm" fontWeight="500">기존 데이터 건너뛰기</Text>
+                        <Text fontSize="xs" fontWeight="400" color="secondaryGray.600">
                           DB에 이미 있는 날짜는 건너뛰고 새로운 데이터만 추가합니다
                         </Text>
                       </VStack>
                     </Radio>
-                    <Radio value="updateAll">
+                    <Radio value="updateAll" colorScheme="brand" size="sm">
                       <VStack align="start" spacing={0}>
-                        <Text fontWeight="500">전체 업데이트</Text>
-                        <Text fontSize="xs" color="gray.500">
+                        <Text fontSize="sm" fontWeight="500">전체 업데이트</Text>
+                        <Text fontSize="xs" fontWeight="400" color="secondaryGray.600">
                           기존 데이터를 최신 데이터로 덮어씁니다 (시간이 더 소요됩니다)
                         </Text>
                       </VStack>
@@ -1061,10 +1373,20 @@ export default function APITokenTable(props) {
               mr={3}
               onClick={handleConfirmSync}
               isDisabled={!syncConfig.selectedPlatform}
+              fontSize="sm"
+              fontWeight="500"
+              size="sm"
             >
               다음
             </Button>
-            <Button onClick={onSyncModalClose}>취소</Button>
+            <Button
+              onClick={onSyncModalClose}
+              fontSize="sm"
+              fontWeight="500"
+              size="sm"
+            >
+              취소
+            </Button>
           </ModalFooter>
         </ModalContent>
       </Modal>
@@ -1073,33 +1395,34 @@ export default function APITokenTable(props) {
       <Modal isOpen={isSyncWarningOpen} onClose={onSyncWarningClose} size="md" isCentered>
         <ModalOverlay />
         <ModalContent>
-          <ModalHeader>
+          <ModalHeader fontSize="md" fontWeight="600">
             <HStack spacing={2}>
-              <Icon as={MdOutlineError} w="24px" h="24px" color="orange.500" />
-              <Text>주의사항</Text>
+              <Icon as={MdOutlineError} w="18px" h="18px" color="orange.500" />
+              <Text fontSize="md">주의사항</Text>
             </HStack>
           </ModalHeader>
           <ModalCloseButton />
           <ModalBody pb={6}>
             <Alert
               status="warning"
-              variant="subtle"
-              borderRadius="10px"
+              variant="left-accent"
+              borderRadius="12px"
               mb={4}
+              py={3}
             >
-              <AlertIcon />
+              <AlertIcon boxSize="16px" />
               <Box>
-                <AlertTitle>데이터 연동에 많은 시간이 소요됩니다</AlertTitle>
-                <AlertDescription fontSize="sm">
+                <AlertTitle fontSize="xs" fontWeight="600" mb={0.5}>데이터 연동에 많은 시간이 소요됩니다</AlertTitle>
+                <AlertDescription fontSize="xs" fontWeight="400">
                   과부하 방지를 위해 꼭 필요한 상황에만 연동해야 합니다.
                 </AlertDescription>
               </Box>
             </Alert>
 
-            <VStack align="start" spacing={2} p={4} bg={useColorModeValue('gray.50', 'whiteAlpha.50')} borderRadius="10px">
-              <Text fontSize="sm" fontWeight="600">연동 설정 확인:</Text>
-              <Text fontSize="sm">• 매체: {syncConfig.selectedPlatform}</Text>
-              <Text fontSize="sm">
+            <VStack align="start" spacing={1.5} p={3} bg={useColorModeValue('gray.50', 'whiteAlpha.50')} borderRadius="12px">
+              <Text fontSize="xs" fontWeight="600" mb={0.5}>연동 설정 확인:</Text>
+              <Text fontSize="xs" fontWeight="400">• 매체: {syncConfig.selectedPlatform}</Text>
+              <Text fontSize="xs" fontWeight="400">
                 • 기간: {
                   syncConfig.dateRange === 'yesterday' ? '어제' :
                   syncConfig.dateRange === 'lastWeek' ? '지난주 (7일)' :
@@ -1108,21 +1431,35 @@ export default function APITokenTable(props) {
                   `${syncConfig.startDate} ~ ${syncConfig.endDate}`
                 }
               </Text>
-              <Text fontSize="sm">
+              <Text fontSize="xs" fontWeight="400">
                 • 처리: {syncConfig.updateMode === 'skipExisting' ? '기존 건너뛰기' : '전체 업데이트'}
               </Text>
             </VStack>
 
-            <Text fontSize="sm" color="gray.600" mt={4}>
+            <Text fontSize="xs" fontWeight="500" color="gray.600" mt={3}>
               정말 데이터 연동을 진행하시겠습니까?
             </Text>
           </ModalBody>
 
           <ModalFooter>
-            <Button colorScheme="blue" mr={3} onClick={handleExecuteSync}>
+            <Button
+              colorScheme="blue"
+              mr={3}
+              onClick={handleExecuteSync}
+              fontSize="sm"
+              fontWeight="500"
+              size="sm"
+            >
               계속 하기
             </Button>
-            <Button onClick={onSyncWarningClose}>취소</Button>
+            <Button
+              onClick={onSyncWarningClose}
+              fontSize="sm"
+              fontWeight="500"
+              size="sm"
+            >
+              취소
+            </Button>
           </ModalFooter>
         </ModalContent>
       </Modal>

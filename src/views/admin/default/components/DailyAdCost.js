@@ -152,28 +152,29 @@ export default function DailyAdCost(props) {
       w='100%'
       mb='0px'
       {...rest}>
-      <Flex justify='space-between' align='center' w='100%' px='15px' py='10px'>
+      <Flex justify='space-between' align='start' w='100%' px='15px' py='10px'>
         <Text color={textColor} fontSize='lg' fontWeight='700' lineHeight='100%'>
           일일 광고 비용
         </Text>
-        <Flex flexDirection='column' align='flex-end'>
-          <Text
-            color={textColor}
-            fontSize='24px'
-            fontWeight='700'
-            lineHeight='100%'>
-            ₩0
-          </Text>
-          <Text
-            color={textColorSecondary}
-            fontSize='xs'
-            fontWeight='500'
-            mt='2px'>
-            총 광고비
-          </Text>
-        </Flex>
       </Flex>
-      <Box h='300px' w='100%' px='15px' pb='15px'>
+      <Flex flexDirection='column' ps='25px' pe='20px' pt='5px' pb='15px'>
+        <Text
+          color={textColor}
+          fontSize='34px'
+          textAlign='start'
+          fontWeight='700'
+          lineHeight='100%'>
+          ₩0
+        </Text>
+        <Text
+          color={textColorSecondary}
+          fontSize='sm'
+          fontWeight='500'
+          mt='4px'>
+          총 광고비
+        </Text>
+      </Flex>
+      <Box h='240px' w='100%' px='15px' pb='15px'>
         <LineChart
           key={`${startDate}-${endDate}`}
           chartData={chartData}

@@ -32,10 +32,12 @@ import {
 } from '@chakra-ui/react';
 import APITokenTable from 'views/superadmin/api-management/components/APITokenTable';
 import Card from 'components/card/Card';
+import { useAuth } from 'contexts/AuthContext';
 
 export default function APIManagement() {
   const textColor = useColorModeValue('secondaryGray.900', 'white');
   const cardBg = useColorModeValue('white', 'navy.800');
+  const { isAgency } = useAuth();
 
   return (
     <Box pt={{ base: '130px', md: '80px', xl: '80px' }}>
@@ -65,10 +67,11 @@ export default function APIManagement() {
       >
         <AlertIcon />
         <Box>
-          <AlertTitle>최고 관리자 전용 페이지</AlertTitle>
+          <AlertTitle>{isAgency() ? '최고 관리자 전용 페이지' : '브랜드 API 토큰 관리'}</AlertTitle>
           <AlertDescription>
-            이 페이지는 최고 관리자만 접근할 수 있습니다. API 토큰은 암호화되어 Supabase에 저장되며,
-            코드 수정 없이 실시간으로 광고 데이터 수집에 반영됩니다.
+            {isAgency()
+              ? '이 페이지는 최고 관리자만 접근할 수 있습니다. API 토큰은 암호화되어 Supabase에 저장되며, 코드 수정 없이 실시간으로 광고 데이터 수집에 반영됩니다. 매일 오전 10시를 기준으로 전일(D-1) 데이터 수집 상태를 자동으로 체크합니다.'
+              : '본인 브랜드의 광고 플랫폼 API 토큰을 확인할 수 있습니다. API 토큰은 암호화되어 안전하게 저장되며, 광고 데이터 수집에 사용됩니다. 매일 오전 10시 기준으로 전일 데이터 수집 여부를 확인합니다.'}
           </AlertDescription>
         </Box>
       </Alert>

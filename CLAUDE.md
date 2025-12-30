@@ -721,3 +721,1238 @@ create policy "광고주는 본인 구매 데이터만 조회"
   <ReactApexChart type='pie' ... />
 </Box>
 ```
+
+---
+
+## 드롭다운 컴포넌트 구성
+
+### 참조 구현
+
+```jsx
+<Menu>
+  <MenuButton
+    as={Button}
+    rightIcon={<MdKeyboardArrowDown />}
+    bg={inputBg}
+    border='1px solid'
+    borderColor={borderColor}
+    color={textColor}
+    fontWeight='500'
+    fontSize='sm'
+    _hover={{ bg: bgHover }}
+    _active={{ bg: bgHover }}
+    px='16px'
+    h='36px'
+    borderRadius='12px'>
+    {selectedValue}
+  </MenuButton>
+  <MenuList minW='auto' w='fit-content' px='8px' py='8px'>
+    {options.map((option) => (
+      <MenuItem
+        key={option}
+        onClick={() => handleSelect(option)}
+        bg={selectedValue === option ? brandColor : 'transparent'}
+        color={selectedValue === option ? 'white' : textColor}
+        _hover={{
+          bg: selectedValue === option ? brandColor : bgHover,
+        }}
+        fontWeight={selectedValue === option ? '600' : '500'}
+        fontSize='sm'
+        px='12px'
+        py='8px'
+        borderRadius='8px'
+        justifyContent='center'
+        textAlign='center'
+        minH='auto'>
+        {option}
+      </MenuItem>
+    ))}
+  </MenuList>
+</Menu>
+```
+
+### 필수 import
+
+```jsx
+import {
+  Menu,
+  MenuButton,
+  MenuItem,
+  MenuList,
+} from '@chakra-ui/react';
+
+import { MdKeyboardArrowDown } from 'react-icons/md';
+```
+
+### 필수 color mode
+
+```jsx
+const inputBg = useColorModeValue('white', 'navy.700');
+const bgHover = useColorModeValue('secondaryGray.100', 'whiteAlpha.100');
+const brandColor = useColorModeValue('brand.500', 'white');
+```
+
+---
+
+## 권한 관리 시스템
+
+### 권한 체계 (Role-Based Access Control)
+
+**4단계 계층 구조**:
+1. **마스터**: `master` - 시스템 원작자, 모든 권한 및 기능 접근 가능
+2. **대행사** (`organizationType: 'agency'`):
+   - `org_admin` - 대행사 최고관리자 (조직 생성, 사용자 관리)
+   - `org_manager` - 대행사 관리자 (클라이언트 관리, 게시판 작성)
+   - `org_staff` - 대행사 직원 (데이터 조회, 보고서 생성)
+3. **클라이언트/브랜드** (`organizationType: 'advertiser'`):
+   - `advertiser_admin` - 클라이언트 최고관리자 (브랜드 관리, 사용자 초대)
+   - `manager` - 클라이언트 관리자 (데이터 조회, 게시판 작성)
+   - `editor` - 클라이언트 편집자 (데이터 조회, 편집)
+   - `viewer` - 클라이언트 뷰어 (데이터 조회만)
+4. **권한 계층값** (높을수록 상위 권한):
+   ```javascript
+   master: 8
+   org_admin: 7
+   org_manager: 6
+   org_staff: 5
+   advertiser_admin: 4
+   manager: 3
+   editor: 2
+   viewer: 1
+   ```
+
+### AuthContext 구현
+
+**파일**: `src/contexts/AuthContext.js`
+
+현재는 Mock 데이터로 작동하며, Supabase 연동 시 실제 인증으로 전환 예정.
+
+**Mock 사용자 설정** (개발/테스트용):
+```javascript
+const mockUser = {
+  id: 'mock-user-id',
+  email: 'dev@example.com',
+  role: 'master', // ← 여기를 변경해서 다른 권한 테스트
+};
+
+setUser(mockUser);
+setRole(mockUser.role);
+setOrganizationId(null); // 마스터는 조직에 속하지 않음
+setAdvertiserId(null); // 마스터는 특정 브랜드에 속하지 않음
+setOrganizationType('master'); // 마스터 타입
+
+// Mock: 접근 가능한 브랜드 목록 설정
+const mockAdvertisers = [
+  { id: 'adv-nike', name: '나이키', organizationId: 'org-nike' },
+  { id: 'adv-adidas', name: '아디다스', organizationId: 'org-adidas' },
+  { id: 'adv-peppertux', name: '페퍼툭스', organizationId: 'org-pepper' },
+  { id: 'adv-onnuri', name: '온누리스토어', organizationId: 'org-pepper' }, // 같은 회사
+];
+setAvailableAdvertisers(mockAdvertisers);
+setCurrentAdvertiserId(null); // 전체 보기로 시작
+```
+
+**제공하는 값 및 함수**:
+```javascript
+const {
+  // 사용자 정보
+  user,                    // 현재 로그인 사용자
+  role,                    // 사용자 권한
+  organizationType,        // 'master' | 'agency' | 'advertiser'
+  organizationId,          // 조직 ID
+  advertiserId,            // 브랜드 ID (클라이언트만)
+  loading,                 // 인증 로딩 상태
+
+  // 인증 함수
+  signIn,                  // 로그인
+  signUp,                  // 회원가입
+  signOut,                 // 로그아웃
+
+  // 권한 체크 헬퍼
+  isMaster,                // master인지 확인
+  isOrgAdmin,              // 대행사 관리자급인지 확인
+  isAdvertiserAdmin,       // 브랜드 관리자급인지 확인
+  canEdit,                 // 편집 권한이 있는지 확인
+  isAgency,                // 대행사인지 확인
+
+  // 브랜드 전환 기능
+  availableAdvertisers,    // 접근 가능한 브랜드 목록
+  currentAdvertiserId,     // 현재 선택된 브랜드 ID (null = 전체)
+  switchAdvertiser,        // 브랜드 전환 함수
+
+  // 알림 기능
+  apiNotifications,        // API 오류 알림 목록
+  boardNotifications,      // 게시판 알림 목록
+  allNotifications,        // 모든 알림 통합 (API + Board)
+  addApiNotification,      // API 알림 추가
+  addBoardNotification,    // 게시판 알림 추가
+  markNotificationAsRead,  // 알림 읽음 처리
+  markAllNotificationsAsRead, // 모든 알림 읽음 처리
+  removeNotification,      // 알림 삭제
+} = useAuth();
+```
+
+### 레이아웃별 접근 권한
+
+**5개 레이아웃 구조**:
+
+1. **Admin Layout** (`/admin/*`):
+   - **목적**: 메인 대시보드 (광고 성과 분석, 차트, 크리에이티브)
+   - **접근**: 모든 권한 접근 가능
+   - **파일**: `src/layouts/admin/index.js`
+   - **주요 페이지**:
+     - `/admin/default` - 메인 대시보드
+     - `/admin/data-tables` - 데이터 테이블
+     - `/admin/profile` - 프로필 및 알림
+
+2. **SuperAdmin Layout** (`/superadmin/*`):
+   - **목적**: 대행사 관리자 전용 (조직 관리, API 토큰, 광고주 관리)
+   - **접근**: `master`, `org_admin`, `org_manager`, `org_staff`, `advertiser_admin`, `manager`
+   - **파일**: `src/layouts/superadmin/index.js`
+   - **주요 페이지**:
+     - `/superadmin/default` - 슈퍼어드민 대시보드
+     - `/superadmin/organizations` - 조직 관리 (master 전용)
+     - `/superadmin/advertisers` - 광고주 관리
+     - `/superadmin/api-management` - API 토큰 관리
+     - `/superadmin/users` - 사용자 관리
+     - `/superadmin/board` - 슈퍼어드민 게시판
+
+3. **ClientAdmin Layout** (`/brandadmin/*` 또는 `/clientadmin/*`):
+   - **목적**: 브랜드 관리자 전용 (브랜드 관리, 팀 관리)
+   - **접근**: `organizationType === 'advertiser'` + 관리자급 권한
+   - **마스터 예외**: master는 항상 접근 가능
+   - **파일**: `src/layouts/clientadmin/index.js`
+   - **주요 페이지**:
+     - `/brandadmin/default` - 브랜드 대시보드
+     - `/brandadmin/users` - 브랜드 팀 관리
+     - `/brandadmin/board` - 브랜드 게시판
+
+4. **Master Layout** (`/master/*`):
+   - **목적**: 마스터 전용 (시스템 설정, 전체 관리)
+   - **접근**: `master` 전용
+   - **파일**: `src/layouts/master/index.js`
+   - **주요 페이지**: 시스템 전체 설정 및 관리
+
+5. **Auth Layout** (`/auth/*`):
+   - **목적**: 인증 (로그인, 회원가입, 비밀번호 재설정)
+   - **접근**: 비로그인 사용자
+   - **파일**: `src/layouts/auth/index.js`
+   - **주요 페이지**:
+     - `/auth/sign-in` - 로그인
+     - `/auth/sign-up` - 회원가입 (초대 기반 + 자가 가입)
+     - `/auth/forgot-password` - 비밀번호 찾기
+     - `/auth/reset-password` - 비밀번호 재설정
+
+### 사이드바 메뉴 권한
+
+**파일**: `src/components/sidebar/components/Links.js`
+
+메뉴별 플래그:
+- `masterOnly`: master만 표시
+- `orgAdminOnly`: 조직 레벨 관리자만 표시
+- `adminOnly`: 관리자급만 표시
+- `agencyOnly`: 대행사만 표시 (마스터는 예외)
+- `advertiserOnly`: 클라이언트만 표시 (마스터는 예외)
+
+---
+
+## 사용자 초대 시스템
+
+### InviteUserModal 구조
+
+**파일**: `src/views/admin/users/components/InviteUserModal.jsx`
+
+**초대 유형**:
+1. **기존 조직에 신규 사용자 추가**: 일반적인 팀원 초대
+2. **신규 광고주 조직 생성**: 대행사가 새 클라이언트 추가
+3. **기존 조직에 신규 브랜드 추가**: 추가 브랜드 관리
+
+### 권한별 초대 가능한 역할
+
+**권한 계층 구조**:
+```javascript
+master: 8
+org_admin: 7            // 대행사 최고관리자
+org_manager: 6          // 대행사 관리자
+org_staff: 5            // 대행사 직원
+advertiser_admin: 4     // 클라이언트 최고관리자
+manager: 3              // 클라이언트 관리자
+editor: 2               // 편집자
+viewer: 1               // 뷰어
+```
+
+**초대 규칙**:
+- `org_admin`은 절대 초대 불가 (master만 생성 가능)
+- 자신보다 높거나 같은 권한은 부여 불가
+- 신규 광고주 초대 시: `advertiser_admin`만 가능
+- 대행사는 클라이언트 직원까지 모두 초대 가능
+- `advertiser_admin`은 `manager`, `editor`, `viewer`만 초대 가능
+
+### 초대 프로세스
+
+1. **초대 생성**:
+   - 초대자가 이메일, 이름, 권한 입력
+   - 초대 토큰 생성 (TODO: Supabase Function)
+   - 이메일 발송 (TODO: Supabase Email Template)
+
+2. **초대 수락**:
+   - 초대 링크 클릭 → 회원가입 페이지 이동
+   - 초대 토큰 검증
+   - 비밀번호 설정
+   - 계정 생성 및 조직/권한 자동 할당
+
+---
+
+## 회원가입 시스템
+
+**파일**: `src/views/auth/signUp/index.jsx`
+
+### 가입 유형
+
+**1. 초대 가입** (`src/views/auth/signUp/components/InviteSignUpForm.jsx`):
+- URL에 `token` 파라미터 존재 시
+- 초대 토큰 검증 (TODO: Supabase)
+- 이메일/이름/권한 자동 입력
+- 비밀번호만 설정
+
+**2. 자가 가입** (`src/views/auth/signUp/components/SelfSignUpForm.jsx`):
+- 일반 회원가입 (현재 비활성화 가능)
+- 이메일, 이름, 비밀번호, 조직 정보 입력
+- 이메일 인증 필요 (TODO: Supabase)
+
+### 이메일 인증 (TODO)
+
+Supabase Email Auth 사용 예정:
+```javascript
+const { data, error } = await supabase.auth.signUp({
+  email,
+  password,
+  options: {
+    emailRedirectTo: 'https://yourdomain.com/verify-email',
+  }
+});
+```
+
+---
+
+## 레이아웃 정렬 가이드
+
+### 표준 패딩 규칙
+
+**페이지 헤더**: `px="25px"` 필수
+- Card의 기본 padding과 일치시켜 수평 정렬 유지
+- 모든 페이지 제목, 설명, 액션 버튼 영역에 적용
+
+**적용 파일**:
+- `src/views/superadmin/default/index.jsx`
+- `src/views/superadmin/organizations/index.jsx`
+- `src/views/superadmin/api-management/index.jsx`
+- `src/views/admin/users/index.jsx`
+
+**예시**:
+```jsx
+<Box pt={{ base: "130px", md: "80px", xl: "80px" }}>
+  <Flex justify="space-between" align="center" mb="20px" px="25px">
+    <Box>
+      <Heading size="lg" mb="8px">페이지 제목</Heading>
+      <Text fontSize="md" color="gray.600">설명 텍스트</Text>
+    </Box>
+    <Button colorScheme="brand">액션 버튼</Button>
+  </Flex>
+
+  <Card px="25px" py="25px">
+    {/* 내용 */}
+  </Card>
+</Box>
+```
+
+---
+
+## API 토큰 관리
+
+**파일**: `src/views/superadmin/api-management/components/APITokenTable.js`
+
+### 드롭다운 디자인 통일
+
+모든 Select 컴포넌트를 Menu 컴포넌트로 변경하여 일관된 디자인 적용:
+- 광고주 선택 드롭다운
+- 플랫폼 선택 드롭다운
+- 상태 선택 드롭다운 (활성/비활성)
+- 동기화 모달 플랫폼 선택
+
+**변경 전**:
+```jsx
+<Select value={value} onChange={handleChange}>
+  <option>옵션</option>
+</Select>
+```
+
+**변경 후**: 드롭다운 컴포넌트 구성 섹션 참조
+
+---
+
+## 최근 업데이트 (2025-12-30)
+
+### 🎯 핵심 아키텍처 변경
+
+**1. 4단계 권한 체계 확립**:
+- **마스터**: 시스템 원작자, 모든 권한
+- **대행사 (3단계)**: org_admin, org_manager, org_staff
+- **클라이언트 (4단계)**: advertiser_admin, manager, editor, viewer
+- **권한 계층값**: master(8) → org_admin(7) → ... → viewer(1)
+
+**2. 5개 레이아웃 구조**:
+- **Admin**: 메인 대시보드 (모든 사용자)
+- **SuperAdmin**: 대행사 관리자 전용 (조직, API, 광고주 관리)
+- **ClientAdmin (BrandAdmin)**: 브랜드 관리자 전용 (브랜드 팀 관리)
+- **Master**: 마스터 전용 (시스템 전체 관리)
+- **Auth**: 로그인, 회원가입, 비밀번호 재설정
+
+**3. AuthContext 통합 관리**:
+- 사용자 정보, 권한, 조직 정보 중앙 관리
+- 브랜드 전환 시스템 (availableAdvertisers, currentAdvertiserId)
+- 알림 관리 (API 알림 + 게시판 알림 통합)
+- 권한 체크 헬퍼 함수 (isMaster, isOrgAdmin, canEdit 등)
+
+### 🚀 새로운 기능
+
+**1. 게시판 및 알림 시스템**:
+- **2종류 게시판**: 슈퍼어드민 게시판 vs 브랜드 게시판
+- **알림 대상 선택**: 권한 및 게시판 타입에 따라 동적 옵션 제공
+- **2종류 알림**: API 오류 알림(빨강) + 게시판 알림(보라)
+- **알림 표시**: 상단 카드(최대 3개) + 하단 리스트(스크롤)
+- **게시글 모달**: 알림 클릭 시 자동 오픈 + 읽음 처리
+
+**2. 브랜드 전환 시스템**:
+- **대행사/마스터**: 여러 브랜드 관리, 브랜드 전환 가능
+- **클라이언트**: 본인 브랜드만 조회, 전환 불가
+- **전체 보기**: currentAdvertiserId가 null이면 전체 브랜드 조회
+- **Supabase 연동 준비**: last_selected_advertiser_id 필드로 선택 기억
+
+**3. 데이터 수집 상태 모니터링**:
+- **오전 10시 기준**: 전일(D-1) 데이터 수집 상태 체크
+- **3가지 상태**: success(정상), error(실패), pending(대기)
+- **API 토큰 테이블**: 플랫폼별 데이터 수집 상태 표시 (색상 구분)
+- **Supabase Edge Function**: 매일 자동 체크 + Cron Job 설정
+- **알림 연동**: 데이터 수집 실패 시 API 알림 자동 생성
+
+**4. 사용자 초대 시스템**:
+- **초대 유형**: 기존 조직 추가, 신규 광고주, 신규 브랜드
+- **권한별 제한**: org_admin 초대 불가, 상위 권한 부여 불가
+- **초대 기반 회원가입**: 토큰 검증 → 비밀번호 설정 → 자동 할당
+- **이메일 발송**: Supabase Email Template (TODO)
+
+**5. 조직 및 광고주 관리**:
+- **조직 관리 페이지**: Master 전용, 조직 생성/수정/삭제
+- **광고주 관리 페이지**: 브랜드 생성/수정/삭제
+- **API 토큰 관리**: 플랫폼별 토큰 등록, 데이터 수집 상태 모니터링
+
+### 🎨 UI/UX 개선
+
+**1. 디자인 통일**:
+- **드롭다운**: Select → Menu 컴포넌트 변경 (API 관리, 게시판 등)
+- **페이지 헤더**: 모든 페이지 `px="25px"` 통일 (Card와 정렬)
+- **색상 시스템**: Chakra UI theme tokens 준수
+
+**2. 반응형 레이아웃**:
+- **사이드바**: 권한별 메뉴 동적 표시 (masterOnly, agencyOnly 등)
+- **Navbar**: 브랜드 선택 드롭다운, 알림 아이콘, 프로필 메뉴
+
+### 📋 Supabase 연동 TODO
+
+**1. 인증 시스템**:
+- [ ] Supabase Auth 연동 (이메일 로그인)
+- [ ] 이메일 인증 (회원가입 시)
+- [ ] 비밀번호 재설정 플로우
+- [ ] Protected Route 구현
+
+**2. 데이터베이스**:
+- [ ] 테이블 스키마 생성 (users, organizations, advertisers, api_tokens 등)
+- [ ] RLS 정책 구현 (조직별, 브랜드별 데이터 격리)
+- [ ] 인덱스 생성 (organization_id, advertiser_id, date 등)
+
+**3. Edge Functions**:
+- [ ] 초대 토큰 생성 및 검증
+- [ ] 게시판 알림 자동 생성 (create-board-notifications)
+- [ ] 데이터 수집 상태 체크 (check-yesterday-data)
+- [ ] 이메일 초대장 발송
+
+**4. Cron Jobs**:
+- [ ] 매일 오전 10시 데이터 수집 상태 체크
+- [ ] GitHub Actions 또는 Vercel Cron 설정
+
+**5. Realtime**:
+- [ ] 게시판 알림 실시간 업데이트
+- [ ] API 토큰 상태 실시간 모니터링
+
+### 🔧 주요 파일 경로 추가
+
+**Contexts**:
+- AuthContext: [src/contexts/AuthContext.js](src/contexts/AuthContext.js)
+- DateRangeContext: [src/contexts/DateRangeContext.js](src/contexts/DateRangeContext.js)
+
+**Layouts**:
+- Admin: [src/layouts/admin/index.js](src/layouts/admin/index.js)
+- SuperAdmin: [src/layouts/superadmin/index.js](src/layouts/superadmin/index.js)
+- ClientAdmin: [src/layouts/clientadmin/index.js](src/layouts/clientadmin/index.js)
+- Master: [src/layouts/master/index.js](src/layouts/master/index.js)
+- Auth: [src/layouts/auth/index.js](src/layouts/auth/index.js)
+
+**Utils**:
+- dataCollectionChecker: [src/utils/dataCollectionChecker.js](src/utils/dataCollectionChecker.js)
+
+**게시판 및 알림**:
+- 게시판 메인: [src/views/shared/board/index.jsx](src/views/shared/board/index.jsx)
+- 게시글 작성 모달: [src/views/shared/board/components/CreatePostModal.jsx](src/views/shared/board/components/CreatePostModal.jsx)
+- 게시글 보기 모달: [src/views/shared/board/components/ViewPostModal.jsx](src/views/shared/board/components/ViewPostModal.jsx)
+- 알림 컴포넌트: [src/views/admin/profile/components/Notifications.js](src/views/admin/profile/components/Notifications.js)
+
+**사용자 관리**:
+- 사용자 초대 모달: [src/views/admin/users/components/InviteUserModal.jsx](src/views/admin/users/components/InviteUserModal.jsx)
+- 사용자 수정 모달: [src/views/admin/users/components/EditUserModal.jsx](src/views/admin/users/components/EditUserModal.jsx)
+- 사용자 테이블: [src/views/admin/users/components/UserTable.js](src/views/admin/users/components/UserTable.js)
+
+**API 관리**:
+- API 토큰 테이블: [src/views/superadmin/api-management/components/APITokenTable.js](src/views/superadmin/api-management/components/APITokenTable.js)
+
+**회원가입**:
+- 초대 기반 가입: [src/views/auth/signUp/components/InviteSignUpForm.jsx](src/views/auth/signUp/components/InviteSignUpForm.jsx)
+- 자가 가입: [src/views/auth/signUp/components/SelfSignUpForm.jsx](src/views/auth/signUp/components/SelfSignUpForm.jsx)
+
+---
+
+## 게시판 및 알림 시스템
+
+### 개요
+
+게시판은 관리자(마스터, 대행사 관리자, 브랜드 관리자)가 사용자에게 공지사항과 알림을 전달하는 시스템입니다.
+
+**파일 위치**:
+- 게시판 메인: `src/views/shared/board/index.jsx`
+- 게시글 작성 모달: `src/views/shared/board/components/CreatePostModal.jsx`
+- 게시글 보기 모달: `src/views/shared/board/components/ViewPostModal.jsx`
+- 알림 컴포넌트: `src/views/admin/profile/components/Notifications.js`
+
+### 주요 기능
+
+**1. 게시판 페이지** (`src/views/shared/board/index.jsx`):
+- 게시글 목록 테이블 표시 (제목, 작성자, 대상, 작성일, 읽음상태)
+- 제목 클릭 시 게시글 상세 모달 표시
+- 권한에 따른 글 작성 버튼 표시 (master, org_admin, org_manager, advertiser_admin, manager)
+- **브랜드 게시판 vs 슈퍼어드민 게시판 자동 판단**: URL 경로로 구분 (`/brandadmin/` 포함 여부)
+
+**2. 게시글 작성** (`CreatePostModal.jsx`):
+- 제목, 내용 입력
+- **알림 대상 선택 (권한 및 게시판 타입에 따라 동적)**:
+  - **슈퍼어드민 게시판** (master, org_admin, org_manager):
+    - 모든 사용자 (대행사 + 브랜드)
+    - 대행사 소속만
+    - 모든 브랜드
+    - 특정 브랜드 선택
+  - **브랜드 게시판** (advertiser_admin, manager) 또는 `/brandadmin/` 경로:
+    - 내 브랜드만
+    - 특정 브랜드 선택 (본인 회사 보유 브랜드만)
+- 게시 시 게시판 목록에 추가 + 대상 사용자에게 알림 생성
+
+**3. 알림 시스템** (`Notifications.js`):
+- **2가지 알림 타입**:
+  - **API 알림**: API 오류 등 시스템 알림 (빨간색)
+  - **게시판 알림**: 새 게시글 알림 (보라색)
+- **3가지 표시 영역**:
+  - 상단 카드 (최대 3개): 최근 알림 강조 표시, X 버튼으로 삭제
+  - 하단 리스트 (스크롤): 모든 알림 목록, 읽음/안읽음 상태 표시
+  - New 배지: 읽지 않은 알림 표시
+- **알림 클릭 시**: 게시글 모달 자동 오픈 + 읽음 처리
+
+**4. 게시글 보기 모달** (`ViewPostModal.jsx`):
+- 제목, 작성자, 작성일, 대상, 내용 표시
+- 게시판 페이지 또는 알림에서 호출 가능
+
+### AuthContext 통합
+
+**게시판/알림 관련 제공 값**:
+```javascript
+const {
+  // 브랜드 관리
+  availableAdvertisers,    // 접근 가능한 브랜드 목록
+  advertiserId,            // 현재 사용자의 브랜드 ID
+
+  // 알림 관리
+  apiNotifications,        // API 알림 목록
+  boardNotifications,      // 게시판 알림 목록
+  addBoardNotification,    // 게시판 알림 추가
+  markNotificationAsRead,  // 알림 읽음 처리
+  removeNotification,      // 알림 삭제
+} = useAuth();
+```
+
+### 데이터 구조
+
+**게시글 (Post)**:
+```javascript
+{
+  id: number,              // 게시글 ID (Date.now())
+  title: string,           // 제목
+  content: string,         // 내용
+  author: string,          // 작성자 ('Admin')
+  date: string,            // 작성일 (YYYY. MM. DD.)
+  targets: string[],       // 대상 목록 ['모든 사용자', '내 브랜드']
+  isRead: boolean,         // 읽음 여부
+}
+```
+
+**알림 (Notification)**:
+```javascript
+{
+  id: number,              // 알림 ID (Date.now())
+  timestamp: string,       // 생성 시각 (ISO 8601)
+  read: boolean,           // 읽음 여부
+  type: string,            // 'board' | 'error'
+
+  // 게시판 알림 추가 필드
+  title: string,           // 알림 제목 ('새 게시글')
+  message: string,         // 알림 메시지 (게시글 제목)
+  postId: number,          // 게시글 ID
+  postTitle: string,       // 게시글 제목
+  postContent: string,     // 게시글 내용
+  author: string,          // 작성자
+  date: string,            // 작성일
+  targets: string[],       // 대상 목록
+}
+```
+
+### 브랜드 필터링 로직
+
+**파일**: `CreatePostModal.jsx`
+
+**브랜드 관리자 판단**:
+```javascript
+const isBrandAdmin = ['advertiser_admin', 'manager'].includes(role);
+```
+
+**보유 브랜드 필터링**:
+```javascript
+const myBrands = isBrandAdmin
+  ? availableAdvertisers.filter(adv => adv.id === advertiserId)
+  : availableAdvertisers;
+```
+
+**대상 선택 옵션 결정**:
+```javascript
+const getTargetOptions = () => {
+  // 브랜드 게시판에서는 브랜드 옵션만 표시
+  if (boardType === 'brand') {
+    return [
+      { value: 'my_brands', label: '내 브랜드만' },
+      { value: 'specific_brands', label: '특정 브랜드 선택' },
+    ];
+  }
+
+  // 슈퍼어드민 게시판에서는 권한에 따라 표시
+  if (isSuperAdmin) {
+    return [
+      { value: 'all', label: '모든 사용자 (대행사 + 브랜드)' },
+      { value: 'agency', label: '대행사 소속만' },
+      { value: 'all_brands', label: '모든 브랜드' },
+      { value: 'specific_brands', label: '특정 브랜드 선택' },
+    ];
+  } else {
+    return [
+      { value: 'my_brands', label: '내 브랜드만' },
+      { value: 'specific_brands', label: '특정 브랜드 선택' },
+    ];
+  }
+};
+```
+
+### Supabase 연동 가이드
+
+#### 테이블 스키마
+
+**board_posts (게시글)**:
+```sql
+create table board_posts (
+  id uuid primary key default uuid_generate_v4(),
+  organization_id uuid references organizations(id),
+  title text not null,
+  content text not null,
+  author_id uuid references users(id) not null,
+  created_at timestamp default now(),
+  updated_at timestamp default now()
+);
+
+create index idx_board_posts_org on board_posts(organization_id);
+create index idx_board_posts_created on board_posts(created_at desc);
+
+-- RLS 정책
+alter table board_posts enable row level security;
+
+create policy "사용자는 본인 조직의 게시글만 조회"
+  on board_posts for select
+  using (
+    organization_id = (select organization_id from users where id = auth.uid())
+    or organization_id is null  -- 전체 공지
+  );
+
+create policy "관리자만 게시글 작성"
+  on board_posts for insert
+  with check (
+    exists (
+      select 1 from users
+      where id = auth.uid()
+      and role in ('master', 'org_admin', 'org_manager', 'advertiser_admin', 'manager')
+    )
+  );
+```
+
+**board_post_targets (게시글 대상)**:
+```sql
+create table board_post_targets (
+  id uuid primary key default uuid_generate_v4(),
+  post_id uuid references board_posts(id) on delete cascade,
+  target_type text not null,  -- 'all', 'agency', 'all_brands', 'my_brands', 'specific_brands'
+  advertiser_id uuid references advertisers(id),  -- specific_brands인 경우
+  created_at timestamp default now()
+);
+
+create index idx_board_post_targets_post on board_post_targets(post_id);
+create index idx_board_post_targets_advertiser on board_post_targets(advertiser_id);
+```
+
+**board_notifications (게시판 알림)**:
+```sql
+create table board_notifications (
+  id uuid primary key default uuid_generate_v4(),
+  user_id uuid references users(id) on delete cascade,
+  post_id uuid references board_posts(id) on delete cascade,
+  read boolean default false,
+  created_at timestamp default now()
+);
+
+create index idx_board_notifications_user on board_notifications(user_id, read);
+create index idx_board_notifications_created on board_notifications(created_at desc);
+
+-- RLS 정책
+alter table board_notifications enable row level security;
+
+create policy "사용자는 본인 알림만 조회"
+  on board_notifications for select
+  using (user_id = auth.uid());
+
+create policy "사용자는 본인 알림만 수정"
+  on board_notifications for update
+  using (user_id = auth.uid());
+```
+
+#### 데이터 페칭 예시
+
+**게시글 목록 조회**:
+```javascript
+const fetchPosts = async () => {
+  const { data, error } = await supabase
+    .from('board_posts')
+    .select(`
+      *,
+      author:users!board_posts_author_id_fkey(name),
+      targets:board_post_targets(target_type, advertiser:advertisers(name))
+    `)
+    .order('created_at', { ascending: false });
+
+  if (error) console.error(error);
+  else setPosts(data);
+};
+```
+
+**게시글 작성**:
+```javascript
+const createPost = async ({ title, content, targetType, selectedBrands }) => {
+  // 1. 게시글 생성
+  const { data: post, error: postError } = await supabase
+    .from('board_posts')
+    .insert({
+      title,
+      content,
+      author_id: user.id,
+      organization_id: organizationId,
+    })
+    .select()
+    .single();
+
+  if (postError) throw postError;
+
+  // 2. 대상 설정
+  const targets = targetType === 'specific_brands'
+    ? selectedBrands.map(brandId => ({
+        post_id: post.id,
+        target_type: 'specific_brands',
+        advertiser_id: brandId,
+      }))
+    : [{
+        post_id: post.id,
+        target_type: targetType,
+      }];
+
+  const { error: targetsError } = await supabase
+    .from('board_post_targets')
+    .insert(targets);
+
+  if (targetsError) throw targetsError;
+
+  // 3. 대상 사용자에게 알림 생성 (Supabase Function 또는 Trigger)
+  await supabase.rpc('create_board_notifications', { post_id: post.id });
+};
+```
+
+**알림 목록 조회**:
+```javascript
+const fetchNotifications = async () => {
+  const { data, error } = await supabase
+    .from('board_notifications')
+    .select(`
+      *,
+      post:board_posts(id, title, content, author:users(name), created_at)
+    `)
+    .eq('user_id', user.id)
+    .order('created_at', { ascending: false });
+
+  if (error) console.error(error);
+  else setBoardNotifications(data);
+};
+```
+
+**알림 읽음 처리**:
+```javascript
+const markAsRead = async (notificationId) => {
+  const { error } = await supabase
+    .from('board_notifications')
+    .update({ read: true })
+    .eq('id', notificationId)
+    .eq('user_id', user.id);
+
+  if (error) console.error(error);
+};
+```
+
+#### Supabase Function (알림 생성)
+
+**파일**: `supabase/functions/create-board-notifications/index.ts`
+
+```typescript
+import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+
+serve(async (req) => {
+  const { post_id } = await req.json()
+
+  const supabase = createClient(
+    Deno.env.get('SUPABASE_URL'),
+    Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
+  )
+
+  // 1. 게시글 대상 조회
+  const { data: targets } = await supabase
+    .from('board_post_targets')
+    .select('target_type, advertiser_id')
+    .eq('post_id', post_id)
+
+  // 2. 대상 사용자 조회
+  let targetUsers = []
+
+  for (const target of targets) {
+    if (target.target_type === 'all') {
+      // 모든 사용자
+      const { data } = await supabase.from('users').select('id')
+      targetUsers.push(...data)
+    } else if (target.target_type === 'agency') {
+      // 대행사 소속만
+      const { data } = await supabase
+        .from('users')
+        .select('id')
+        .eq('organization_type', 'agency')
+      targetUsers.push(...data)
+    } else if (target.target_type === 'all_brands') {
+      // 모든 브랜드
+      const { data } = await supabase
+        .from('users')
+        .select('id')
+        .eq('organization_type', 'advertiser')
+      targetUsers.push(...data)
+    } else if (target.target_type === 'specific_brands') {
+      // 특정 브랜드
+      const { data } = await supabase
+        .from('users')
+        .select('id')
+        .eq('advertiser_id', target.advertiser_id)
+      targetUsers.push(...data)
+    } else if (target.target_type === 'my_brands') {
+      // 내 브랜드 (작성자의 브랜드)
+      const { data: author } = await supabase
+        .from('board_posts')
+        .select('author_id')
+        .eq('id', post_id)
+        .single()
+
+      const { data: authorInfo } = await supabase
+        .from('users')
+        .select('advertiser_id')
+        .eq('id', author.author_id)
+        .single()
+
+      const { data } = await supabase
+        .from('users')
+        .select('id')
+        .eq('advertiser_id', authorInfo.advertiser_id)
+      targetUsers.push(...data)
+    }
+  }
+
+  // 3. 알림 생성
+  const notifications = [...new Set(targetUsers.map(u => u.id))].map(userId => ({
+    user_id: userId,
+    post_id: post_id,
+  }))
+
+  await supabase.from('board_notifications').insert(notifications)
+
+  return new Response(JSON.stringify({ success: true }), {
+    headers: { 'Content-Type': 'application/json' },
+  })
+})
+```
+
+### 현재 제약사항 (Mock 데이터)
+
+**메모리 기반 상태**:
+- 게시글 목록: useState로 관리 → 페이지 새로고침 시 초기화
+- 알림 목록: AuthContext의 state → 새로고침 시 초기화
+- 읽음 상태: 메모리에만 저장
+
+**Supabase 연동 시 해결**:
+- 게시글/알림 영구 저장
+- 사용자별 읽음 상태 추적
+- 실시간 알림 업데이트 (Supabase Realtime)
+- 대상 사용자 자동 필터링
+
+### 주요 포인트
+
+**1. boardType prop 전달**:
+```javascript
+// Board index.jsx
+const isBrandBoard = window.location.pathname.includes('/brandadmin/');
+
+<CreatePostModal
+  isOpen={isCreateOpen}
+  onClose={onCreateClose}
+  onAddPost={handleAddPost}
+  boardType={isBrandBoard ? 'brand' : 'admin'}
+/>
+```
+
+**2. 권한별 옵션 동적 표시**:
+- URL 경로 (`/brandadmin/`)로 브랜드 게시판 판단
+- `boardType === 'brand'`이면 무조건 브랜드 옵션만 표시
+- 슈퍼어드민 게시판에서는 role에 따라 옵션 표시
+
+**3. 브랜드 필터링**:
+- 브랜드 관리자: `advertiserId`와 일치하는 브랜드만 표시
+- 슈퍼어드민: 모든 브랜드 표시
+
+**4. 알림 클릭 동작**:
+- 게시판 알림 클릭 → 읽음 처리 + 게시글 모달 오픈
+- notification 데이터를 post 형식으로 변환
+- ViewPostModal에 전달
+
+**5. 드롭다운 디자인 통일**:
+- Select 컴포넌트 대신 Menu 컴포넌트 사용
+- API 관리 페이지와 동일한 스타일 적용
+- 선택된 항목 하이라이트 (brandColor 배경)
+
+---
+
+## 브랜드 전환 시스템
+
+### 개요
+
+대행사 및 마스터는 여러 브랜드의 데이터를 관리할 수 있습니다. 브랜드 전환 시스템은 사용자가 특정 브랜드를 선택하거나 전체 보기로 전환할 수 있는 기능을 제공합니다.
+
+**파일**: `src/contexts/AuthContext.js`
+
+### AuthContext 제공 값
+
+```javascript
+const {
+  availableAdvertisers,    // 접근 가능한 브랜드 목록
+  currentAdvertiserId,     // 현재 선택된 브랜드 ID (null = 전체 보기)
+  switchAdvertiser,        // 브랜드 전환 함수
+} = useAuth();
+```
+
+### 브랜드 데이터 구조
+
+```javascript
+const advertiser = {
+  id: 'adv-nike',              // 브랜드 ID
+  name: '나이키',               // 브랜드명
+  organizationId: 'org-nike',  // 소속 조직 ID
+};
+```
+
+### 사용 예시
+
+**1. 브랜드 선택 드롭다운** (Navbar):
+```javascript
+import { useAuth } from 'contexts/AuthContext';
+
+const { availableAdvertisers, currentAdvertiserId, switchAdvertiser } = useAuth();
+
+<Menu>
+  <MenuButton>
+    {currentAdvertiserId
+      ? availableAdvertisers.find(adv => adv.id === currentAdvertiserId)?.name
+      : '전체 브랜드'}
+  </MenuButton>
+  <MenuList>
+    <MenuItem onClick={() => switchAdvertiser(null)}>
+      전체 브랜드
+    </MenuItem>
+    {availableAdvertisers.map(adv => (
+      <MenuItem key={adv.id} onClick={() => switchAdvertiser(adv.id)}>
+        {adv.name}
+      </MenuItem>
+    ))}
+  </MenuList>
+</Menu>
+```
+
+**2. 데이터 조회 시 필터링**:
+```javascript
+const { currentAdvertiserId } = useAuth();
+
+// Supabase 연동 시
+const { data } = await supabase
+  .from('ad_performance')
+  .select('*')
+  .eq('advertiser_id', currentAdvertiserId || advertiserId)
+  .gte('date', startDate)
+  .lte('date', endDate);
+
+// currentAdvertiserId가 null이면 전체 브랜드 조회
+// currentAdvertiserId가 있으면 해당 브랜드만 조회
+```
+
+### 권한별 동작
+
+**마스터 / 대행사**:
+- `availableAdvertisers`: 모든 브랜드 목록
+- `currentAdvertiserId`: 사용자가 선택한 브랜드 (null = 전체)
+- 브랜드 전환 가능
+
+**클라이언트**:
+- `availableAdvertisers`: 본인이 속한 브랜드만
+- `currentAdvertiserId`: 본인 브랜드 ID (고정)
+- 브랜드 전환 불가 (단일 브랜드만 관리)
+
+### Supabase 연동 가이드
+
+**users 테이블 확장**:
+```sql
+alter table users add column last_selected_advertiser_id uuid;
+```
+
+**브랜드 전환 시 저장**:
+```javascript
+const switchAdvertiser = async (advertiserId) => {
+  setCurrentAdvertiserId(advertiserId);
+
+  // Supabase에 저장
+  await supabase
+    .from('users')
+    .update({ last_selected_advertiser_id: advertiserId })
+    .eq('id', user.id);
+};
+```
+
+**로그인 시 복원**:
+```javascript
+const { data } = await supabase
+  .from('users')
+  .select('last_selected_advertiser_id')
+  .eq('id', user.id)
+  .single();
+
+setCurrentAdvertiserId(data.last_selected_advertiser_id);
+```
+
+---
+
+## 데이터 수집 상태 모니터링
+
+### 개요
+
+광고 플랫폼(Google Ads, Meta Ads 등)으로부터 데이터를 자동 수집하는 시스템의 상태를 모니터링합니다. 오전 10시를 기준으로 전일(D-1) 데이터 수집 여부를 확인합니다.
+
+**파일**: `src/utils/dataCollectionChecker.js`
+
+### 데이터 수집 상태
+
+**3가지 상태**:
+- `success` - 전일 데이터 수집 완료
+- `error` - 오전 10시 이후인데 전일 데이터 미수집
+- `pending` - 오전 10시 이전 (아직 수집 시간 아님)
+
+### 핵심 함수
+
+**1. 시간 체크**:
+```javascript
+import { isAfter10AM, getYesterdayDate } from 'utils/dataCollectionChecker';
+
+const isAfter10 = isAfter10AM(); // true/false
+const yesterday = getYesterdayDate(); // "2024-12-29"
+```
+
+**2. 데이터 수집 상태 체크**:
+```javascript
+import { checkYesterdayData } from 'utils/dataCollectionChecker';
+
+const status = await checkYesterdayData(advertiserId, platform);
+// 'success' | 'error' | 'pending'
+```
+
+**3. 모든 API 토큰 일괄 체크**:
+```javascript
+import { checkAllTokensData } from 'utils/dataCollectionChecker';
+
+const updatedTokens = await checkAllTokensData(apiTokens);
+// 각 토큰의 dataCollectionStatus 업데이트됨
+```
+
+### API 토큰 테이블에서 활용
+
+**파일**: `src/views/superadmin/api-management/components/APITokenTable.js`
+
+데이터 수집 상태를 색상으로 표시:
+- 🟢 **초록색 (Success)**: 정상 수집
+- 🔴 **빨간색 (Error)**: 수집 실패 (오전 10시 이후)
+- 🟡 **회색 (Pending)**: 대기 중 (오전 10시 이전)
+
+### Supabase 연동 가이드
+
+**1. Supabase Edge Function 구현**:
+
+파일: `supabase/functions/check-yesterday-data/index.ts`
+
+```typescript
+import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+
+serve(async (req) => {
+  const supabase = createClient(
+    Deno.env.get('SUPABASE_URL') ?? '',
+    Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+  )
+
+  const now = new Date()
+  const isAfter10AM = now.getHours() >= 10
+
+  if (!isAfter10AM) {
+    return new Response(JSON.stringify({ message: 'Not yet 10 AM' }))
+  }
+
+  // 전일 날짜 계산
+  const yesterday = new Date(now)
+  yesterday.setDate(yesterday.getDate() - 1)
+  const yesterdayStr = yesterday.toISOString().split('T')[0]
+
+  // 모든 활성 API 토큰 조회
+  const { data: tokens } = await supabase
+    .from('api_tokens')
+    .select('*')
+    .eq('status', 'active')
+
+  // 각 토큰별로 전일자 데이터 체크
+  for (const token of tokens) {
+    const { data: adData } = await supabase
+      .from('ad_performance')
+      .select('id')
+      .eq('advertiser_id', token.advertiser_id)
+      .eq('platform', token.platform)
+      .eq('date', yesterdayStr)
+      .limit(1)
+
+    const status = adData && adData.length > 0 ? 'success' : 'error'
+
+    // 상태 업데이트
+    await supabase
+      .from('api_tokens')
+      .update({
+        data_collection_status: status,
+        last_check_time: now.toISOString()
+      })
+      .eq('id', token.id)
+  }
+
+  return new Response(JSON.stringify({ success: true }))
+})
+```
+
+**2. Cron Job 설정**:
+
+**GitHub Actions** (`.github/workflows/daily-data-check.yml`):
+```yaml
+name: Daily Data Collection Check
+on:
+  schedule:
+    - cron: '0 1 * * *'  # 매일 오전 10시 (KST = UTC+9)
+jobs:
+  check-data:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call Supabase Function
+        run: |
+          curl -X POST https://your-project.supabase.co/functions/v1/check-yesterday-data \
+            -H "Authorization: Bearer ${{ secrets.SUPABASE_ANON_KEY }}"
+```
+
+**Vercel Cron** (`vercel.json`):
+```json
+{
+  "crons": [{
+    "path": "/api/check-yesterday-data",
+    "schedule": "0 1 * * *"
+  }]
+}
+```
+
+**3. api_tokens 테이블 스키마**:
+```sql
+create table api_tokens (
+  id uuid primary key default uuid_generate_v4(),
+  advertiser_id uuid references advertisers(id) not null,
+  platform text not null,  -- 'Google Ads', 'Meta Ads', 'Kakao Moment' 등
+  status text default 'active',  -- 'active', 'inactive'
+  data_collection_status text,  -- 'success', 'error', 'pending'
+  last_check_time timestamp,
+  created_at timestamp default now()
+);
+```
+
+### 알림 연동
+
+데이터 수집 실패 시 API 알림 생성:
+
+```javascript
+import { useAuth } from 'contexts/AuthContext';
+
+const { addApiNotification } = useAuth();
+
+// 데이터 수집 실패 시
+if (dataCollectionStatus === 'error') {
+  addApiNotification({
+    type: 'error',
+    title: '데이터 수집 실패',
+    message: `${advertiserName}의 ${platform} 전일 데이터가 수집되지 않았습니다.`,
+    platform,
+    advertiserId,
+  });
+}
+```
