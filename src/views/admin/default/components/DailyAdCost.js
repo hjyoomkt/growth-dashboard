@@ -8,20 +8,50 @@ import {
 // Custom components
 import Card from "components/card/Card.js";
 import LineChart from "components/charts/LineChart";
-import React, { useMemo } from "react";
+import React, { useMemo, useState, useEffect } from "react";
 import { useDateRange } from "contexts/DateRangeContext";
+import { useAuth } from "contexts/AuthContext";
+import { getDailyAdCost } from "services/supabaseService";
 
 export default function DailyAdCost(props) {
   const { ...rest } = props;
 
   const { startDate, endDate } = useDateRange();
+  const { currentAdvertiserId, availableAdvertisers } = useAuth();
+  const [dailyData, setDailyData] = useState([]);
+
+  // ===== 2025-12-31: Supabase 데이터 조회 =====
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        const availableAdvertiserIds = (availableAdvertisers || []).map(adv => adv.id);
+        const data = await getDailyAdCost({
+          advertiserId: currentAdvertiserId,
+          availableAdvertiserIds,
+          startDate,
+          endDate,
+        });
+        setDailyData(data || []);
+      } catch (error) {
+        console.error('일별 광고비 조회 실패:', error);
+        setDailyData([]);
+      }
+    };
+    fetchData();
+  }, [currentAdvertiserId, availableAdvertisers, startDate, endDate]);
 
   // Chakra Color Mode
   const textColor = useColorModeValue("secondaryGray.900", "white");
   const textColorSecondary = useColorModeValue("secondaryGray.600", "white");
 
-  // 동적 날짜 및 데이터 생성
+  // 총 광고비 계산
+  const totalCost = useMemo(() => {
+    return dailyData.reduce((sum, d) => sum + d.cost, 0);
+  }, [dailyData]);
+
+  // ===== 2025-12-31: Supabase 데이터로 차트 생성 =====
   const { chartData, chartOptions } = useMemo(() => {
+    /* ❌ Mock 랜덤 데이터 (원복용 보존)
     const start = new Date(startDate);
     const end = new Date(endDate);
     const diffTime = Math.abs(end - start);
@@ -40,6 +70,15 @@ export default function DailyAdCost(props) {
 
       data.push(Math.floor(Math.random() * 50000) + 50000);
     }
+    */
+
+    // ✅ Supabase 실제 데이터
+    const safeData = dailyData && Array.isArray(dailyData) ? dailyData : [];
+    const categories = safeData.map(d => {
+      const date = new Date(d.date);
+      return `${date.getMonth() + 1}/${date.getDate()}`;
+    });
+    const data = safeData.map(d => d.cost);
 
     const lineChartData = [{
       name: "광고비",
@@ -54,10 +93,11 @@ export default function DailyAdCost(props) {
         dropShadow: {
           enabled: false,
         },
+        type: 'line',
       },
       colors: ["#FF6B6B"],
       markers: {
-        size: 0,
+        size: 6,
         colors: "white",
         strokeColors: "#FF6B6B",
         strokeWidth: 3,
@@ -80,10 +120,18 @@ export default function DailyAdCost(props) {
         },
       },
       dataLabels: {
-        enabled: false,
+        enabled: data.length === 1,
+        offsetY: -10,
+        style: {
+          fontSize: '14px',
+          colors: ["#4318FF"]
+        },
+        formatter: function (val) {
+          return "₩" + val.toLocaleString();
+        },
       },
       stroke: {
-        curve: "smooth",
+        curve: data.length === 1 ? "straight" : "smooth",
         type: "line",
         width: 4,
       },
@@ -102,7 +150,7 @@ export default function DailyAdCost(props) {
           showDuplicates: false,
           trim: true,
         },
-        tickAmount: Math.min(diffDays, 10),
+        tickAmount: Math.min(safeData.length, 10),
         axisBorder: {
           show: false,
         },
@@ -113,6 +161,8 @@ export default function DailyAdCost(props) {
       yaxis: {
         show: true,
         tickAmount: 4,
+        min: 0,
+        max: data.length === 1 && data[0] > 0 ? data[0] * 1.2 : undefined,
         labels: {
           style: {
             colors: "#A3AED0",
@@ -133,7 +183,14 @@ export default function DailyAdCost(props) {
         show: false,
       },
       grid: {
-        show: false,
+        show: true,
+        borderColor: '#E2E8F0',
+        strokeDashArray: 5,
+        yaxis: {
+          lines: {
+            show: true
+          }
+        },
       },
       fill: {
         type: "solid",
@@ -142,7 +199,7 @@ export default function DailyAdCost(props) {
     };
 
     return { chartData: lineChartData, chartOptions: lineChartOptions };
-  }, [startDate, endDate]);
+  }, [dailyData]);
 
   return (
     <Card
@@ -164,7 +221,7 @@ export default function DailyAdCost(props) {
           textAlign='start'
           fontWeight='700'
           lineHeight='100%'>
-          ₩0
+          ₩{totalCost.toLocaleString()}
         </Text>
         <Text
           color={textColorSecondary}
@@ -175,11 +232,17 @@ export default function DailyAdCost(props) {
         </Text>
       </Flex>
       <Box h='240px' w='100%' px='15px' pb='15px'>
-        <LineChart
-          key={`${startDate}-${endDate}`}
-          chartData={chartData}
-          chartOptions={chartOptions}
-        />
+        {dailyData.length === 0 ? (
+          <Flex h='100%' align='center' justify='center'>
+            <Text color='secondaryGray.600'>데이터가 없습니다</Text>
+          </Flex>
+        ) : (
+          <LineChart
+            
+            chartData={chartData}
+            chartOptions={chartOptions}
+          />
+        )}
       </Box>
     </Card>
   );

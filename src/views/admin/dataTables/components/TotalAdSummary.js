@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useEffect } from "react";
 import {
   Box,
   Flex,
@@ -13,15 +13,29 @@ import {
   useColorModeValue,
   HStack,
   IconButton,
+  Spinner,
+  Alert,
+  AlertIcon,
 } from "@chakra-ui/react";
 import { MdChevronLeft, MdChevronRight } from "react-icons/md";
 import Card from "components/card/Card.js";
 import { useDateRange } from "contexts/DateRangeContext";
+import { useAuth } from "contexts/AuthContext";
+import {
+  getCampaignAdSummary,
+  getDailyAdSummary,
+  getWeeklyAdSummary,
+  getMonthlyAdSummary,
+} from "services/supabaseService";
 
 export default function TotalAdSummary() {
   const { startDate, endDate } = useDateRange();
+  const { currentAdvertiserId, availableAdvertisers } = useAuth();
   const [activeTab, setActiveTab] = useState("campaign");
   const [currentPage, setCurrentPage] = useState(1);
+  const [tableData, setTableData] = useState([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState(null);
   const itemsPerPage = 30;
 
   const textColor = useColorModeValue("secondaryGray.900", "white");
@@ -36,111 +50,57 @@ export default function TotalAdSummary() {
   const bgHover = useColorModeValue('gray.100', 'whiteAlpha.100');
   const tableHeaderBg = useColorModeValue('white', 'navy.800');
 
-  // 매체 리스트
-  const mediaList = ["Google", "Naver", "Meta", "Kakao", "Criteo"];
+  // Supabase에서 데이터 조회
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        setIsLoading(true);
+        setError(null);
 
-  // 동적 데이터 생성
-  const tableData = useMemo(() => {
-    const start = new Date(startDate);
-    const end = new Date(endDate);
-    const diffTime = Math.abs(end - start);
-    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
-    const dailyAvg = diffDays > 0 ? diffDays : 1;
+        const availableAdvertiserIds = (availableAdvertisers || []).map(adv => adv.id);
+        let data = [];
 
-    const campaigns = ["봄 시즌 캠페인", "여름 프로모션", "신상품 런칭", "가을 세일", "겨울 특가"];
-
-    if (activeTab === "campaign") {
-      const data = [];
-      campaigns.forEach((campaign) => {
-        mediaList.forEach((media) => {
-          data.push({
-            media: media,
-            key: campaign,
-            cost: Math.floor((Math.random() * 100000 + 400000) * dailyAvg / 7),
-            impressions: Math.floor((Math.random() * 200000 + 800000) * dailyAvg / 7),
-            clicks: Math.floor((Math.random() * 8000 + 30000) * dailyAvg / 7),
-            conversions: Math.floor((Math.random() * 80 + 250) * dailyAvg / 7),
-            conversionValue: Math.floor((Math.random() * 800000 + 3000000) * dailyAvg / 7),
+        if (activeTab === "campaign") {
+          data = await getCampaignAdSummary({
+            advertiserId: currentAdvertiserId,
+            availableAdvertiserIds,
+            startDate,
+            endDate,
           });
-        });
-      });
-      return data;
-    } else if (activeTab === "daily") {
-      const data = [];
-      for (let i = 0; i < diffDays; i++) {
-        const currentDate = new Date(start);
-        currentDate.setDate(start.getDate() + i);
-        const dateStr = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, '0')}-${String(currentDate.getDate()).padStart(2, '0')}`;
+        } else if (activeTab === "daily") {
+          data = await getDailyAdSummary({
+            advertiserId: currentAdvertiserId,
+            availableAdvertiserIds,
+            startDate,
+            endDate,
+          });
+        } else if (activeTab === "weekly") {
+          data = await getWeeklyAdSummary({
+            advertiserId: currentAdvertiserId,
+            availableAdvertiserIds,
+            startDate,
+            endDate,
+          });
+        } else if (activeTab === "monthly") {
+          data = await getMonthlyAdSummary({
+            advertiserId: currentAdvertiserId,
+            availableAdvertiserIds,
+            startDate,
+            endDate,
+          });
+        }
 
-        data.push({
-          key: dateStr,
-          cost: Math.floor(Math.random() * 50000 + 50000),
-          impressions: Math.floor(Math.random() * 100000 + 100000),
-          clicks: Math.floor(Math.random() * 3000 + 3000),
-          conversions: Math.floor(Math.random() * 30 + 30),
-          conversionValue: Math.floor(Math.random() * 300000 + 300000),
-        });
+        setTableData(data);
+      } catch (err) {
+        console.error("전체 광고 요약 데이터 조회 실패:", err);
+        setError("데이터를 불러오는데 실패했습니다.");
+      } finally {
+        setIsLoading(false);
       }
-      return data;
-    } else if (activeTab === "weekly") {
-      const data = [];
+    };
 
-      // 시작일의 요일 구하기 (0: 일요일, 1: 월요일, ..., 6: 토요일)
-      const startDay = start.getDay();
-      // 해당 주의 월요일로 이동 (월요일=1, 일요일=0이므로 일요일은 -6일 이동)
-      const daysToMonday = startDay === 0 ? -6 : 1 - startDay;
-
-      const firstMonday = new Date(start);
-      firstMonday.setDate(start.getDate() + daysToMonday);
-
-      // 전체 기간에 포함되는 주 수 계산
-      const lastDay = new Date(end);
-      const totalDays = Math.ceil((lastDay - firstMonday) / (1000 * 60 * 60 * 24));
-      const weeks = Math.ceil(totalDays / 7);
-
-      for (let i = 0; i < weeks; i++) {
-        const weekStart = new Date(firstMonday);
-        weekStart.setDate(firstMonday.getDate() + i * 7);
-        const weekEnd = new Date(weekStart);
-        weekEnd.setDate(weekStart.getDate() + 6);
-
-        const startStr = `${weekStart.getMonth() + 1}/${weekStart.getDate()}`;
-        const endStr = `${weekEnd.getMonth() + 1}/${weekEnd.getDate()}`;
-
-        data.push({
-          key: `${startStr} ~ ${endStr}`,
-          cost: Math.floor(Math.random() * 200000 + 300000),
-          impressions: Math.floor(Math.random() * 400000 + 600000),
-          clicks: Math.floor(Math.random() * 15000 + 20000),
-          conversions: Math.floor(Math.random() * 150 + 180),
-          conversionValue: Math.floor(Math.random() * 1500000 + 1800000),
-        });
-      }
-      return data;
-    } else if (activeTab === "monthly") {
-      const data = [];
-      const monthsInRange = Math.ceil(diffDays / 30);
-
-      for (let i = 0; i < monthsInRange; i++) {
-        const currentDate = new Date(start);
-        currentDate.setMonth(currentDate.getMonth() + i);
-        const month = currentDate.getMonth() + 1;
-        const year = currentDate.getFullYear();
-
-        data.push({
-          key: `${year}년 ${String(month).padStart(2, '0')}월`,
-          cost: Math.floor(Math.random() * 500000 + 1000000),
-          impressions: Math.floor(Math.random() * 1000000 + 2000000),
-          clicks: Math.floor(Math.random() * 40000 + 70000),
-          conversions: Math.floor(Math.random() * 400 + 600),
-          conversionValue: Math.floor(Math.random() * 4000000 + 6000000),
-        });
-      }
-      return data;
-    }
-
-    return [];
-  }, [startDate, endDate, activeTab, mediaList]);
+    fetchData();
+  }, [currentAdvertiserId, availableAdvertisers, startDate, endDate, activeTab]);
 
   const formatNumber = (num) => {
     return num.toLocaleString();
@@ -232,7 +192,24 @@ export default function TotalAdSummary() {
         </Flex>
       </Flex>
 
-      <Box flex='1' overflowY='auto' maxH='500px'>
+      {isLoading ? (
+        <Flex justify='center' align='center' minH='200px'>
+          <Spinner size='xl' color='brand.500' />
+        </Flex>
+      ) : error ? (
+        <Alert status='error' mx='25px' mb='20px'>
+          <AlertIcon />
+          {error}
+        </Alert>
+      ) : tableData.length === 0 ? (
+        <Flex justify='center' align='center' minH='200px'>
+          <Text color='gray.500' fontSize='md'>
+            선택한 기간에 데이터가 없습니다.
+          </Text>
+        </Flex>
+      ) : (
+        <>
+          <Box flex='1' overflowY='auto' maxH='500px'>
         <Table variant='simple' color='gray.500' mb='24px' mt='12px'>
           <Thead position='sticky' top='0' bg={tableHeaderBg} zIndex='1'>
             <Tr>
@@ -427,6 +404,8 @@ export default function TotalAdSummary() {
             _disabled={{ opacity: 0.4, cursor: 'not-allowed' }}
           />
         </Flex>
+      )}
+        </>
       )}
     </Card>
   );

@@ -7,13 +7,37 @@ import {
 } from "@chakra-ui/react";
 import Card from "components/card/Card.js";
 import BarChart from "components/charts/BarChart";
-import React, { useMemo } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { useDateRange } from "contexts/DateRangeContext";
+import { useAuth } from "contexts/AuthContext";
+import { getWeeklyConversions } from "services/supabaseService";
 
 export default function WeeklyConversions(props) {
   const { ...rest } = props;
 
   const { startDate, endDate } = useDateRange();
+  const { currentAdvertiserId, availableAdvertisers } = useAuth();
+  const [weeklyData, setWeeklyData] = useState([0, 0, 0, 0, 0, 0, 0]);
+
+  // ===== 2025-12-31: Supabase 데이터 조회 =====
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        const availableAdvertiserIds = (availableAdvertisers || []).map(adv => adv.id);
+        const data = await getWeeklyConversions({
+          advertiserId: currentAdvertiserId,
+          availableAdvertiserIds,
+          startDate,
+          endDate,
+        });
+        setWeeklyData(data && data.length === 7 ? data : [0, 0, 0, 0, 0, 0, 0]);
+      } catch (error) {
+        console.error('요일별 전환수 조회 실패:', error);
+        setWeeklyData([0, 0, 0, 0, 0, 0, 0]);
+      }
+    };
+    fetchData();
+  }, [currentAdvertiserId, availableAdvertisers, startDate, endDate]);
 
   // Chakra Color Mode
   const textColor = useColorModeValue("secondaryGray.900", "white");
@@ -21,6 +45,7 @@ export default function WeeklyConversions(props) {
 
   // 요일별 전환수 데이터 생성
   const { chartData, chartOptions, maxConversion } = useMemo(() => {
+    /* ❌ Mock 랜덤 데이터 (원복용 보존)
     const start = new Date(startDate);
     const end = new Date(endDate);
 
@@ -36,7 +61,6 @@ export default function WeeklyConversions(props) {
     }
 
     // 월~일 순서로 재배열 (1월 2화 3수 4목 5금 6토 0일)
-    const weekdays = ['월', '화', '수', '목', '금', '토', '일'];
     const reorderedData = [
       dayConversions[1], // 월
       dayConversions[2], // 화
@@ -46,12 +70,18 @@ export default function WeeklyConversions(props) {
       dayConversions[6], // 토
       dayConversions[0], // 일
     ];
+    */
 
-    const maxValue = Math.max(...reorderedData);
+    // ✅ Supabase 실제 데이터 (이미 월~일 순서)
+    const weekdays = ['월', '화', '수', '목', '금', '토', '일'];
+    const safeData = weeklyData && Array.isArray(weeklyData) && weeklyData.length === 7
+      ? weeklyData
+      : [0, 0, 0, 0, 0, 0, 0];
+    const maxValue = Math.max(...safeData);
 
     const barChartData = [{
       name: "전환수",
-      data: reorderedData,
+      data: safeData,
     }];
 
     const barChartOptions = {
@@ -93,7 +123,13 @@ export default function WeeklyConversions(props) {
         },
       },
       yaxis: {
-        show: false,
+        show: true,
+        labels: {
+          style: {
+            colors: "#A3AED0",
+            fontSize: "12px",
+          },
+        },
       },
       tooltip: {
         theme: "dark",
@@ -129,7 +165,7 @@ export default function WeeklyConversions(props) {
       chartOptions: barChartOptions,
       maxConversion: maxValue,
     };
-  }, [startDate, endDate]);
+  }, [weeklyData]);
 
   return (
     <Card align='center' direction='column' w='100%' {...rest}>
@@ -170,11 +206,17 @@ export default function WeeklyConversions(props) {
       </Flex>
 
       <Box h='240px' mt='20px' w='100%' px='15px'>
-        <BarChart
-          key={`${startDate}-${endDate}`}
-          chartData={chartData}
-          chartOptions={chartOptions}
-        />
+        {maxConversion === 0 ? (
+          <Flex h='100%' align='center' justify='center'>
+            <Text color='secondaryGray.600'>데이터가 없습니다</Text>
+          </Flex>
+        ) : (
+          <BarChart
+            
+            chartData={chartData}
+            chartOptions={chartOptions}
+          />
+        )}
       </Box>
     </Card>
   );

@@ -11,15 +11,13 @@ export const useDateRange = () => {
 };
 
 export const DateRangeProvider = ({ children }) => {
-  // 기본값: 이번 주
-  const getThisWeekRange = () => {
+  // 기본값: 최근 30일 (2025-12-31 임시 변경)
+  const getDefaultRange = () => {
     const today = new Date();
-    const dayOfWeek = today.getDay();
-    const mondayOffset = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
-    const monday = new Date(today.getFullYear(), today.getMonth(), today.getDate() + mondayOffset);
+    const thirtyDaysAgo = new Date(today.getFullYear(), today.getMonth(), today.getDate() - 29);
 
     return {
-      start: formatDate(monday),
+      start: formatDate(thirtyDaysAgo),
       end: formatDate(today),
     };
   };
@@ -31,11 +29,11 @@ export const DateRangeProvider = ({ children }) => {
     return `${year}-${month}-${day}`;
   };
 
-  const thisWeek = getThisWeekRange();
+  const defaultRange = getDefaultRange();
 
-  const [startDate, setStartDate] = useState(thisWeek.start);
-  const [endDate, setEndDate] = useState(thisWeek.end);
-  const [selectedPreset, setSelectedPreset] = useState('이번 주');
+  const [startDate, setStartDate] = useState(defaultRange.start);
+  const [endDate, setEndDate] = useState(defaultRange.end);
+  const [selectedPreset, setSelectedPreset] = useState('최근 30일');
 
   // 날짜 범위 계산 유틸리티 함수
   const getDateRange = (preset) => {

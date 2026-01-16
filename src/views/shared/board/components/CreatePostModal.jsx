@@ -25,9 +25,11 @@ import {
   MenuItem,
   MenuList,
   Icon,
+  useToast,
 } from '@chakra-ui/react';
 import { MdKeyboardArrowDown } from 'react-icons/md';
 import { useAuth } from 'contexts/AuthContext';
+import { createBoardPost } from 'services/supabaseService';
 
 export default function CreatePostModal({ isOpen, onClose, onAddPost, boardType = 'admin' }) {
   const textColor = useColorModeValue('secondaryGray.900', 'white');
@@ -37,11 +39,13 @@ export default function CreatePostModal({ isOpen, onClose, onAddPost, boardType 
   const bgHover = useColorModeValue('secondaryGray.100', 'whiteAlpha.100');
   const brandColor = useColorModeValue('brand.500', 'white');
 
-  const { role, availableAdvertisers, addBoardNotification, advertiserId } = useAuth();
+  const { role, availableAdvertisers, addBoardNotification, advertiserId, user, currentAdvertiserId } = useAuth();
+  const toast = useToast();
 
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
   const [selectedBrands, setSelectedBrands] = useState([]);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   // 브랜드 관리자인지 확인 (advertiser_admin, manager)
   const isBrandAdmin = ['advertiser_admin', 'manager'].includes(role);
@@ -86,54 +90,122 @@ export default function CreatePostModal({ isOpen, onClose, onAddPost, boardType 
     }
   };
 
-  const handleSubmit = () => {
-    // TODO: Supabase 연동 시 실제 게시글 생성 로직 구현
-    console.log('Creating post:', { title, content, targetType, selectedBrands });
-
-    const postId = Date.now();
-    const targetLabels =
-      targetType === 'all' ? ['모든 사용자'] :
-      targetType === 'agency' ? ['대행사 소속'] :
-      targetType === 'all_brands' ? ['모든 브랜드'] :
-      targetType === 'my_brands' ? ['내 브랜드'] :
-      selectedBrands.map(brandId => {
-        const brand = availableAdvertisers.find(a => a.id === brandId);
-        return brand ? brand.name : brandId;
-      });
-
-    const newPost = {
-      id: postId,
-      title: title,
-      author: 'Admin',
-      date: new Date().toLocaleDateString('ko-KR'),
-      targets: targetLabels,
-      isRead: false,
-      content: content,
-    };
-
-    // 게시판에 게시글 추가
-    if (onAddPost) {
-      onAddPost(newPost);
+  const handleSubmit = async () => {
+    if (!user) {
+      console.error('[게시글 작성] 사용자 정보가 없습니다.');
+      return;
     }
 
-    // 알림 생성 (실제로는 게시글 대상에게만 알림이 가도록 구현)
-    addBoardNotification({
-      title: '새 게시글',
-      message: title,
-      postId: postId,
-      postTitle: title,
-      postContent: content,
-      author: 'Admin',
-      date: new Date().toLocaleDateString('ko-KR'),
-      targets: targetLabels,
+    console.log('[게시글 작성] 시작:', {
+      title,
+      boardType,
+      userId: user.id,
+      currentAdvertiserId,
+      targetType
     });
 
-    // 폼 초기화 및 모달 닫기
-    setTitle('');
-    setContent('');
-    setTargetType('all');
-    setSelectedBrands([]);
-    onClose();
+    setIsSubmitting(true);
+
+    try {
+      // 대상 역할 결정
+      let targetRoles = [];
+      if (targetType === 'all') {
+        targetRoles = ['모든 사용자'];
+      } else if (targetType === 'agency') {
+        targetRoles = ['대행사 소속'];
+      } else if (targetType === 'all_brands') {
+        targetRoles = ['모든 브랜드'];
+      } else if (targetType === 'my_brands') {
+        targetRoles = ['내 브랜드'];
+      } else if (targetType === 'specific_brands') {
+        targetRoles = selectedBrands.map(brandId => {
+          const brand = availableAdvertisers.find(a => a.id === brandId);
+          return brand ? brand.name : brandId;
+        });
+      }
+
+      // 대상 브랜드 ID 배열 생성
+      let targetAdvertiserIds = null;
+      if (targetType === 'specific_brands') {
+        targetAdvertiserIds = selectedBrands;
+      } else if (targetType === 'all_brands') {
+        // 모든 브랜드 ID 수집
+        targetAdvertiserIds = availableAdvertisers.map(a => a.id);
+      } else if (targetType === 'my_brands') {
+        // 내 브랜드만
+        targetAdvertiserIds = [advertiserId || currentAdvertiserId];
+      }
+
+      const postData = {
+        title,
+        content,
+        boardType,
+        advertiserId: boardType === 'brand' ? currentAdvertiserId : null,
+        targets: targetRoles,
+        targetAdvertiserIds,
+        createdBy: user.id,
+      };
+
+      console.log('[게시글 작성] 전송할 데이터:', postData);
+
+      // Supabase에 게시글 생성
+      const result = await createBoardPost(postData);
+      console.log('[게시글 작성] 생성 완료:', result);
+
+      toast({
+        title: '게시글 작성 완료',
+        description: '게시글이 성공적으로 작성되었습니다.',
+        status: 'success',
+        duration: 3000,
+        isClosable: true,
+      });
+
+      // 폼 초기화 및 모달 닫기
+      setTitle('');
+      setContent('');
+      setTargetType((boardType === 'brand' || isBrandAdmin) ? 'my_brands' : 'all');
+      setSelectedBrands([]);
+      onClose();
+
+      // 부모 컴포넌트에 알림 (게시글 목록 새로고침)
+      if (onAddPost) {
+        console.log('[게시글 작성] 게시글 목록 새로고침 요청');
+        onAddPost();
+      } else {
+        console.warn('[게시글 작성] onAddPost 콜백이 없습니다.');
+      }
+
+      // 알림 생성 (로컬 상태용 - 선택사항)
+      if (addBoardNotification) {
+        console.log('[게시글 작성] 로컬 알림 생성');
+        addBoardNotification({
+          title: '새 게시글',
+          message: title,
+          postTitle: title,
+          postContent: content,
+          author: 'Admin',
+          date: new Date().toLocaleDateString('ko-KR'),
+          targets: targetRoles,
+        });
+      }
+    } catch (error) {
+      console.error('[게시글 작성] 실패:', error);
+      console.error('[게시글 작성] 에러 상세:', {
+        message: error.message,
+        code: error.code,
+        details: error.details,
+        hint: error.hint
+      });
+      toast({
+        title: '게시글 작성 실패',
+        description: error.message || '알 수 없는 오류가 발생했습니다.',
+        status: 'error',
+        duration: 5000,
+        isClosable: true,
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -271,6 +343,7 @@ export default function CreatePostModal({ isOpen, onClose, onAddPost, boardType 
             variant="brand"
             onClick={handleSubmit}
             isDisabled={!title || !content}
+            isLoading={isSubmitting}
           >
             게시
           </Button>

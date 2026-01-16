@@ -14,7 +14,7 @@ import { useAuth } from 'contexts/AuthContext';
 // Custom Chakra theme
 export default function SuperAdminLayout(props) {
   const { ...rest } = props;
-  const { role, loading } = useAuth();
+  const { user, role, loading } = useAuth();
   const navigate = useNavigate();
   const { onOpen } = useDisclosure();
 
@@ -31,12 +31,17 @@ export default function SuperAdminLayout(props) {
 
   // 권한 체크: Master, 대행사 최고관리자, 대행사 관리자만 접근 가능
   const canAccessSuperAdmin = () => {
-    return ['master', 'org_admin', 'org_manager'].includes(role);
+    return ['master', 'agency_admin', 'agency_manager'].includes(role);
   };
 
   // 로딩 중이면 대기
   if (loading) {
     return null;
+  }
+
+  // 인증되지 않은 사용자 리다이렉트
+  if (!user) {
+    return <Navigate to="/auth/sign-in" replace />;
   }
 
   // 권한이 없으면 접근 거부 화면 표시

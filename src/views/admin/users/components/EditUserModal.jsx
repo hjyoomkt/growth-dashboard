@@ -19,12 +19,15 @@ import {
   useColorModeValue,
   Box,
   HStack,
+  useToast,
 } from "@chakra-ui/react";
 import { useAuth } from "contexts/AuthContext";
 import { MdKeyboardArrowDown } from "react-icons/md";
+import { updateUserRoleAndAdvertisers } from "services/supabaseService";
 
 export default function EditUserModal({ isOpen, onClose, user, onUpdate }) {
-  const { isAgency, role: currentUserRole } = useAuth();
+  const { isAgency, role: currentUserRole, isMaster, organizationType, availableAdvertisers, user: currentUser } = useAuth();
+  const toast = useToast();
   const [formData, setFormData] = useState({
     role: "",
     advertiserIds: [], // 단일 → 다중 선택으로 변경
@@ -39,35 +42,59 @@ export default function EditUserModal({ isOpen, onClose, user, onUpdate }) {
   const inputBg = useColorModeValue('white', 'navy.700');
   const selectedBg = useColorModeValue('brand.50', 'whiteAlpha.100');
 
-  // 권한 계층 구조 정의
+  // 권한 계층 구조 정의 (master 제외 - UI에서 변경 불가)
   const roleHierarchy = {
-    master: 8,
-    org_admin: 7,            // 대행사 최고관리자
-    org_manager: 6,          // 대행사 관리자
-    org_staff: 5,            // 대행사 직원
-    advertiser_admin: 4,     // 브랜드 대표운영자
-    manager: 3,              // 브랜드 운영자
-    editor: 2,               // 편집자
-    viewer: 1,               // 뷰어
+    agency_admin: 7,            // 에이전시 대표
+    agency_manager: 6,          // 에이전시 관리자
+    agency_staff: 5,            // 에이전시 직원
+    advertiser_admin: 4,        // 브랜드 대표운영자
+    advertiser_staff: 3,        // 브랜드 부운영자
+    editor: 2,                  // 편집자
+    viewer: 1,                  // 뷰어
   };
 
-  // 현재 사용자보다 낮거나 같은 권한만 부여 가능
+  // 현재 사용자보다 낮은 권한만 부여 가능 (동급 차단, 하위는 허용)
   const canAssignRole = (targetRole) => {
-    // org_admin은 절대 수정 불가 (master만 가능)
-    if (targetRole === 'org_admin') {
+    // Master 권한은 UI에서 절대 변경 불가
+    if (targetRole === 'master') {
       return false;
     }
 
-    // 자신보다 높거나 같은 권한은 부여 불가
+    // Master는 모든 권한 부여 가능 (master 제외)
+    if (isMaster()) {
+      return true;
+    }
+
+    // 자신보다 높거나 같은 권한은 부여 불가 (동급 차단, 하위는 허용)
     return roleHierarchy[targetRole] < roleHierarchy[currentUserRole];
   };
 
-  // Mock 클라이언트 목록 (대행사인 경우)
-  const mockClients = [
-    { id: "client-nike", name: "나이키" },
-    { id: "client-adidas", name: "아디다스" },
-    { id: "client-puma", name: "푸마" },
-  ];
+  // 수정 가능한 사용자인지 체크 (자기보다 낮은 권한만, 동급은 불가)
+  const canEditUser = (targetUser) => {
+    if (!targetUser) return false;
+
+    // Master는 모든 사용자 수정 가능 (단, 다른 Master는 수정 불가)
+    if (isMaster()) {
+      return targetUser.role !== 'master';
+    }
+
+    // 대상 사용자의 권한이 자신보다 낮아야 수정 가능 (동급은 불가)
+    const targetRoleLevel = roleHierarchy[targetUser.role] || 0;
+    const currentRoleLevel = roleHierarchy[currentUserRole] || 0;
+
+    console.log('[canEditUser] 권한 체크:', {
+      currentUserRole,
+      currentRoleLevel,
+      targetUserRole: targetUser.role,
+      targetRoleLevel,
+      canEdit: targetRoleLevel < currentRoleLevel
+    });
+
+    return targetRoleLevel < currentRoleLevel;
+  };
+
+  // 실제 광고주 목록 (AuthContext에서 가져옴)
+  const advertisers = availableAdvertisers || [];
 
   useEffect(() => {
     if (user) {
@@ -89,13 +116,14 @@ export default function EditUserModal({ isOpen, onClose, user, onUpdate }) {
 
   const getRoleLabel = (role) => {
     const roleLabels = {
-      viewer: '뷰어',
-      editor: '편집자',
-      manager: '브랜드 운영자',
+      master: '마스터',
+      agency_admin: '에이전시 대표',
+      agency_manager: '에이전시 관리자',
+      agency_staff: '에이전시 직원',
       advertiser_admin: '브랜드 대표운영자',
-      org_staff: '대행사 직원',
-      org_manager: '대행사 부운영자',
-      org_admin: '대행사 대표운영자',
+      advertiser_staff: '브랜드 부운영자',
+      editor: '편집자',
+      viewer: '뷰어',
     };
     return roleLabels[role] || role;
   };
@@ -103,41 +131,28 @@ export default function EditUserModal({ isOpen, onClose, user, onUpdate }) {
   const handleSubmit = async () => {
     setIsLoading(true);
 
-    // TODO: Supabase에서 사용자 정보 업데이트
-    console.log("사용자 정보 업데이트:", {
-      userId: user.id || user.email,
-      role: formData.role,
-      advertiserIds: formData.advertiserIds,
-    });
-
-    // UI 업데이트 (부모 컴포넌트에 전달)
-    if (onUpdate) {
-      onUpdate(user.id || user.email, {
-        role: formData.role,
-        advertiserIds: formData.advertiserIds,
-      });
-    }
-
-    setTimeout(() => {
-      setIsLoading(false);
-      onClose();
-    }, 500);
-
-    /* Supabase 연동 시
     try {
-      const { error } = await supabase
-        .from('users')
-        .update({
-          role: formData.role,
-          advertiser_ids: formData.advertiserIds,
-        })
-        .eq('id', user.id);
+      // Supabase에서 사용자 역할 및 브랜드 접근 권한 업데이트
+      const updatedUser = await updateUserRoleAndAdvertisers(
+        user.id,
+        formData.role,
+        formData.advertiserIds,
+        { ...currentUser, role: currentUserRole } // role 필드 추가
+      );
 
-      if (error) throw error;
+      console.log("사용자 정보 업데이트 성공:", updatedUser);
 
-      // UI 업데이트
+      toast({
+        title: "업데이트 완료",
+        description: "사용자 권한 및 브랜드 접근 권한이 성공적으로 변경되었습니다.",
+        status: "success",
+        duration: 3000,
+        isClosable: true,
+      });
+
+      // UI 업데이트 (부모 컴포넌트에 전달)
       if (onUpdate) {
-        onUpdate(user.id || user.email, {
+        onUpdate(user.id, {
           role: formData.role,
           advertiserIds: formData.advertiserIds,
         });
@@ -146,10 +161,17 @@ export default function EditUserModal({ isOpen, onClose, user, onUpdate }) {
       onClose();
     } catch (err) {
       console.error('업데이트 실패:', err);
+
+      toast({
+        title: "업데이트 실패",
+        description: err.message || "사용자 정보를 업데이트하는 중 오류가 발생했습니다.",
+        status: "error",
+        duration: 5000,
+        isClosable: true,
+      });
     } finally {
       setIsLoading(false);
     }
-    */
   };
 
   const handleClose = () => {
@@ -159,6 +181,9 @@ export default function EditUserModal({ isOpen, onClose, user, onUpdate }) {
 
   if (!user) return null;
 
+  // 수정 권한 체크
+  const hasEditPermission = canEditUser(user);
+
   return (
     <Modal isOpen={isOpen} onClose={handleClose} size="md">
       <ModalOverlay />
@@ -167,6 +192,24 @@ export default function EditUserModal({ isOpen, onClose, user, onUpdate }) {
         <ModalCloseButton />
         <ModalBody>
           <VStack spacing="24px" align="stretch">
+            {/* 권한 없음 경고 */}
+            {!hasEditPermission && (
+              <Box
+                p="12px"
+                bg="red.50"
+                border="1px solid"
+                borderColor="red.200"
+                borderRadius="8px"
+              >
+                <Text fontSize="sm" color="red.600" fontWeight="600">
+                  ⚠️ 이 사용자를 수정할 권한이 없습니다
+                </Text>
+                <Text fontSize="xs" color="red.500" mt="4px">
+                  자신과 동급이거나 상위 권한을 가진 사용자는 수정할 수 없습니다.
+                </Text>
+              </Box>
+            )}
+
             {/* 사용자 정보 */}
             <Box>
               <Text fontSize="sm" color="gray.500" mb="8px">사용자</Text>
@@ -175,18 +218,17 @@ export default function EditUserModal({ isOpen, onClose, user, onUpdate }) {
               </Text>
 
               {/* 현재 소속 브랜드 표시 */}
-              {user.client && (
-                <Text fontSize="sm" color="gray.600" mt="4px">
-                  현재 소속: <Text as="span" fontWeight="600" color={brandColor}>{user.client}</Text>
-                </Text>
-              )}
-              {user.clients && user.clients.length > 0 && (
+              {user.clients && user.clients.length > 0 ? (
                 <Text fontSize="sm" color="gray.600" mt="4px">
                   현재 소속: <Text as="span" fontWeight="600" color={brandColor}>
                     {user.clients.join(", ")}
                   </Text>
                 </Text>
-              )}
+              ) : user.client ? (
+                <Text fontSize="sm" color="gray.600" mt="4px">
+                  현재 소속: <Text as="span" fontWeight="600" color={brandColor}>{user.client}</Text>
+                </Text>
+              ) : null}
             </Box>
 
             {/* 권한 변경 */}
@@ -212,6 +254,7 @@ export default function EditUserModal({ isOpen, onClose, user, onUpdate }) {
                   {getRoleLabel(formData.role)}
                 </MenuButton>
                 <MenuList minW='auto' w='300px' px='8px' py='8px'>
+                  {/* 일반 권한 */}
                   <MenuItem
                     onClick={() => canAssignRole('viewer') && handleRoleChange('viewer')}
                     bg={formData.role === 'viewer' ? brandColor : 'transparent'}
@@ -255,25 +298,26 @@ export default function EditUserModal({ isOpen, onClose, user, onUpdate }) {
                     </Box>
                   </MenuItem>
 
+                  {/* 브랜드 권한 */}
                   <MenuItem
-                    onClick={() => canAssignRole('manager') && handleRoleChange('manager')}
-                    bg={formData.role === 'manager' ? brandColor : 'transparent'}
-                    color={formData.role === 'manager' ? 'white' : textColor}
+                    onClick={() => canAssignRole('advertiser_staff') && handleRoleChange('advertiser_staff')}
+                    bg={formData.role === 'advertiser_staff' ? brandColor : 'transparent'}
+                    color={formData.role === 'advertiser_staff' ? 'white' : textColor}
                     _hover={{
-                      bg: formData.role === 'manager' ? brandColor : bgHover,
+                      bg: formData.role === 'advertiser_staff' ? brandColor : bgHover,
                     }}
-                    fontWeight={formData.role === 'manager' ? '600' : '500'}
+                    fontWeight={formData.role === 'advertiser_staff' ? '600' : '500'}
                     fontSize='sm'
                     px='12px'
                     py='10px'
                     borderRadius='8px'
                     mt='4px'
-                    isDisabled={!canAssignRole('manager')}
-                    opacity={!canAssignRole('manager') ? 0.4 : 1}
+                    isDisabled={!canAssignRole('advertiser_staff')}
+                    opacity={!canAssignRole('advertiser_staff') ? 0.4 : 1}
                   >
                     <Box>
-                      <Text fontWeight="600">브랜드 운영자</Text>
-                      <Text fontSize="xs" opacity="0.8">어드민 접근 가능, 직원 관리 가능</Text>
+                      <Text fontWeight="600">브랜드 부운영자</Text>
+                      <Text fontSize="xs" opacity="0.8">브랜드 어드민 접근 가능</Text>
                     </Box>
                   </MenuItem>
 
@@ -295,85 +339,87 @@ export default function EditUserModal({ isOpen, onClose, user, onUpdate }) {
                   >
                     <Box>
                       <Text fontWeight="600">브랜드 대표운영자</Text>
-                      <Text fontSize="xs" opacity="0.8">광고주 대표, 전체 관리 권한</Text>
+                      <Text fontSize="xs" opacity="0.8">브랜드 어드민 접근, 전체 관리 권한</Text>
                     </Box>
                   </MenuItem>
 
-                  {isAgency() && (
+                  {/* 에이전시 권한 (마스터 또는 agency) */}
+                  {(isMaster() || organizationType === 'agency') && (
                     <>
                       <MenuItem
-                        onClick={() => canAssignRole('org_staff') && handleRoleChange('org_staff')}
-                        bg={formData.role === 'org_staff' ? brandColor : 'transparent'}
-                        color={formData.role === 'org_staff' ? 'white' : textColor}
+                        onClick={() => canAssignRole('agency_staff') && handleRoleChange('agency_staff')}
+                        bg={formData.role === 'agency_staff' ? brandColor : 'transparent'}
+                        color={formData.role === 'agency_staff' ? 'white' : textColor}
                         _hover={{
-                          bg: formData.role === 'org_staff' ? brandColor : bgHover,
+                          bg: formData.role === 'agency_staff' ? brandColor : bgHover,
                         }}
-                        fontWeight={formData.role === 'org_staff' ? '600' : '500'}
+                        fontWeight={formData.role === 'agency_staff' ? '600' : '500'}
                         fontSize='sm'
                         px='12px'
                         py='10px'
                         borderRadius='8px'
                         mt='4px'
-                        isDisabled={!canAssignRole('org_staff')}
-                        opacity={!canAssignRole('org_staff') ? 0.4 : 1}
+                        isDisabled={!canAssignRole('agency_staff')}
+                        opacity={!canAssignRole('agency_staff') ? 0.4 : 1}
                       >
                         <Box>
-                          <Text fontWeight="600">대행사 직원</Text>
-                          <Text fontSize="xs" opacity="0.8">담당 브랜드 관리, 데이터 수정 가능</Text>
+                          <Text fontWeight="600">에이전시 직원</Text>
+                          <Text fontSize="xs" opacity="0.8">담당 브랜드 관리, 데이터 수정</Text>
                         </Box>
                       </MenuItem>
 
                       <MenuItem
-                        onClick={() => canAssignRole('org_manager') && handleRoleChange('org_manager')}
-                        bg={formData.role === 'org_manager' ? brandColor : 'transparent'}
-                        color={formData.role === 'org_manager' ? 'white' : textColor}
+                        onClick={() => canAssignRole('agency_manager') && handleRoleChange('agency_manager')}
+                        bg={formData.role === 'agency_manager' ? brandColor : 'transparent'}
+                        color={formData.role === 'agency_manager' ? 'white' : textColor}
                         _hover={{
-                          bg: formData.role === 'org_manager' ? brandColor : bgHover,
+                          bg: formData.role === 'agency_manager' ? brandColor : bgHover,
                         }}
-                        fontWeight={formData.role === 'org_manager' ? '600' : '500'}
+                        fontWeight={formData.role === 'agency_manager' ? '600' : '500'}
                         fontSize='sm'
                         px='12px'
                         py='10px'
                         borderRadius='8px'
                         mt='4px'
-                        isDisabled={!canAssignRole('org_manager')}
-                        opacity={!canAssignRole('org_manager') ? 0.4 : 1}
+                        isDisabled={!canAssignRole('agency_manager')}
+                        opacity={!canAssignRole('agency_manager') ? 0.4 : 1}
                       >
                         <Box>
-                          <Text fontWeight="600">대행사 부운영자</Text>
-                          <Text fontSize="xs" opacity="0.8">대행사 직원, 브랜드 직원 관리 가능</Text>
+                          <Text fontWeight="600">에이전시 관리자</Text>
+                          <Text fontSize="xs" opacity="0.8">슈퍼 어드민 접근, 직원 관리</Text>
                         </Box>
                       </MenuItem>
 
                       <MenuItem
-                        onClick={() => canAssignRole('org_admin') && handleRoleChange('org_admin')}
-                        bg={formData.role === 'org_admin' ? brandColor : 'transparent'}
-                        color={formData.role === 'org_admin' ? 'white' : textColor}
+                        onClick={() => canAssignRole('agency_admin') && handleRoleChange('agency_admin')}
+                        bg={formData.role === 'agency_admin' ? brandColor : 'transparent'}
+                        color={formData.role === 'agency_admin' ? 'white' : textColor}
                         _hover={{
-                          bg: formData.role === 'org_admin' ? brandColor : bgHover,
+                          bg: formData.role === 'agency_admin' ? brandColor : bgHover,
                         }}
-                        fontWeight={formData.role === 'org_admin' ? '600' : '500'}
+                        fontWeight={formData.role === 'agency_admin' ? '600' : '500'}
                         fontSize='sm'
                         px='12px'
                         py='10px'
                         borderRadius='8px'
                         mt='4px'
-                        isDisabled={!canAssignRole('org_admin')}
-                        opacity={!canAssignRole('org_admin') ? 0.4 : 1}
+                        isDisabled={!canAssignRole('agency_admin')}
+                        opacity={!canAssignRole('agency_admin') ? 0.4 : 1}
                       >
                         <Box>
-                          <Text fontWeight="600">대행사 대표운영자</Text>
-                          <Text fontSize="xs" opacity="0.8">전체 시스템 관리</Text>
+                          <Text fontWeight="600">에이전시 대표</Text>
+                          <Text fontSize="xs" opacity="0.8">슈퍼 어드민 접근, 대행사 전체 관리</Text>
                         </Box>
                       </MenuItem>
                     </>
                   )}
+
                 </MenuList>
               </Menu>
             </FormControl>
 
             {/* 브랜드 할당 (관리자급만 접근 가능) */}
-            {(currentUserRole === 'master' || currentUserRole === 'org_admin' || currentUserRole === 'org_manager' || currentUserRole === 'advertiser_admin' || currentUserRole === 'manager') && (
+            {(currentUserRole === 'master' || currentUserRole === 'agency_admin' || currentUserRole === 'agency_manager' || currentUserRole === 'advertiser_admin' || currentUserRole === 'advertiser_staff') && (
               <FormControl>
                 <FormLabel fontSize="sm" color="gray.500">
                   {isAgency() ? '담당 브랜드 (복수 선택 가능)' : '접근 가능한 브랜드 (복수 선택 가능)'}
@@ -412,19 +458,19 @@ export default function EditUserModal({ isOpen, onClose, user, onUpdate }) {
                     </Text>
                   </HStack>
 
-                  {mockClients.map((client) => (
+                  {advertisers.map((advertiser) => (
                     <HStack
-                      key={client.id}
+                      key={advertiser.id}
                       p="12px"
                       borderRadius="8px"
                       border="1px solid"
-                      borderColor={formData.advertiserIds.includes(client.id) ? brandColor : borderColor}
-                      bg={formData.advertiserIds.includes(client.id) ? selectedBg : inputBg}
+                      borderColor={formData.advertiserIds.includes(advertiser.id) ? brandColor : borderColor}
+                      bg={formData.advertiserIds.includes(advertiser.id) ? selectedBg : inputBg}
                       cursor="pointer"
                       onClick={() => {
-                        const newIds = formData.advertiserIds.includes(client.id)
-                          ? formData.advertiserIds.filter(id => id !== client.id)
-                          : [...formData.advertiserIds, client.id];
+                        const newIds = formData.advertiserIds.includes(advertiser.id)
+                          ? formData.advertiserIds.filter(id => id !== advertiser.id)
+                          : [...formData.advertiserIds, advertiser.id];
                         setFormData({ ...formData, advertiserIds: newIds });
                       }}
                       _hover={{ borderColor: brandColor, bg: bgHover }}
@@ -434,18 +480,18 @@ export default function EditUserModal({ isOpen, onClose, user, onUpdate }) {
                         h="16px"
                         borderRadius="4px"
                         border="2px solid"
-                        borderColor={formData.advertiserIds.includes(client.id) ? brandColor : borderColor}
-                        bg={formData.advertiserIds.includes(client.id) ? brandColor : 'transparent'}
+                        borderColor={formData.advertiserIds.includes(advertiser.id) ? brandColor : borderColor}
+                        bg={formData.advertiserIds.includes(advertiser.id) ? brandColor : 'transparent'}
                         display="flex"
                         alignItems="center"
                         justifyContent="center"
                       >
-                        {formData.advertiserIds.includes(client.id) && (
+                        {formData.advertiserIds.includes(advertiser.id) && (
                           <Box w="8px" h="8px" bg="white" borderRadius="2px" />
                         )}
                       </Box>
                       <Text fontSize="sm" color={textColor} fontWeight="500">
-                        {client.name}
+                        {advertiser.name}
                       </Text>
                     </HStack>
                   ))}
@@ -468,6 +514,7 @@ export default function EditUserModal({ isOpen, onClose, user, onUpdate }) {
             colorScheme="brand"
             onClick={handleSubmit}
             isLoading={isLoading}
+            isDisabled={!hasEditPermission}
           >
             저장
           </Button>

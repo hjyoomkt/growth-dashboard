@@ -38,18 +38,35 @@ export default function HeaderLinks(props) {
   const activeRoutes = propsRoutes || routes; // props로 받은 routes가 있으면 사용, 없으면 기본 routes 사용
   const { colorMode, toggleColorMode } = useColorMode();
   const {
+    user,
+    role,
     availableAdvertisers,
     currentAdvertiserId,
     switchAdvertiser,
     allNotifications,
     markNotificationAsRead,
     markAllNotificationsAsRead,
+    signOut,
   } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
 
-  // 현재 URL이 /admin 레이아웃인지 확인
-  const isAdminLayout = window.location.pathname.startsWith('/admin/');
+  // 브랜드 선택 드롭다운 표시 여부
+  const shouldShowBrandSelector =
+    role === 'master' ||
+    role === 'agency_admin' ||
+    role === 'agency_manager' ||
+    role === 'agency_staff' ||
+    role === 'advertiser_admin' ||
+    role === 'advertiser_staff';
+
+  console.log('[NavbarLinks]', {
+    role,
+    shouldShowBrandSelector,
+    advertisersCount: availableAdvertisers?.length,
+    path: window.location.pathname
+  });
+
   // Chakra Color Mode
   const navbarIcon = useColorModeValue('gray.400', 'white');
   let menuBg = useColorModeValue('white', 'navy.800');
@@ -137,8 +154,8 @@ export default function HeaderLinks(props) {
         borderRadius="30px"
       />
 
-      {/* 브랜드 선택 드롭다운 - /admin 레이아웃에서만 표시 */}
-      {isAdminLayout && availableAdvertisers && availableAdvertisers.length > 0 && (
+      {/* 브랜드 선택 드롭다운 */}
+      {shouldShowBrandSelector && availableAdvertisers && availableAdvertisers.length > 0 && (
         <Menu>
           <MenuButton
             p="0px"
@@ -438,7 +455,7 @@ export default function HeaderLinks(props) {
           <Avatar
             _hover={{ cursor: 'pointer' }}
             color="white"
-            name="Adela Parkson"
+            name={user?.email || "User"}
             bg="#11047A"
             size="sm"
             w="40px"
@@ -465,7 +482,7 @@ export default function HeaderLinks(props) {
               fontWeight="700"
               color={textColor}
             >
-              👋&nbsp; Hey, Adela
+              👋&nbsp; {user?.email || "User"} ({role || "guest"})
             </Text>
           </Flex>
           <Flex flexDirection="column" p="10px">
@@ -491,6 +508,10 @@ export default function HeaderLinks(props) {
               color="red.400"
               borderRadius="8px"
               px="14px"
+              onClick={async () => {
+                await signOut();
+                navigate('/auth/sign-in');
+              }}
             >
               <Text fontSize="sm">Log out</Text>
             </MenuItem>

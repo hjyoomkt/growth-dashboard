@@ -9,6 +9,7 @@ import {
   MdDashboard,
   MdBusiness,
   MdAnnouncement,
+  MdStorefront,
 } from 'react-icons/md';
 
 // Superadmin Imports
@@ -17,6 +18,8 @@ import UserManagement from 'views/superadmin/users';
 import PermissionManagement from 'views/superadmin/permissions';
 import APIManagement from 'views/superadmin/api-management';
 import OrganizationManagement from 'views/superadmin/organizations';
+import AdvertisersManagement from 'views/superadmin/advertisers';
+import BrandsManagement from 'views/clientadmin/brands';
 import Board from 'views/shared/board';
 
 const superadminRoutes = [
@@ -42,6 +45,21 @@ const superadminRoutes = [
     icon: <Icon as={MdBusiness} width="20px" height="20px" color="inherit" />,
     component: <OrganizationManagement />,
     masterOnly: true, // Master 권한만 접근 가능
+  },
+  {
+    name: '광고주 관리',
+    layout: '/superadmin',
+    path: '/advertisers',
+    icon: <Icon as={MdBusiness} width="20px" height="20px" color="inherit" />,
+    component: <AdvertisersManagement />,
+    agencyAdminOnly: true, // agency_admin과 master만 접근 가능
+  },
+  {
+    name: '브랜드 관리',
+    layout: '/superadmin',
+    path: '/brands',
+    icon: <Icon as={MdStorefront} width="20px" height="20px" color="inherit" />,
+    component: <BrandsManagement />,
   },
   {
     name: '권한 관리',

@@ -30,17 +30,67 @@ import {
 } from "@chakra-ui/react";
 import MiniStatistics from "components/card/MiniStatistics";
 import IconBox from "components/icons/IconBox";
-import React from "react";
+import React, { useState, useEffect } from "react";
 import {
   MdPeople,
   MdSecurity,
   MdBarChart,
 } from "react-icons/md";
+import { useAuth } from "contexts/AuthContext";
+import { getUsers } from "services/supabaseService";
 
 export default function ClientAdminDashboard() {
   const brandColor = useColorModeValue("brand.500", "white");
   const boxBg = useColorModeValue("secondaryGray.300", "whiteAlpha.100");
   const textColor = useColorModeValue("secondaryGray.900", "white");
+
+  const { user, role, organizationId, advertiserId, organizationType } = useAuth();
+  const [stats, setStats] = useState({
+    totalUsers: 0,
+    adminUsers: 0,
+    activeUsers: 0,
+  });
+
+  useEffect(() => {
+    const fetchStats = async () => {
+      try {
+        console.log('[ClientAdminDashboard] 통계 조회 시작:', { user, role, organizationId, advertiserId, organizationType });
+
+        const currentUser = {
+          id: user.id,
+          role,
+          organization_id: organizationId,
+          advertiser_id: advertiserId,
+          organizationType,
+        };
+
+        console.log('[ClientAdminDashboard] currentUser:', currentUser);
+
+        const users = await getUsers(currentUser);
+        console.log('[ClientAdminDashboard] 조회된 사용자:', users);
+
+        const totalUsers = users.length;
+        const adminUsers = users.filter(u =>
+          ['agency_admin', 'agency_manager', 'advertiser_admin', 'advertiser_staff'].includes(u.role)
+        ).length;
+        const activeUsers = users.filter(u => u.status === 'active').length;
+
+        console.log('[ClientAdminDashboard] 통계:', { totalUsers, adminUsers, activeUsers });
+
+        setStats({
+          totalUsers,
+          adminUsers,
+          activeUsers,
+        });
+      } catch (error) {
+        console.error('[ClientAdminDashboard] 통계 조회 실패:', error);
+      }
+    };
+
+    if (user) {
+      fetchStats();
+    }
+  }, [user, role, organizationId, advertiserId, organizationType]);
 
   return (
     <Box pt={{ base: "130px", md: "80px", xl: "80px" }}>
@@ -71,7 +121,7 @@ export default function ClientAdminDashboard() {
             />
           }
           name='총 사용자'
-          value='152'
+          value={stats.totalUsers}
         />
         <MiniStatistics
           startContent={
@@ -85,7 +135,7 @@ export default function ClientAdminDashboard() {
             />
           }
           name='관리자 계정'
-          value='5'
+          value={stats.adminUsers}
         />
         <MiniStatistics
           startContent={
@@ -99,7 +149,7 @@ export default function ClientAdminDashboard() {
             />
           }
           name='활성 사용자'
-          value='148'
+          value={stats.activeUsers}
         />
       </SimpleGrid>
 

@@ -8,20 +8,52 @@ import {
 // Custom components
 import Card from "components/card/Card.js";
 import LineChart from "components/charts/LineChart";
-import React, { useMemo } from "react";
+import React, { useMemo, useState, useEffect } from "react";
 import { useDateRange } from "contexts/DateRangeContext";
+import { useAuth } from "contexts/AuthContext";
+import { getDailyRevenue } from "services/supabaseService";
 
 export default function TotalSpent(props) {
   const { ...rest } = props;
 
   const { startDate, endDate } = useDateRange();
+  const { currentAdvertiserId, availableAdvertisers } = useAuth();
+  const [revenueData, setRevenueData] = useState([]);
+
+  // ===== 2025-12-31: Supabase 데이터 조회 =====
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        console.log('[TotalSpent] 조회 시작:', { currentAdvertiserId, startDate, endDate });
+        const availableAdvertiserIds = (availableAdvertisers || []).map(adv => adv.id);
+        const data = await getDailyRevenue({
+          advertiserId: currentAdvertiserId,
+          availableAdvertiserIds,
+          startDate,
+          endDate,
+        });
+        console.log('[TotalSpent] 조회 결과:', data);
+        setRevenueData(data || []);
+      } catch (error) {
+        console.error('일별 매출 조회 실패:', error);
+        setRevenueData([]);
+      }
+    };
+    fetchData();
+  }, [currentAdvertiserId, availableAdvertisers, startDate, endDate]);
 
   // Chakra Color Mode
   const textColor = useColorModeValue("secondaryGray.900", "white");
   const textColorSecondary = useColorModeValue("secondaryGray.600", "white");
 
-  // 동적 날짜 및 데이터 생성
+  // 총 매출 계산
+  const totalRevenue = useMemo(() => {
+    return revenueData.reduce((sum, d) => sum + d.revenue, 0);
+  }, [revenueData]);
+
+  // ===== 2025-12-31: Supabase 데이터로 차트 생성 =====
   const { chartData, chartOptions } = useMemo(() => {
+    /* ❌ Mock 랜덤 데이터 (원복용 보존)
     const start = new Date(startDate);
     const end = new Date(endDate);
     const diffTime = Math.abs(end - start);
@@ -40,6 +72,15 @@ export default function TotalSpent(props) {
 
       data.push(Math.floor(Math.random() * 100000) + 100000);
     }
+    */
+
+    // ✅ Supabase 실제 데이터
+    const safeData = revenueData && Array.isArray(revenueData) ? revenueData : [];
+    const categories = safeData.map(d => {
+      const date = new Date(d.date);
+      return `${date.getMonth() + 1}/${date.getDate()}`;
+    });
+    const data = safeData.map(d => d.revenue);
 
     const lineChartData = [{
       name: "매출",
@@ -102,7 +143,7 @@ export default function TotalSpent(props) {
           showDuplicates: false,
           trim: true,
         },
-        tickAmount: Math.min(diffDays, 10),
+        tickAmount: Math.min(safeData.length, 10),
         axisBorder: {
           show: false,
         },
@@ -121,7 +162,8 @@ export default function TotalSpent(props) {
           },
           offsetX: -10,
           formatter: function (val) {
-            const maxVal = Math.max(...data);
+            if (!val || val === 0) return "₩0";
+            const maxVal = data.length > 0 ? Math.max(...data) : 0;
             if (maxVal >= 1000000) {
               return "₩" + (val / 10000).toFixed(0) + "만";
             } else if (maxVal >= 100000) {
@@ -146,7 +188,7 @@ export default function TotalSpent(props) {
     };
 
     return { chartData: lineChartData, chartOptions: lineChartOptions };
-  }, [startDate, endDate]);
+  }, [revenueData]);
 
   return (
     <Card
@@ -169,7 +211,7 @@ export default function TotalSpent(props) {
             textAlign='start'
             fontWeight='700'
             lineHeight='100%'>
-            ₩0
+            ₩{totalRevenue.toLocaleString()}
           </Text>
           <Text
             color={textColorSecondary}
@@ -180,11 +222,17 @@ export default function TotalSpent(props) {
           </Text>
         </Flex>
         <Box h='260px' w='100%' px='15px' pb='15px'>
-          <LineChart
-            key={`${startDate}-${endDate}`}
-            chartData={chartData}
-            chartOptions={chartOptions}
-          />
+          {revenueData.length === 0 ? (
+            <Flex h='100%' align='center' justify='center'>
+              <Text color='secondaryGray.600'>데이터가 없습니다</Text>
+            </Flex>
+          ) : (
+            <LineChart
+              
+              chartData={chartData}
+              chartOptions={chartOptions}
+            />
+          )}
         </Box>
       </Flex>
     </Card>

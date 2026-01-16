@@ -31,7 +31,7 @@ import {
 import MiniCalendar from "components/calendar/MiniCalendar";
 import MiniStatistics from "components/card/MiniStatistics";
 import IconBox from "components/icons/IconBox";
-import React from "react";
+import React, { useState, useEffect } from "react";
 import {
   MdBarChart,
   MdTrendingUp,
@@ -51,11 +51,55 @@ import DateRangePicker from "components/fields/DateRangePicker";
 import WeeklyConversions from "views/admin/default/components/WeeklyConversions";
 import AgeGenderPurchase from "views/admin/default/components/AgeGenderPurchase";
 import GenderPurchasePie from "views/admin/default/components/GenderPurchasePie";
+import { useAuth } from "contexts/AuthContext";
+import { useDateRange } from "contexts/DateRangeContext";
+import { getKPIData } from "services/supabaseService";
 
 export default function UserReports() {
   // Chakra Color Mode
   const brandColor = useColorModeValue("brand.500", "white");
   const boxBg = useColorModeValue("secondaryGray.300", "whiteAlpha.100");
+
+  // ===== 2025-12-31: Supabase KPI 데이터 연동 =====
+  const { currentAdvertiserId, availableAdvertisers } = useAuth();
+  const { startDate, endDate } = useDateRange();
+  const [kpiData, setKpiData] = useState({
+    cost: 0,
+    impressions: 0,
+    clicks: 0,
+    conversions: 0,
+    cvr: 0,
+    roas: 0,
+  });
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetchKPIData();
+  }, [currentAdvertiserId, availableAdvertisers, startDate, endDate]);
+
+  const fetchKPIData = async () => {
+    try {
+      setLoading(true);
+      const availableAdvertiserIds = (availableAdvertisers || []).map(adv => adv.id);
+      const data = await getKPIData({
+        advertiserId: currentAdvertiserId,
+        availableAdvertiserIds,
+        startDate,
+        endDate,
+      });
+      setKpiData(data);
+    } catch (error) {
+      console.error('KPI 데이터 조회 실패:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // 숫자 포맷팅
+  const formatNumber = (num) => num.toLocaleString('ko-KR');
+  const formatCurrency = (num) => `₩${formatNumber(Math.round(num))}`;
+  const formatPercent = (num) => `${num.toFixed(2)}%`;
+  const formatROAS = (num) => `${(num * 100).toFixed(0)}%`; // 퍼센티지로 변환 (10.0 → 1000%)
   return (
     <Box pt={{ base: "130px", md: "80px", xl: "80px" }}>
       {/* 날짜 선택 UI */}
@@ -77,7 +121,7 @@ export default function UserReports() {
             />
           }
           name='총지출'
-          value='₩0'
+          value={loading ? '...' : formatCurrency(kpiData.cost)}
         />
         <MiniStatistics
           startContent={
@@ -91,7 +135,7 @@ export default function UserReports() {
             />
           }
           name='노출수'
-          value='0'
+          value={loading ? '...' : formatNumber(kpiData.impressions)}
         />
         <MiniStatistics
           startContent={
@@ -105,7 +149,7 @@ export default function UserReports() {
             />
           }
           name='클릭수'
-          value='0'
+          value={loading ? '...' : formatNumber(kpiData.clicks)}
         />
         <MiniStatistics
           startContent={
@@ -119,7 +163,7 @@ export default function UserReports() {
             />
           }
           name='전환수'
-          value='0'
+          value={loading ? '...' : formatNumber(kpiData.conversions)}
         />
         <MiniStatistics
           startContent={
@@ -131,7 +175,7 @@ export default function UserReports() {
             />
           }
           name='CVR'
-          value='0%'
+          value={loading ? '...' : formatPercent(kpiData.cvr)}
         />
         <MiniStatistics
           startContent={
@@ -145,7 +189,7 @@ export default function UserReports() {
             />
           }
           name='ROAS'
-          value='0'
+          value={loading ? '...' : formatROAS(kpiData.roas)}
         />
       </SimpleGrid>
 
@@ -162,8 +206,18 @@ export default function UserReports() {
 
       <SimpleGrid columns={{ base: 1, md: 2, xl: 3 }} gap='20px' mb='20px'>
         <WeeklyConversions />
-        <GenderPurchasePie />
-        <AgeGenderPurchase />
+        <GenderPurchasePie
+          currentAdvertiserId={currentAdvertiserId}
+          availableAdvertisers={availableAdvertisers}
+          startDate={startDate}
+          endDate={endDate}
+        />
+        <AgeGenderPurchase
+          currentAdvertiserId={currentAdvertiserId}
+          availableAdvertisers={availableAdvertisers}
+          startDate={startDate}
+          endDate={endDate}
+        />
       </SimpleGrid>
 
       <Box mb='20px'>

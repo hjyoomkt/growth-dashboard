@@ -13,49 +13,39 @@ import {
   Flex,
 } from "@chakra-ui/react";
 import Card from "components/card/Card.js";
-import React from "react";
+import React, { useState, useEffect } from "react";
 import { MdCheckCircle, MdOutlineError, MdSchedule } from "react-icons/md";
 import { useAuth } from "contexts/AuthContext";
 import { isAfter10AM } from "utils/dataCollectionChecker";
+import { getApiTokens } from "services/supabaseService";
 
 export default function APIStatus(props) {
   const { ...rest } = props;
   const textColor = useColorModeValue("secondaryGray.900", "white");
   const textColorSecondary = "gray.400";
   const borderColor = useColorModeValue("gray.200", "whiteAlpha.100");
-  const { addApiNotification } = useAuth();
+  const { addApiNotification, advertiserId, isAgency } = useAuth();
 
-  // TODO: Supabase 연동 시 실제 데이터 가져오기
-  // 현재는 Mock 데이터
-  const apiTokens = [
-    {
-      id: 1,
-      advertiser: '나이키',
-      platform: 'Google Ads',
-      lastUpdated: '2024.12.01',
-      dataCollectionStatus: 'success',
-    },
-    {
-      id: 2,
-      advertiser: '아디다스',
-      platform: 'Meta Ads',
-      lastUpdated: '2024.11.28',
-      dataCollectionStatus: 'error',
-    },
-    {
-      id: 3,
-      advertiser: '페퍼툭스',
-      platform: 'Naver Ads',
-      lastUpdated: '2024.11.15',
-      dataCollectionStatus: 'pending',
-    },
-  ];
+  const [apiTokens, setApiTokens] = useState([]);
+
+  // Supabase에서 API 토큰 데이터 조회
+  useEffect(() => {
+    const fetchTokens = async () => {
+      try {
+        const tokens = await getApiTokens(isAgency() ? null : advertiserId);
+        setApiTokens(tokens);
+      } catch (error) {
+        console.error('API 토큰 조회 실패:', error);
+      }
+    };
+
+    fetchTokens();
+  }, [advertiserId, isAgency]);
 
   // 오전 10시 이후 오류 체크 및 알림 생성
   React.useEffect(() => {
-    if (!isAfter10AM()) return;
+    if (!isAfter10AM() || apiTokens.length === 0) return;
 
-    // TODO: Supabase 연동 시 실제 데이터로 교체
     const errorTokens = apiTokens.filter(token => token.dataCollectionStatus === 'error');
 
     errorTokens.forEach(token => {
@@ -99,7 +89,7 @@ export default function APIStatus(props) {
     }, timeUntilMidnight);
 
     return () => clearTimeout(midnightTimer);
-  }, [addApiNotification]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [addApiNotification, apiTokens]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const getStatusDisplay = (status) => {
     switch (status) {

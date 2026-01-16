@@ -4,10 +4,11 @@ import { Box, Flex, Text, useColorModeValue } from "@chakra-ui/react";
 import Card from "components/card/Card.js";
 import ReactApexChart from "react-apexcharts";
 import { VSeparator } from "components/separator/Separator";
-import React from "react";
+import React, { useState, useEffect } from "react";
+import { supabase } from "config/supabase";
 
 export default function GenderPurchasePie(props) {
-  const { ...rest } = props;
+  const { currentAdvertiserId, availableAdvertisers, startDate, endDate, ...rest } = props;
 
   // Chakra Color Mode
   const textColor = useColorModeValue("secondaryGray.900", "white");
@@ -17,15 +18,63 @@ export default function GenderPurchasePie(props) {
     "unset"
   );
 
-  // Mock 데이터 생성 (향후 Supabase에서 조회)
-  const totalPurchases = 1000;
-  const malePurchases = 450;
-  const femalePurchases = 380;
-  const unknownPurchases = 170;
+  const [, setLoading] = useState(true);
+  const [genderData, setGenderData] = useState({
+    male: 0,
+    female: 0,
+    unknown: 0
+  });
 
-  const malePercentage = ((malePurchases / totalPurchases) * 100).toFixed(0);
-  const femalePercentage = ((femalePurchases / totalPurchases) * 100).toFixed(0);
-  const unknownPercentage = ((unknownPurchases / totalPurchases) * 100).toFixed(0);
+  useEffect(() => {
+    fetchGenderData();
+  }, [currentAdvertiserId, availableAdvertisers, startDate, endDate]);
+
+  const fetchGenderData = async () => {
+    try {
+      setLoading(true);
+
+      const advertiserIds = currentAdvertiserId === 'all'
+        ? (availableAdvertisers || []).map(adv => adv.id)
+        : [currentAdvertiserId];
+
+      if (advertiserIds.length === 0) {
+        setGenderData({ male: 0, female: 0, unknown: 0 });
+        return;
+      }
+
+      const { data, error } = await supabase
+        .from('ad_performance_demographics')
+        .select('gender, conversions')
+        .in('advertiser_id', advertiserIds)
+        .gte('date', startDate)
+        .lte('date', endDate);
+
+      if (error) throw error;
+
+      const result = { male: 0, female: 0, unknown: 0 };
+      (data || []).forEach(row => {
+        const conv = parseFloat(row.conversions) || 0;
+        if (row.gender === 'male') result.male += conv;
+        else if (row.gender === 'female') result.female += conv;
+        else result.unknown += conv;
+      });
+
+      setGenderData(result);
+    } catch (error) {
+      console.error('성별 데이터 조회 실패:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const totalPurchases = genderData.male + genderData.female + genderData.unknown;
+  const malePurchases = genderData.male;
+  const femalePurchases = genderData.female;
+  const unknownPurchases = genderData.unknown;
+
+  const malePercentage = totalPurchases > 0 ? ((malePurchases / totalPurchases) * 100).toFixed(0) : 0;
+  const femalePercentage = totalPurchases > 0 ? ((femalePurchases / totalPurchases) * 100).toFixed(0) : 0;
+  const unknownPercentage = totalPurchases > 0 ? ((unknownPurchases / totalPurchases) * 100).toFixed(0) : 0;
 
   // 차트 데이터
   const chartData = [malePurchases, femalePurchases, unknownPurchases];

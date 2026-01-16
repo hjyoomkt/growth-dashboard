@@ -17,14 +17,16 @@ import {
   useDisclosure,
 } from "@chakra-ui/react";
 import Card from "components/card/Card";
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   MdBusiness,
   MdEmail,
   MdPhone,
   MdCalendarToday,
   MdVerifiedUser,
+  MdLanguage,
 } from "react-icons/md";
+import { supabase } from "config/supabase";
 
 // 간단한 브랜드 카드 컴포넌트
 function SimpleBrandCard({ brand, onClick }) {
@@ -66,19 +68,65 @@ function BrandDetailModal({ isOpen, onClose, brand }) {
   const textColorSecondary = useColorModeValue("secondaryGray.600", "secondaryGray.400");
   const brandColor = useColorModeValue("brand.500", "brand.400");
   const borderColor = useColorModeValue("secondaryGray.300", "whiteAlpha.200");
+  const [brandDetails, setBrandDetails] = useState(null);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchBrandDetails = async () => {
+      if (!brand?.id) return;
+
+      try {
+        setIsLoading(true);
+        console.log('[BrandDetailModal] 브랜드 상세 조회:', brand.id);
+
+        const { data, error } = await supabase
+          .from('advertisers')
+          .select(`
+            id,
+            name,
+            business_number,
+            website_url,
+            contact_email,
+            contact_phone,
+            created_at,
+            organization_id,
+            organizations (
+              name
+            )
+          `)
+          .eq('id', brand.id)
+          .single();
+
+        if (error) throw error;
+
+        console.log('[BrandDetailModal] 브랜드 상세 결과:', data);
+
+        setBrandDetails({
+          organizationName: data.organizations?.name || "-",
+          businessNumber: data.business_number || "-",
+          contactEmail: data.contact_email || "-",
+          contactPhone: data.contact_phone || "-",
+          websiteUrl: data.website_url || "-",
+          status: "active",
+          createdAt: data.created_at
+            ? new Date(data.created_at).toISOString().split('T')[0].replace(/-/g, '.')
+            : "-",
+          role: "advertiser_admin"
+        });
+      } catch (error) {
+        console.error('[BrandDetailModal] 브랜드 상세 조회 실패:', error);
+        setBrandDetails(null);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    if (isOpen && brand) {
+      fetchBrandDetails();
+    }
+  }, [isOpen, brand]);
 
   if (!brand) return null;
-
-  // Mock 데이터 - 실제로는 Supabase에서 가져와야 함
-  const brandDetails = {
-    organizationName: "부밍 대행사",
-    businessNumber: "123-45-67890",
-    contactEmail: `contact@${brand.name.toLowerCase().replace(/\s/g, '')}.com`,
-    contactPhone: "02-1234-5678",
-    status: "active",
-    createdAt: "2024.01.15",
-    role: "advertiser_admin"
-  };
 
   const getRoleBadge = (role) => {
     const roleMap = {
@@ -90,7 +138,7 @@ function BrandDetailModal({ isOpen, onClose, brand }) {
     return roleMap[role] || { label: role, color: "gray" };
   };
 
-  const roleBadge = getRoleBadge(brandDetails.role);
+  const roleBadge = brandDetails ? getRoleBadge(brandDetails.role) : { label: "로딩중", color: "gray" };
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} size="lg">
@@ -104,7 +152,16 @@ function BrandDetailModal({ isOpen, onClose, brand }) {
         </ModalHeader>
         <ModalCloseButton />
         <ModalBody pb={6}>
-          <VStack align="stretch" spacing="20px">
+          {isLoading ? (
+            <Box textAlign="center" py="40px">
+              <Text color={textColorSecondary}>로딩중...</Text>
+            </Box>
+          ) : !brandDetails ? (
+            <Box textAlign="center" py="40px">
+              <Text color={textColorSecondary}>브랜드 정보를 불러올 수 없습니다</Text>
+            </Box>
+          ) : (
+            <VStack align="stretch" spacing="20px">
             {/* 상태 및 권한 */}
             <Flex gap="10px">
               <Badge colorScheme={roleBadge.color} fontSize="sm" px="10px" py="5px">
@@ -167,6 +224,28 @@ function BrandDetailModal({ isOpen, onClose, brand }) {
               </VStack>
             </Box>
 
+            {/* 웹사이트 */}
+            {brandDetails.websiteUrl && brandDetails.websiteUrl !== "-" && (
+              <Box>
+                <HStack spacing="8px" mb="8px">
+                  <Icon as={MdLanguage} w="18px" h="18px" color={textColorSecondary} />
+                  <Text color={textColor} fontSize="sm" fontWeight="600">
+                    웹사이트
+                  </Text>
+                </HStack>
+                <Text
+                  color="brand.500"
+                  fontSize="md"
+                  pl="26px"
+                  cursor="pointer"
+                  _hover={{ textDecoration: "underline" }}
+                  onClick={() => window.open(brandDetails.websiteUrl, '_blank')}
+                >
+                  {brandDetails.websiteUrl}
+                </Text>
+              </Box>
+            )}
+
             {/* 생성일 */}
             <Box pt="10px" borderTop="1px solid" borderColor={borderColor}>
               <HStack spacing="10px">
@@ -177,6 +256,7 @@ function BrandDetailModal({ isOpen, onClose, brand }) {
               </HStack>
             </Box>
           </VStack>
+          )}
         </ModalBody>
       </ModalContent>
     </Modal>

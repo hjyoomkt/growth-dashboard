@@ -30,10 +30,21 @@ import {
 } from "@chakra-ui/react";
 import { useAuth } from "contexts/AuthContext";
 import { MdKeyboardArrowDown, MdContentCopy } from "react-icons/md";
+import { createInviteCode, getAdvertiserOrganizations } from "services/supabaseService";
 
 export default function InviteUserModal({ isOpen, onClose }) {
-  const { isAgency, isMaster, role: currentUserRole } = useAuth();
+  const { isAgency, isMaster, role: currentUserRole, user, organizationId, advertiserId, availableAdvertisers } = useAuth();
   const toast = useToast();
+
+  // 디버깅: 사용자 정보 출력
+  React.useEffect(() => {
+    if (isOpen) {
+      console.log('🔍 InviteUserModal 디버깅:');
+      console.log('- currentUserRole:', currentUserRole);
+      console.log('- advertiserId:', advertiserId);
+      console.log('- availableAdvertisers:', availableAdvertisers);
+    }
+  }, [isOpen, currentUserRole, advertiserId, availableAdvertisers]);
   const [formData, setFormData] = useState({
     email: "",
     role: "viewer",
@@ -44,6 +55,8 @@ export default function InviteUserModal({ isOpen, onClose }) {
   });
   const [isLoading, setIsLoading] = useState(false);
   const [inviteCode, setInviteCode] = useState(null);
+  const [organizations, setOrganizations] = useState([]);
+  const [isLoadingOrgs, setIsLoadingOrgs] = useState(false);
 
   // Color mode values
   const textColor = useColorModeValue('secondaryGray.900', 'white');
@@ -55,24 +68,34 @@ export default function InviteUserModal({ isOpen, onClose }) {
   const codeBgHover = useColorModeValue('gray.100', 'whiteAlpha.200');
   const readOnlyBg = useColorModeValue('gray.50', 'whiteAlpha.50');
 
-  // Mock 클라이언트 조직 목록 (대행사가 관리하는 클라이언트들)
-  const mockOrganizations = [
-    {
-      id: "org-peppers-001",
-      name: "페퍼스 주식회사",
-      adminEmail: "admin@peppers.com" // 해당 조직의 최고관리자 이메일
-    },
-    {
-      id: "org-nike-001",
-      name: "나이키 코리아",
-      adminEmail: "admin@nike.com"
-    },
-    {
-      id: "org-adidas-001",
-      name: "아디다스 코리아",
-      adminEmail: "admin@adidas.com"
-    },
-  ];
+  // 조직 목록 조회
+  React.useEffect(() => {
+    if (isOpen && (isMaster() || currentUserRole === 'agency_admin' || currentUserRole === 'agency_manager')) {
+      fetchOrganizations();
+    }
+  }, [isOpen, isMaster, currentUserRole]);
+
+  const fetchOrganizations = async () => {
+    setIsLoadingOrgs(true);
+    try {
+      const orgs = await getAdvertiserOrganizations({
+        role: currentUserRole,
+        organization_id: organizationId
+      });
+      setOrganizations(orgs);
+    } catch (error) {
+      console.error('조직 목록 조회 실패:', error);
+      toast({
+        title: '조직 목록 조회 실패',
+        description: error.message,
+        status: 'error',
+        duration: 3000,
+        isClosable: true,
+      });
+    } finally {
+      setIsLoadingOrgs(false);
+    }
+  };
 
   // 권한 계층 구조 정의
   const roleHierarchy = {
@@ -122,12 +145,21 @@ export default function InviteUserModal({ isOpen, onClose }) {
     return roleHierarchy[targetRole] < roleHierarchy[currentUserRole];
   };
 
-  // Mock 클라이언트 목록 (대행사인 경우)
-  const mockClients = [
-    { id: "client-nike", name: "나이키" },
-    { id: "client-adidas", name: "아디다스" },
-    { id: "client-puma", name: "푸마" },
-  ];
+  // 실제 클라이언트 목록 (availableAdvertisers 사용)
+  // advertiser_admin, advertiser_staff는 자신의 브랜드만, agency/master는 모든 브랜드
+  const clients = (availableAdvertisers || [])
+    .filter(adv => {
+      // advertiser_admin, advertiser_staff는 자신의 브랜드만 표시
+      if (['advertiser_admin', 'advertiser_staff'].includes(currentUserRole) && advertiserId) {
+        return adv.id === advertiserId;
+      }
+      // agency_admin, master 등은 모든 브랜드 표시
+      return true;
+    })
+    .map(adv => ({
+      id: adv.id,
+      name: adv.name
+    }));
 
   const handleChange = (e) => {
     setFormData({
@@ -159,65 +191,72 @@ export default function InviteUserModal({ isOpen, onClose }) {
   const handleSubmit = async () => {
     setIsLoading(true);
 
-    // TODO: Supabase에 초대 코드 생성
-    // 1. invitation_codes 테이블에 레코드 생성
-    // 2. 초대 이메일 발송
+    try {
+      // invite_type 결정
+      let inviteType = 'existing_member'; // 기본값: 기존 조직 멤버 초대
+      let targetOrgId = organizationId;
+      let targetAdvId = formData.advertiserIds.length > 0 ? formData.advertiserIds[0] : advertiserId;
 
-    // Mock 시뮬레이션
-    setTimeout(() => {
-      // 초대 코드 접두사 설정
-      let codePrefix = 'INVITE-';
       if (formData.isNewAdvertiser) {
-        codePrefix = 'INVITE-NEW-ORG-'; // 신규 조직 생성
+        // 에이전시에서 신규 클라이언트 초대 시
+        inviteType = 'new_brand';
+        targetOrgId = organizationId; // 에이전시의 organization_id 유지
+        targetAdvId = null;
       } else if (formData.isNewBrand) {
-        codePrefix = 'INVITE-NEW-BRAND-'; // 기존 조직에 브랜드 추가
+        inviteType = 'new_brand';
+        targetOrgId = formData.targetOrganizationId;
+        targetAdvId = null;
       }
 
-      const mockCode = `${codePrefix}${Math.random().toString(36).substr(2, 8).toUpperCase()}`;
-      setInviteCode(mockCode);
-      setIsLoading(false);
+      // 조직 이름 가져오기
+      let organizationName = null;
+      if (targetOrgId) {
+        // TODO: Supabase에서 organization name 조회
+        organizationName = '해당 조직';
+      }
+
+      // Supabase에 초대 코드 생성
+      const inviteData = {
+        email: formData.email,
+        role: formData.role,
+        organizationId: targetOrgId,
+        advertiserId: targetAdvId,
+        createdBy: user.id,
+        inviteType: inviteType,
+        advertiserIds: formData.advertiserIds.length > 0 ? formData.advertiserIds : null,
+        inviterName: user.name || '관리자',
+        organizationName: organizationName,
+      };
+
+      const result = await createInviteCode(inviteData);
+      setInviteCode(result.code);
+
+      toast({
+        title: '초대 코드 생성 완료',
+        description: `${formData.email}님에게 초대 코드가 생성되었습니다.`,
+        status: 'success',
+        duration: 3000,
+        isClosable: true,
+      });
 
       console.log("초대 생성:", {
         email: formData.email,
         role: formData.role,
-        advertiserId: formData.advertiserId,
-        isNewAdvertiser: formData.isNewAdvertiser,
-        isNewBrand: formData.isNewBrand,
-        code: mockCode,
+        code: result.code,
+        inviteType: inviteType,
       });
-    }, 1000);
-
-    /* Supabase 연동 시
-    try {
-      // 1. 초대 코드 생성
-      const code = `INVITE-${Math.random().toString(36).substr(2, 8).toUpperCase()}`;
-      const expiresAt = new Date();
-      expiresAt.setDate(expiresAt.getDate() + 7); // 7일 후 만료
-
-      const { error } = await supabase
-        .from('invitation_codes')
-        .insert({
-          code: code,
-          organization_id: organizationId,
-          advertiser_id: formData.advertiserId || null,
-          invited_email: formData.email,
-          role: formData.role,
-          created_by: user.id,
-          expires_at: expiresAt.toISOString(),
-        });
-
-      if (error) throw error;
-
-      // 2. 이메일 발송 (Supabase Auth 또는 Resend 사용)
-      // await sendInviteEmail(formData.email, code);
-
-      setInviteCode(code);
     } catch (err) {
       console.error('초대 실패:', err);
+      toast({
+        title: '초대 코드 생성 실패',
+        description: err.message,
+        status: 'error',
+        duration: 3000,
+        isClosable: true,
+      });
     } finally {
       setIsLoading(false);
     }
-    */
   };
 
   const copyToClipboard = async (text, label) => {
@@ -292,9 +331,9 @@ export default function InviteUserModal({ isOpen, onClose }) {
                   <FormControl>
                     <HStack justify="space-between" align="center">
                       <Box>
-                        <FormLabel fontSize="sm" color={textColor} mb="4px">기존 조직에 브랜드 추가</FormLabel>
+                        <FormLabel fontSize="sm" color={textColor} mb="4px">기존 브랜드에 하위 브랜드 추가</FormLabel>
                         <Text fontSize="xs" color="gray.500">
-                          기존 클라이언트 조직에 새로운 브랜드를 추가합니다
+                          관리 중인 브랜드에 새로운 하위 브랜드를 추가합니다
                         </Text>
                       </Box>
                       <Switch
@@ -316,10 +355,10 @@ export default function InviteUserModal({ isOpen, onClose }) {
                     </HStack>
                   </FormControl>
 
-                  {/* 브랜드를 추가할 조직 선택 (isNewBrand일 때만) */}
+                  {/* 하위 브랜드를 추가할 브랜드 선택 (isNewBrand일 때만) */}
                   {formData.isNewBrand && (
                     <FormControl isRequired>
-                      <FormLabel fontSize="sm" color="gray.500">브랜드를 추가할 조직 선택</FormLabel>
+                      <FormLabel fontSize="sm" color="gray.500">하위 브랜드를 추가할 기존 브랜드 선택</FormLabel>
                       <Menu>
                         <MenuButton
                           as={Button}
@@ -338,19 +377,19 @@ export default function InviteUserModal({ isOpen, onClose }) {
                           textAlign="left"
                         >
                           {formData.targetOrganizationId
-                            ? mockOrganizations.find(org => org.id === formData.targetOrganizationId)?.name
-                            : "조직을 선택하세요"}
+                            ? organizations.find(org => org.id === formData.targetOrganizationId)?.name
+                            : isLoadingOrgs ? "로딩 중..." : "브랜드를 선택하세요"}
                         </MenuButton>
                         <MenuList minW='auto' w='400px' px='8px' py='8px'>
-                          {mockOrganizations.map((org) => (
+                          {organizations.map((org) => (
                             <MenuItem
                               key={org.id}
                               onClick={() => {
-                                // 조직 선택 시 해당 조직의 최고관리자 이메일 자동 입력
+                                // 조직 선택 시 해당 조직의 최고관리자 이메일을 기본값으로 제안
                                 setFormData({
                                   ...formData,
                                   targetOrganizationId: org.id,
-                                  email: org.adminEmail, // 자동 입력
+                                  email: org.adminEmail, // 기본값 제안 (변경 가능)
                                 });
                               }}
                               bg={formData.targetOrganizationId === org.id ? brandColor : 'transparent'}
@@ -374,7 +413,7 @@ export default function InviteUserModal({ isOpen, onClose }) {
                       </Menu>
                       {formData.targetOrganizationId && (
                         <Text fontSize="xs" color="gray.500" mt="8px">
-                          선택한 조직의 최고관리자 계정에 새 브랜드가 추가됩니다
+                          선택한 브랜드 관리자 계정에 새 하위 브랜드 접근 권한이 추가됩니다
                         </Text>
                       )}
                     </FormControl>
@@ -387,7 +426,7 @@ export default function InviteUserModal({ isOpen, onClose }) {
                   이메일 주소
                   {formData.isNewBrand && formData.targetOrganizationId && (
                     <Text as="span" fontSize="xs" color="gray.500" ml="8px">
-                      (선택한 조직의 관리자 이메일)
+                      (선택한 브랜드의 관리자 이메일이 기본값으로 입력됩니다)
                     </Text>
                   )}
                 </FormLabel>
@@ -397,7 +436,7 @@ export default function InviteUserModal({ isOpen, onClose }) {
                   value={formData.email}
                   onChange={handleChange}
                   placeholder="user@example.com"
-                  bg={formData.isNewBrand ? readOnlyBg : inputBg}
+                  bg={inputBg}
                   border='1px solid'
                   borderColor={borderColor}
                   color={textColor}
@@ -405,12 +444,10 @@ export default function InviteUserModal({ isOpen, onClose }) {
                   borderRadius='12px'
                   _hover={{ borderColor: brandColor }}
                   _focus={{ borderColor: brandColor, boxShadow: `0 0 0 1px ${brandColor}` }}
-                  isReadOnly={formData.isNewBrand && formData.targetOrganizationId}
-                  cursor={formData.isNewBrand && formData.targetOrganizationId ? 'not-allowed' : 'text'}
                 />
                 {formData.isNewBrand && formData.targetOrganizationId && (
                   <Text fontSize="xs" color="gray.500" mt="4px">
-                    기존 관리자 계정에 새 브랜드 접근 권한이 추가됩니다
+                    다른 브랜드의 이메일을 입력하여 새로운 관리자를 지정할 수 있습니다
                   </Text>
                 )}
               </FormControl>
@@ -420,7 +457,7 @@ export default function InviteUserModal({ isOpen, onClose }) {
                   권한
                   {(formData.isNewAdvertiser || formData.isNewBrand) && (
                     <Text as="span" fontSize="xs" color="gray.500" ml="8px">
-                      (신규 조직/브랜드는 자동으로 관리자 권한)
+                      (신규 클라이언트/하위 브랜드는 자동으로 관리자 권한)
                     </Text>
                   )}
                 </FormLabel>
@@ -605,7 +642,7 @@ export default function InviteUserModal({ isOpen, onClose }) {
               </FormControl>
 
               {/* 브랜드/클라이언트 선택 (관리자급만 접근 가능, 신규 광고주/브랜드 아닐 때만) */}
-              {!formData.isNewAdvertiser && !formData.isNewBrand && (currentUserRole === 'master' || currentUserRole === 'org_admin' || currentUserRole === 'org_manager' || currentUserRole === 'advertiser_admin' || currentUserRole === 'manager') && (
+              {!formData.isNewAdvertiser && !formData.isNewBrand && (currentUserRole === 'master' || currentUserRole === 'org_admin' || currentUserRole === 'org_manager' || currentUserRole === 'advertiser_admin' || currentUserRole === 'advertiser_staff' || currentUserRole === 'manager') && (
                 <FormControl>
                   <FormLabel fontSize="sm" color="gray.500">
                     {isAgency() ? '담당 클라이언트 (복수 선택 가능)' : '접근 가능한 브랜드 (복수 선택 가능)'}
@@ -644,7 +681,7 @@ export default function InviteUserModal({ isOpen, onClose }) {
                       </Text>
                     </HStack>
 
-                    {mockClients.map((client) => (
+                    {clients.map((client) => (
                       <HStack
                         key={client.id}
                         p="12px"

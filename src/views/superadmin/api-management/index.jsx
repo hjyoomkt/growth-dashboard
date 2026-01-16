@@ -31,13 +31,41 @@ import {
   AlertDescription,
 } from '@chakra-ui/react';
 import APITokenTable from 'views/superadmin/api-management/components/APITokenTable';
+import CollectionMonitor from 'views/superadmin/api-management/components/CollectionMonitor';
 import Card from 'components/card/Card';
 import { useAuth } from 'contexts/AuthContext';
+import { getApiTokens } from 'services/supabaseService';
+import React, { useState, useEffect } from 'react';
 
 export default function APIManagement() {
   const textColor = useColorModeValue('secondaryGray.900', 'white');
   const cardBg = useColorModeValue('white', 'navy.800');
-  const { isAgency } = useAuth();
+  const { isAgency, advertiserId } = useAuth();
+
+  const [stats, setStats] = useState({
+    total: 0,
+    active: 0,
+    inactive: 0,
+    error: 0,
+  });
+
+  useEffect(() => {
+    const fetchStats = async () => {
+      try {
+        const tokens = await getApiTokens(isAgency() ? null : advertiserId);
+        const total = tokens.length;
+        const active = tokens.filter(t => t.status === 'active').length;
+        const inactive = tokens.filter(t => t.status === 'inactive').length;
+        const error = tokens.filter(t => t.dataCollectionStatus === 'error').length;
+
+        setStats({ total, active, inactive, error });
+      } catch (error) {
+        console.error('API 토큰 통계 조회 실패:', error);
+      }
+    };
+
+    fetchStats();
+  }, [isAgency, advertiserId]);
 
   return (
     <Box pt={{ base: '130px', md: '80px', xl: '80px' }}>
@@ -84,7 +112,7 @@ export default function APIManagement() {
               총 토큰 수
             </Text>
             <Text color={textColor} fontSize="2xl" fontWeight="700">
-              3
+              {stats.total}
             </Text>
           </Box>
         </Card>
@@ -94,7 +122,7 @@ export default function APIManagement() {
               활성 토큰
             </Text>
             <Text color="green.500" fontSize="2xl" fontWeight="700">
-              2
+              {stats.active}
             </Text>
           </Box>
         </Card>
@@ -104,7 +132,7 @@ export default function APIManagement() {
               비활성 토큰
             </Text>
             <Text color="red.500" fontSize="2xl" fontWeight="700">
-              1
+              {stats.inactive}
             </Text>
           </Box>
         </Card>
@@ -114,7 +142,7 @@ export default function APIManagement() {
               오류 토큰
             </Text>
             <Text color="orange.500" fontSize="2xl" fontWeight="700">
-              1
+              {stats.error}
             </Text>
           </Box>
         </Card>
@@ -122,6 +150,11 @@ export default function APIManagement() {
 
       {/* API Token Table */}
       <APITokenTable />
+
+      {/* Collection Monitor */}
+      <Box mt="20px">
+        <CollectionMonitor />
+      </Box>
     </Box>
   );
 }

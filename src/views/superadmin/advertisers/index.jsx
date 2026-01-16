@@ -1,41 +1,153 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   Box,
   Heading,
   Text,
-  Button,
   useDisclosure,
-  HStack,
+  useToast,
+  Spinner,
+  Center,
 } from "@chakra-ui/react";
 import Card from "components/card/Card.js";
 import AdvertisersTree from "./components/AdvertisersTree";
 import AddBrandModal from "./components/AddBrandModal";
+import EditBrandModal from "./components/EditBrandModal";
+import DeleteBrandModal from "./components/DeleteBrandModal";
+import { supabase } from "config/supabase";
+import { useAuth } from "contexts/AuthContext";
 
 export default function AdvertisersManagement() {
   const { isOpen, onOpen, onClose } = useDisclosure();
+  const { isOpen: isEditOpen, onOpen: onEditOpen, onClose: onEditClose } = useDisclosure();
+  const { isOpen: isDeleteOpen, onOpen: onDeleteOpen, onClose: onDeleteClose } = useDisclosure();
   const [selectedOrganization, setSelectedOrganization] = useState(null);
+  const [selectedBrand, setSelectedBrand] = useState(null);
+  const [organizations, setOrganizations] = useState([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const toast = useToast();
+  const { role, organizationId } = useAuth();
+
+  // 데이터 로드
+  useEffect(() => {
+    fetchOrganizations();
+  }, []);
+
+  const fetchOrganizations = async () => {
+    try {
+      setIsLoading(true);
+
+      // 권한에 따라 필터링
+      let query = supabase
+        .from('organizations')
+        .select(`
+          id,
+          name,
+          type,
+          advertisers (
+            id,
+            name,
+            business_number,
+            website_url,
+            contact_email,
+            contact_phone,
+            created_at,
+            organization_id
+          )
+        `);
+
+      // agency_admin은 자신의 조직만 조회
+      if (role === 'agency_admin') {
+        query = query.eq('id', organizationId);
+      }
+
+      const { data, error } = await query.order('created_at', { ascending: false });
+
+      if (error) throw error;
+
+      setOrganizations(data || []);
+    } catch (error) {
+      console.error('조직 데이터 조회 실패:', error);
+      toast({
+        title: "데이터 조회 실패",
+        description: error.message,
+        status: "error",
+        duration: 3000,
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   const handleAddBrand = (organizationId) => {
     setSelectedOrganization(organizationId);
     onOpen();
   };
 
+  const handleEditBrand = (brand) => {
+    setSelectedBrand(brand);
+    onEditOpen();
+  };
+
+  const handleDeleteBrand = (brand) => {
+    setSelectedBrand(brand);
+    onDeleteOpen();
+  };
+
+  const confirmDelete = async (brandId) => {
+    try {
+      setIsDeleting(true);
+
+      // 브랜드 삭제 (CASCADE로 관련 데이터 자동 삭제)
+      const { error } = await supabase
+        .from('advertisers')
+        .delete()
+        .eq('id', brandId);
+
+      if (error) throw error;
+
+      toast({
+        title: "브랜드 삭제 완료",
+        description: `${selectedBrand.name} 브랜드와 관련된 모든 데이터가 삭제되었습니다.`,
+        status: "success",
+        duration: 3000,
+      });
+
+      onDeleteClose();
+      setSelectedBrand(null);
+
+      // 데이터 새로고침
+      fetchOrganizations();
+    } catch (error) {
+      console.error('브랜드 삭제 실패:', error);
+      toast({
+        title: "브랜드 삭제 실패",
+        description: error.message,
+        status: "error",
+        duration: 5000,
+      });
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
+  if (isLoading) {
+    return (
+      <Center h="400px">
+        <Spinner size="xl" />
+      </Center>
+    );
+  }
+
   return (
     <Box pt={{ base: "130px", md: "80px", xl: "80px" }}>
-      <Box display="flex" justifyContent="space-between" alignItems="center" mb="24px">
-        <Box>
-          <Heading size="lg" mb="8px">
-            광고주 관리
-          </Heading>
-          <Text fontSize="md" color="gray.600">
-            조직별 광고주(브랜드) 목록을 확인하고 관리할 수 있습니다.
-          </Text>
-        </Box>
-        <HStack spacing="12px">
-          <Button colorScheme="brand" onClick={() => handleAddBrand(null)}>
-            + 브랜드 추가
-          </Button>
-        </HStack>
+      <Box mb="24px">
+        <Heading size="lg" mb="8px">
+          광고주 관리
+        </Heading>
+        <Text fontSize="md" color="gray.600">
+          조직별 광고주(브랜드) 목록을 확인하고 관리할 수 있습니다.
+        </Text>
       </Box>
 
       <Card
@@ -45,7 +157,14 @@ export default function AdvertisersManagement() {
         py="25px"
         overflowX={{ sm: "scroll", lg: "hidden" }}
       >
-        <AdvertisersTree onAddBrand={handleAddBrand} />
+        <AdvertisersTree
+          organizations={organizations}
+          onAddBrand={handleAddBrand}
+          onEditBrand={handleEditBrand}
+          onDeleteBrand={handleDeleteBrand}
+          currentUserRole={role}
+          currentUserOrgId={organizationId}
+        />
       </Card>
 
       <AddBrandModal
@@ -53,9 +172,32 @@ export default function AdvertisersManagement() {
         onClose={() => {
           onClose();
           setSelectedOrganization(null);
+          fetchOrganizations();
         }}
         organizationId={selectedOrganization}
       />
+
+      {selectedBrand && (
+        <>
+          <EditBrandModal
+            isOpen={isEditOpen}
+            onClose={() => {
+              onEditClose();
+              setSelectedBrand(null);
+              fetchOrganizations();
+            }}
+            brand={selectedBrand}
+          />
+
+          <DeleteBrandModal
+            isOpen={isDeleteOpen}
+            onClose={onDeleteClose}
+            brand={selectedBrand}
+            onConfirm={confirmDelete}
+            isLoading={isDeleting}
+          />
+        </>
+      )}
     </Box>
   );
 }

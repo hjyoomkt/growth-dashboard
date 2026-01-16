@@ -5,8 +5,9 @@ import Card from "components/card/Card.js";
 import Menu from "components/menu/MainMenu";
 import { useAuth } from "contexts/AuthContext";
 import { MdOutlineError, MdCheckCircle, MdClose } from "react-icons/md";
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import ViewPostModal from "views/shared/board/components/ViewPostModal";
+import { getBoardPosts, markPostAsRead } from "services/supabaseService";
 
 export default function Notifications(props) {
   const { ...rest } = props;
@@ -19,32 +20,108 @@ export default function Notifications(props) {
   const boardNotificationBorder = useColorModeValue("purple.200", "purple.700");
   const listBorderColor = useColorModeValue("gray.200", "whiteAlpha.100");
   const listHoverBg = useColorModeValue("gray.50", "whiteAlpha.50");
-  const { apiNotifications, boardNotifications, markNotificationAsRead, removeNotification } = useAuth();
+  const { apiNotifications, markNotificationAsRead, removeNotification, user, currentAdvertiserId, role } = useAuth();
+
+  // DB에서 실제 게시글 가져오기
+  const [dbBoardPosts, setDbBoardPosts] = useState([]);
+  // 상단 카드에서 제거된 알림 ID 추적 (로컬 스토리지에서 로드)
+  const [dismissedCardIds, setDismissedCardIds] = useState(() => {
+    try {
+      const stored = localStorage.getItem('dismissedBoardNotifications');
+      return stored ? JSON.parse(stored) : [];
+    } catch (error) {
+      return [];
+    }
+  });
+
+  useEffect(() => {
+    const fetchBoardPosts = async () => {
+      if (!user) return;
+
+      try {
+        // 브랜드 관리자 여부 확인
+        const isBrandUser = ['advertiser_admin', 'manager', 'editor', 'viewer'].includes(role);
+
+        // 브랜드 사용자는 'brand' 타입, 나머지는 'admin' 타입
+        const boardType = isBrandUser ? 'brand' : 'admin';
+
+        // 브랜드 사용자인 경우에만 currentAdvertiserId로 필터링
+        const filterAdvertiserId = isBrandUser ? currentAdvertiserId : null;
+
+        const posts = await getBoardPosts(boardType, user.id, filterAdvertiserId);
+        // 모든 게시글 가져오기 (읽음/안읽음 상관없이)
+        setDbBoardPosts(posts);
+      } catch (error) {
+        console.error('[Notifications] 게시글 조회 실패:', error);
+      }
+    };
+
+    fetchBoardPosts();
+  }, [user, currentAdvertiserId, role]);
 
   // API 알림 표시 (최대 3개, 상단 카드용)
   const recentApiNotifications = apiNotifications.slice(0, 3);
-  // 게시판 알림 표시 (모두 표시, 스크롤 가능)
-  const recentBoardNotifications = boardNotifications;
+
+  // 게시판 알림: DB 게시글만 사용 (boardNotifications는 제외하여 중복 방지)
+  // DB에서 가져온 게시글이 최신이고 정확하므로 이것만 사용
+  const recentBoardNotifications = [...dbBoardPosts];
+
+  // 상단 카드용: 읽지 않은 게시글 + dismissedCardIds에 없는 것만 표시
+  const cardBoardNotifications = recentBoardNotifications
+    .filter(n => !n.isRead && !dismissedCardIds.includes(n.id));
 
   // 게시글 모달 상태
   const { isOpen: isPostModalOpen, onOpen: onPostModalOpen, onClose: onPostModalClose } = useDisclosure();
   const [selectedPost, setSelectedPost] = useState(null);
 
   // 게시판 알림 클릭 핸들러
-  const handleBoardNotificationClick = (notification) => {
+  const handleBoardNotificationClick = async (notification) => {
     console.log('Board notification clicked:', notification);
-    markNotificationAsRead(notification.id);
-    const post = {
-      id: notification.postId,
-      title: notification.postTitle || notification.title || notification.message,
-      content: notification.postContent || notification.content || notification.message,
-      author: notification.author || 'Admin',
-      date: notification.date || new Date(notification.timestamp).toLocaleDateString('ko-KR'),
-      targets: notification.targets || ['모든 사용자'],
-    };
-    console.log('Opening modal with post:', post);
-    setSelectedPost(post);
-    onPostModalOpen();
+
+    // DB 게시글인 경우 (id, title, content 필드가 있음)
+    if (notification.id && notification.title && notification.content) {
+      setSelectedPost(notification);
+      onPostModalOpen();
+
+      // 읽지 않은 글인 경우 읽음 처리
+      if (!notification.isRead && user) {
+        try {
+          await markPostAsRead(notification.id, user.id);
+          // 로컬 상태 업데이트: 목록에서 제거하지 않고 isRead 상태만 변경
+          setDbBoardPosts(prevPosts =>
+            prevPosts.map(p => p.id === notification.id ? { ...p, isRead: true } : p)
+          );
+        } catch (error) {
+          console.error('읽음 처리 실패:', error);
+        }
+      }
+    } else {
+      // 로컬 알림인 경우 (기존 방식)
+      markNotificationAsRead(notification.id);
+      const post = {
+        id: notification.postId,
+        title: notification.postTitle || notification.title || notification.message,
+        content: notification.postContent || notification.content || notification.message,
+        author: notification.author || 'Admin',
+        date: notification.date || new Date(notification.timestamp).toLocaleDateString('ko-KR'),
+        targets: notification.targets || ['모든 사용자'],
+      };
+      setSelectedPost(post);
+      onPostModalOpen();
+    }
+  };
+
+  // 알림 제거 핸들러 (상단 카드에서만 제거)
+  const handleRemoveNotification = async (notification, event) => {
+    event.stopPropagation(); // 클릭 이벤트 전파 방지
+
+    // 상단 카드에서만 제거 (하단 목록은 유지)
+    setDismissedCardIds(prev => {
+      const newIds = [...prev, notification.id];
+      // 로컬 스토리지에 저장
+      localStorage.setItem('dismissedBoardNotifications', JSON.stringify(newIds));
+      return newIds;
+    });
   };
 
   return (
@@ -63,13 +140,13 @@ export default function Notifications(props) {
       <Flex flex="1" overflowY="auto" direction="column" px="20px" pb="20px">
 
         {/* 게시판 알림 카드 (상단에 카드 형태, 최대 3개) */}
-        {recentBoardNotifications.slice(0, 3).length > 0 && (
+        {cardBoardNotifications.slice(0, 3).length > 0 && (
           <>
             <Box mb="20px">
               <Text fontSize="sm" fontWeight="600" color={textColorPrimary} mb="12px">
                 게시판 알림
               </Text>
-              {recentBoardNotifications.slice(0, 3).map((notification) => (
+              {cardBoardNotifications.slice(0, 3).map((notification) => (
                 <Box
                   key={notification.id}
                   p="12px"
@@ -97,14 +174,14 @@ export default function Notifications(props) {
                       flex="1"
                       _hover={{ textDecoration: 'underline' }}
                     >
-                      {notification.postTitle || notification.title || notification.message}
+                      {notification.title || notification.postTitle || notification.message}
                     </Text>
                     <IconButton
                       icon={<Icon as={MdClose} />}
                       size="xs"
                       variant="ghost"
                       colorScheme="purple"
-                      onClick={() => removeNotification(notification.id)}
+                      onClick={(e) => handleRemoveNotification(notification, e)}
                       aria-label="Remove notification"
                       ml="8px"
                     />

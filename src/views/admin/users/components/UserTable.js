@@ -18,6 +18,7 @@ import {
   MenuItem,
   Icon,
   Switch,
+  useToast,
 } from '@chakra-ui/react';
 import {
   createColumnHelper,
@@ -30,6 +31,7 @@ import Card from 'components/card/Card';
 import * as React from 'react';
 import { MdMoreVert } from 'react-icons/md';
 import { useAuth } from 'contexts/AuthContext';
+import { getUsers, updateUserRole, updateUserStatus } from 'services/supabaseService';
 import EditUserModal from './EditUserModal';
 
 const columnHelper = createColumnHelper();
@@ -41,172 +43,111 @@ export default function UserTable(props) {
   const [selectedUser, setSelectedUser] = React.useState(null);
   const textColor = useColorModeValue('secondaryGray.900', 'white');
   const borderColor = useColorModeValue('gray.200', 'whiteAlpha.100');
-  const { isAgency, role, organizationId, advertiserId } = useAuth();
+  const { user, isAgency, role, organizationId, advertiserId, organizationType, isMaster } = useAuth();
+  const [data, setData] = React.useState([]);
+  const [isLoading, setIsLoading] = React.useState(false);
+  const toast = useToast();
 
-  // Mock 데이터 (대행사용 - 클라이언트명 포함)
-  const mockUsers = React.useMemo(() => [
-    {
-      name: '김철수',
-      email: 'ceo@booming.com',
-      role: 'org_admin',
-      organizationId: 'org-1', // 부밍 대행사
-      advertiserId: null, // org_admin은 전체 브랜드 접근
-      client: null,
-      joinDate: '2024.01.15',
-      status: 'active',
-    },
-    {
-      name: '박대행',
-      email: 'manager@booming.com',
-      role: 'org_manager',
-      organizationId: 'org-1', // 부밍 대행사
-      advertiserId: null, // 대행사 직원
-      client: null,
-      joinDate: '2024.01.20',
-      status: 'active',
-    },
-    {
-      name: '이영희',
-      email: 'am1@booming.com',
-      role: 'advertiser_admin',
-      organizationId: 'org-1', // 부밍 대행사 소속
-      advertiserId: 'adv-nike', // 나이키 담당 AM
-      client: '나이키',
-      joinDate: '2024.02.20',
-      status: 'active',
-    },
-    {
-      name: '박민수',
-      email: 'am2@booming.com',
-      role: 'advertiser_admin',
-      organizationId: 'org-1', // 부밍 대행사 소속
-      advertiserId: 'adv-adidas', // 아디다스 담당 AM
-      client: '아디다스',
-      joinDate: '2024.03.10',
-      status: 'active',
-    },
-    {
-      name: '최지은',
-      email: 'designer@booming.com',
-      role: 'editor',
-      organizationId: 'org-1', // 부밍 대행사 소속
-      advertiserId: 'adv-nike', // 나이키 담당
-      client: '나이키',
-      clients: ['나이키', '아디다스'], // 복수 브랜드 접근 예시
-      joinDate: '2024.01.25',
-      status: 'active',
-    },
-    {
-      name: '정수현',
-      email: 'intern@booming.com',
-      role: 'viewer',
-      organizationId: 'org-1', // 부밍 대행사 소속
-      advertiserId: null, // 전체 보기
-      client: null,
-      joinDate: '2024.04.05',
-      status: 'active',
-    },
-    // 브랜드 회사 직원 (나이키)
-    {
-      name: '김나이키',
-      email: 'ceo@nike.com',
-      role: 'advertiser_admin',
-      organizationId: 'org-nike', // 나이키 회사
-      advertiserId: 'adv-nike',
-      client: '나이키',
-      joinDate: '2024.01.10',
-      status: 'active',
-    },
-    {
-      name: '이나이키',
-      email: 'manager@nike.com',
-      role: 'manager',
-      organizationId: 'org-nike', // 나이키 회사
-      advertiserId: 'adv-nike',
-      client: '나이키',
-      joinDate: '2024.01.15',
-      status: 'active',
-    },
-    {
-      name: '박나이키',
-      email: 'staff@nike.com',
-      role: 'editor',
-      organizationId: 'org-nike', // 나이키 회사
-      advertiserId: 'adv-nike',
-      client: '나이키',
-      joinDate: '2024.02.01',
-      status: 'active',
-    },
-    // 브랜드 회사 직원 (아디다스)
-    {
-      name: '김아디다스',
-      email: 'ceo@adidas.com',
-      role: 'advertiser_admin',
-      organizationId: 'org-adidas', // 아디다스 회사
-      advertiserId: 'adv-adidas',
-      client: '아디다스',
-      joinDate: '2024.02.01',
-      status: 'active',
-    },
-    {
-      name: '이아디다스',
-      email: 'staff@adidas.com',
-      role: 'editor',
-      organizationId: 'org-adidas', // 아디다스 회사
-      advertiserId: 'adv-adidas',
-      client: '아디다스',
-      joinDate: '2024.02.10',
-      status: 'active',
-    },
-  ], []);
-
-  // 권한에 따른 사용자 필터링
-  const filteredUsers = React.useMemo(() => {
-    const users = tableData || mockUsers;
-
-    // Master는 모든 사용자 조회 가능
-    if (role === 'master') {
-      return users;
-    }
-
-    // 대행사 (org_admin, org_manager, org_staff)는 모든 브랜드와 대행사 직원 조회 가능
-    if (['org_admin', 'org_manager', 'org_staff'].includes(role)) {
-      return users.filter(user =>
-        user.organizationId === organizationId || // 같은 대행사 직원
-        user.advertiserId // 또는 대행사가 관리하는 브랜드 직원
-      );
-    }
-
-    // 브랜드 (advertiser_admin, manager)는 본인 회사 직원만 조회 가능
-    if (['advertiser_admin', 'manager'].includes(role)) {
-      return users.filter(user =>
-        user.organizationId === organizationId // 같은 회사 직원만
-      );
-    }
-
-    // 기본: 본인만 조회
-    return users.filter(user => user.email === user.email);
-  }, [tableData, mockUsers, role, organizationId, advertiserId]);
-
-  const [data, setData] = React.useState(() => filteredUsers);
-
-  // filteredUsers 변경 시 data 업데이트
+  // ✅ 디버그 로그
   React.useEffect(() => {
-    setData(filteredUsers);
-  }, [filteredUsers]);
+    console.log('🔍 UserTable 권한 정보:', { role, organizationType, isMaster: isMaster() });
+  }, [role, organizationType, isMaster]);
 
-  const handleAccessToggle = (userEmail, currentAccess) => {
-    // UI 즉시 업데이트
-    setData(prevData =>
-      prevData.map(user =>
-        user.email === userEmail
-          ? { ...user, status: currentAccess ? 'inactive' : 'active' }
-          : user
-      )
-    );
+  // ✅ 사용자 목록 조회 (Supabase)
+  const fetchUsers = React.useCallback(async () => {
+    if (!user) return;
 
-    // TODO: Supabase에서 액세스 권한 업데이트
-    console.log('액세스 변경:', userEmail, currentAccess ? 'deny' : 'allow');
+    setIsLoading(true);
+    try {
+      const currentUser = {
+        id: user.id,
+        role,
+        organization_id: organizationId,
+        advertiser_id: advertiserId,
+        organizationType,
+      };
+
+      const users = await getUsers(currentUser);
+      console.log('[UserTable] 조회된 사용자:', users);
+
+      // 데이터 변환: accessible_advertisers를 clients 배열로 매핑
+      const transformedUsers = users.map(u => {
+        const clients = u.accessible_advertisers?.map(adv => adv.name) || [];
+        console.log('[UserTable] 변환:', { name: u.name, accessible_advertisers: u.accessible_advertisers, clients });
+
+        return {
+          ...u,
+          clients,
+          advertiserIds: u.accessible_advertisers?.map(adv => adv.id) || [],
+          // 단일 브랜드 표시 (레거시 호환)
+          client: u.accessible_advertisers && u.accessible_advertisers.length > 0
+            ? u.accessible_advertisers[0].name
+            : (u.advertisers?.name || null),
+          // 가입일 포맷팅
+          joinDate: u.created_at ? new Date(u.created_at).toISOString().split('T')[0] : '',
+        };
+      });
+
+      console.log('[UserTable] 최종 데이터:', transformedUsers);
+      setData(transformedUsers);
+    } catch (error) {
+      console.error('사용자 목록 조회 실패:', error);
+      toast({
+        title: '사용자 목록 조회 실패',
+        description: error.message,
+        status: 'error',
+        duration: 3000,
+        isClosable: true,
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  }, [user, role, organizationId, advertiserId, organizationType, toast]);
+
+  React.useEffect(() => {
+    fetchUsers();
+  }, [fetchUsers]);
+
+  const handleAccessToggle = async (userId, currentAccess) => {
+    const newStatus = currentAccess ? 'inactive' : 'active';
+
+    try {
+      const currentUser = {
+        id: user.id,
+        role,
+        organization_id: organizationId,
+        advertiser_id: advertiserId,
+      };
+
+      // Supabase에서 액세스 권한 업데이트 (권한 검증 포함)
+      await updateUserStatus(userId, newStatus, currentUser);
+
+      // UI 업데이트
+      setData(prevData =>
+        prevData.map(user =>
+          user.id === userId
+            ? { ...user, status: newStatus }
+            : user
+        )
+      );
+
+      toast({
+        title: '액세스 변경 완료',
+        description: `사용자 액세스가 ${newStatus === 'active' ? '허용' : '차단'}되었습니다.`,
+        status: 'success',
+        duration: 3000,
+        isClosable: true,
+      });
+    } catch (error) {
+      console.error('액세스 변경 실패:', error);
+      toast({
+        title: '액세스 변경 실패',
+        description: error.message,
+        status: 'error',
+        duration: 3000,
+        isClosable: true,
+      });
+    }
   };
 
   const handleEditUser = (user) => {
@@ -214,69 +155,89 @@ export default function UserTable(props) {
     setEditModalOpen(true);
   };
 
-  const handleUpdateUser = (userId, updatedData) => {
-    // 사용자 데이터 업데이트
-    setData(prevData =>
-      prevData.map(user =>
-        (user.id || user.email) === userId
-          ? {
-              ...user,
-              role: updatedData.role,
-              advertiserIds: updatedData.advertiserIds,
-              // clients 배열도 업데이트 (UI 표시용)
-              clients: updatedData.advertiserIds.length > 0
-                ? updatedData.advertiserIds.map(id => {
-                    // Mock 클라이언트 목록에서 이름 찾기
-                    const mockClients = [
-                      { id: "client-nike", name: "나이키" },
-                      { id: "client-adidas", name: "아디다스" },
-                      { id: "client-puma", name: "푸마" },
-                    ];
-                    const client = mockClients.find(c => c.id === id);
-                    return client ? client.name : id;
-                  })
-                : null,
-              client: updatedData.advertiserIds.length === 1
-                ? (() => {
-                    const mockClients = [
-                      { id: "client-nike", name: "나이키" },
-                      { id: "client-adidas", name: "아디다스" },
-                      { id: "client-puma", name: "푸마" },
-                    ];
-                    const client = mockClients.find(c => c.id === updatedData.advertiserIds[0]);
-                    return client ? client.name : updatedData.advertiserIds[0];
-                  })()
-                : null,
-            }
-          : user
-      )
-    );
+  const handleUpdateUser = async (userId, updatedData) => {
+    try {
+      const currentUser = {
+        id: user.id,
+        role,
+        organization_id: organizationId,
+        advertiser_id: advertiserId,
+      };
+
+      await updateUserRole(userId, updatedData.role, currentUser);
+
+      toast({
+        title: '권한 변경 완료',
+        description: '사용자 권한이 변경되었습니다.',
+        status: 'success',
+        duration: 3000,
+        isClosable: true,
+      });
+
+      // 목록 새로고침
+      fetchUsers();
+    } catch (error) {
+      console.error('권한 변경 실패:', error);
+      toast({
+        title: '권한 변경 실패',
+        description: error.message,
+        status: 'error',
+        duration: 3000,
+        isClosable: true,
+      });
+    }
   };
 
-  const handleDeactivateUser = (user) => {
-    if (window.confirm(`${user.name} (${user.email})를 비활성화하시겠습니까?\n\n비활성화된 사용자는 로그인할 수 없으며, 모든 액세스 권한이 제거됩니다.`)) {
-      // UI 업데이트
-      setData(prevData =>
-        prevData.map(u =>
-          u.email === user.email
-            ? { ...u, status: 'inactive' }
-            : u
-        )
-      );
+  const handleDeactivateUser = async (targetUser) => {
+    if (window.confirm(`${targetUser.name} (${targetUser.email})를 비활성화하시겠습니까?\n\n비활성화된 사용자는 로그인할 수 없으며, 모든 액세스 권한이 제거됩니다.`)) {
+      try {
+        const currentUser = {
+          id: user.id,
+          role,
+          organization_id: organizationId,
+          advertiser_id: advertiserId,
+        };
 
-      // TODO: Supabase에서 사용자 비활성화
-      console.log('사용자 비활성화:', user.id || user.email);
+        // Supabase에서 사용자 비활성화 (권한 검증 포함)
+        await updateUserStatus(targetUser.id, 'inactive', currentUser);
+
+        // UI 업데이트
+        setData(prevData =>
+          prevData.map(u =>
+            u.id === targetUser.id
+              ? { ...u, status: 'inactive' }
+              : u
+          )
+        );
+
+        toast({
+          title: '사용자 비활성화 완료',
+          description: `${targetUser.name}님이 비활성화되었습니다.`,
+          status: 'success',
+          duration: 3000,
+          isClosable: true,
+        });
+      } catch (error) {
+        console.error('사용자 비활성화 실패:', error);
+        toast({
+          title: '비활성화 실패',
+          description: error.message,
+          status: 'error',
+          duration: 3000,
+          isClosable: true,
+        });
+      }
     }
   };
 
   const getRoleBadge = (role) => {
     const roleConfig = {
-      master: { label: 'Master', color: 'red' },
-      org_admin: { label: '대행사 최고관리자', color: 'purple' },
-      org_manager: { label: '대행사 관리자', color: 'purple' },
-      org_staff: { label: '대행사 직원', color: 'purple' },
+      master: { label: '마스터', color: 'red' },
+      agency_admin: { label: '에이전시 대표', color: 'purple' },
+      agency_manager: { label: '에이전시 관리자', color: 'purple' },
+      agency_staff: { label: '에이전시 직원', color: 'purple' },
       advertiser_admin: { label: '브랜드 대표운영자', color: 'blue' },
-      manager: { label: '브랜드 운영자', color: 'cyan' },
+      advertiser_staff: { label: '브랜드 부운영자', color: 'cyan' },
       editor: { label: '편집자', color: 'green' },
       viewer: { label: '뷰어', color: 'gray' },
     };
@@ -411,7 +372,7 @@ export default function UserTable(props) {
               <Switch
                 colorScheme="brand"
                 isChecked={hasAccess}
-                onChange={() => handleAccessToggle(row.email, hasAccess)}
+                onChange={() => handleAccessToggle(row.id, hasAccess)}
                 size="sm"
               />
               <Text fontSize="sm" color={textColor}>
@@ -442,11 +403,6 @@ export default function UserTable(props) {
                 <MenuItem onClick={() => handleEditUser(row)}>
                   권한 변경
                 </MenuItem>
-                {isAgency() && (
-                  <MenuItem onClick={() => handleEditUser(row)}>
-                    브랜드 재할당
-                  </MenuItem>
-                )}
                 <MenuItem color="red.500" onClick={() => handleDeactivateUser(row)}>
                   비활성화
                 </MenuItem>

@@ -8,26 +8,58 @@ import {
 import Card from "components/card/Card.js";
 // Custom components
 import DonutChart from "components/charts/DonutChart";
-import React from "react";
+import React, { useState, useEffect, useMemo } from "react";
+import { useDateRange } from "contexts/DateRangeContext";
+import { useAuth } from "contexts/AuthContext";
+import { getMediaRevenue } from "services/supabaseService";
 
 export default function WeeklyRevenue(props) {
   const { mediaData, ...rest } = props;
+
+  const { startDate, endDate } = useDateRange();
+  const { currentAdvertiserId, availableAdvertisers } = useAuth();
+  const [mediaRevenueData, setMediaRevenueData] = useState([]);
+
+  // ===== 2025-12-31: Supabase 데이터 조회 =====
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        const availableAdvertiserIds = (availableAdvertisers || []).map(adv => adv.id);
+        const data = await getMediaRevenue({
+          advertiserId: currentAdvertiserId,
+          availableAdvertiserIds,
+          startDate,
+          endDate,
+        });
+        setMediaRevenueData(data);
+      } catch (error) {
+        console.error('매체별 매출 조회 실패:', error);
+      }
+    };
+    fetchData();
+  }, [currentAdvertiserId, availableAdvertisers, startDate, endDate]);
 
   // Chakra Color Mode
   const textColor = useColorModeValue("secondaryGray.900", "white");
   const legendTextColor = useColorModeValue("secondaryGray.900", "white");
 
-  // 동적 데이터 처리: props로 받은 mediaData 사용, 없으면 임시 데이터 사용
-  const defaultData = [
-    { name: "Google", value: 450000 },
-    { name: "Naver", value: 320000 },
-    { name: "Meta", value: 280000 },
-    { name: "Kakao", value: 200000 },
-    { name: "Criteo", value: 150000 },
-    { name: "기타", value: 100000 },
-  ];
+  // 동적 데이터 처리: Supabase 데이터 우선, props 데이터 대체, 임시 데이터 최후
+  const data = useMemo(() => {
+    if (mediaRevenueData.length > 0) return mediaRevenueData;
+    if (mediaData) return mediaData;
 
-  const data = mediaData || defaultData;
+    /* ❌ Mock 임시 데이터 (원복용 보존)
+    return [
+      { name: "Google", value: 450000 },
+      { name: "Naver", value: 320000 },
+      { name: "Meta", value: 280000 },
+      { name: "Kakao", value: 200000 },
+      { name: "Criteo", value: 150000 },
+      { name: "기타", value: 100000 },
+    ];
+    */
+    return [];
+  }, [mediaRevenueData, mediaData]);
   const labels = data.map((item) => item.name);
   const values = data.map((item) => item.value);
 
@@ -122,7 +154,13 @@ export default function WeeklyRevenue(props) {
       </Flex>
 
       <Box h='100%' mt='auto' w='100%'>
-        <DonutChart chartData={pieChartData} chartOptions={pieChartOptions} />
+        {data.length === 0 || pieChartData.length === 0 ? (
+          <Flex h='350px' align='center' justify='center'>
+            <Text color='secondaryGray.600'>데이터가 없습니다</Text>
+          </Flex>
+        ) : (
+          <DonutChart  chartData={pieChartData} chartOptions={pieChartOptions} />
+        )}
       </Box>
     </Card>
   );

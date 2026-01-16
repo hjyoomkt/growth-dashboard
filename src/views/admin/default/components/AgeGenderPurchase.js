@@ -7,21 +7,85 @@ import {
 } from "@chakra-ui/react";
 import Card from "components/card/Card.js";
 import BarChart from "components/charts/BarChart";
-import React from "react";
+import React, { useState, useEffect } from "react";
+import { supabase } from "config/supabase";
 
 export default function AgeGenderPurchase(props) {
-  const { ...rest } = props;
+  const { currentAdvertiserId, availableAdvertisers, startDate, endDate, ...rest } = props;
 
   // Chakra Color Mode
   const textColor = useColorModeValue("secondaryGray.900", "white");
 
-  // Mock 데이터: 연령대별 성별 구매 (나중에 Supabase에서 가져올 데이터)
-  const ageGroups = ['18-24', '25-34', '35-44', '45-64', '65+'];
+  const ageGroups = ['18-24', '25-34', '35-44', '45-54', '55-64', '65+'];
 
-  // 각 연령대별 성별 구매 수
-  const maleData = [150, 580, 690, 1150, 1520];
-  const femaleData = [100, 450, 580, 1150, 1080];
-  const unknownData = [50, 120, 80, 200, 260];
+  const [ageGenderData, setAgeGenderData] = useState({
+    male: [0, 0, 0, 0, 0, 0],
+    female: [0, 0, 0, 0, 0, 0],
+    unknown: [0, 0, 0, 0, 0, 0]
+  });
+
+  useEffect(() => {
+    fetchAgeGenderData();
+  }, [currentAdvertiserId, availableAdvertisers, startDate, endDate]);
+
+  const fetchAgeGenderData = async () => {
+    try {
+      const advertiserIds = currentAdvertiserId === 'all'
+        ? (availableAdvertisers || []).map(adv => adv.id)
+        : [currentAdvertiserId];
+
+      if (advertiserIds.length === 0) {
+        setAgeGenderData({
+          male: [0, 0, 0, 0, 0, 0],
+          female: [0, 0, 0, 0, 0, 0],
+          unknown: [0, 0, 0, 0, 0, 0]
+        });
+        return;
+      }
+
+      const { data, error } = await supabase
+        .from('ad_performance_demographics')
+        .select('gender, age, conversions')
+        .in('advertiser_id', advertiserIds)
+        .gte('date', startDate)
+        .lte('date', endDate);
+
+      if (error) throw error;
+
+      const result = {
+        male: [0, 0, 0, 0, 0, 0],
+        female: [0, 0, 0, 0, 0, 0],
+        unknown: [0, 0, 0, 0, 0, 0]
+      };
+
+      const ageIndexMap = {
+        '18-24': 0,
+        '25-34': 1,
+        '35-44': 2,
+        '45-54': 3,
+        '55-64': 4,
+        '65+': 5
+      };
+
+      (data || []).forEach(row => {
+        const conv = parseFloat(row.conversions) || 0;
+        const ageIdx = ageIndexMap[row.age];
+        if (ageIdx === undefined) return;
+
+        if (row.gender === 'male') result.male[ageIdx] += conv;
+        else if (row.gender === 'female') result.female[ageIdx] += conv;
+        else result.unknown[ageIdx] += conv;
+      });
+
+      setAgeGenderData(result);
+    } catch (error) {
+      console.error('연령대별 성별 데이터 조회 실패:', error);
+    }
+  };
+
+  const maleData = ageGenderData.male;
+  const femaleData = ageGenderData.female;
+  const unknownData = ageGenderData.unknown;
 
   const totalPurchases = maleData.reduce((a, b) => a + b, 0) +
                          femaleData.reduce((a, b) => a + b, 0) +

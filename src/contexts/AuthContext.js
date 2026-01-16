@@ -1,5 +1,13 @@
 import { createContext, useContext, useEffect, useState } from 'react';
-// TODO: Supabase 연동 시 import { supabase } from 'lib/supabaseClient';
+import { supabase } from '../config/supabase';
+import {
+  signIn as supabaseSignIn,
+  signUp as supabaseSignUp,
+  signOut as supabaseSignOut,
+  getCurrentUser,
+  getUserMetadata,
+  getAvailableAdvertisers
+} from '../services/supabaseService';
 
 const AuthContext = createContext();
 
@@ -24,54 +32,29 @@ export const AuthProvider = ({ children }) => {
     new Date(b.timestamp) - new Date(a.timestamp)
   );
 
+  // ===== 2025-12-31: Supabase 연동 활성화 =====
   useEffect(() => {
-    // TODO: Supabase 연동 시 실제 인증 로직 구현
-    // 현재는 Mock 데이터로 개발
-
-    // 개발용 Mock 사용자 설정
-    // 💡 테스트용: 아래 role을 변경해서 다른 권한 테스트 가능
-    // 'master' - 마스터 (원작자)
-    // 대행사 (organizationType: 'agency'):
-    //   'org_admin' - 대행사 최고관리자
-    //   'org_manager' - 대행사 관리자
-    //   'org_staff' - 대행사 직원
-    // 클라이언트 (organizationType: 'advertiser'):
-    //   'advertiser_admin' - 클라이언트 최고관리자
-    //   'manager' - 클라이언트 관리자
-    //   'editor' - 클라이언트 편집자
-    //   'viewer' - 클라이언트 뷰어
-
+    /* ❌ Mock 데이터 (원복용 보존)
     const mockUser = {
       id: 'mock-user-id',
       email: 'dev@example.com',
-      role: 'master', // ← 마스터 권한 (원작자)
+      role: 'master',
     };
-
     setUser(mockUser);
     setRole(mockUser.role);
-    setOrganizationId(null); // 마스터는 조직에 속하지 않음
-    setAdvertiserId(null); // 마스터는 특정 브랜드에 속하지 않음
-    setOrganizationType('master'); // 마스터 타입
-
-    // Mock: 접근 가능한 브랜드 목록 설정
+    setOrganizationId(null);
+    setAdvertiserId(null);
+    setOrganizationType('master');
     const mockAdvertisers = [
       { id: 'adv-nike', name: '나이키', organizationId: 'org-nike' },
       { id: 'adv-adidas', name: '아디다스', organizationId: 'org-adidas' },
-      { id: 'adv-peppertux', name: '페퍼툭스', organizationId: 'org-pepper' },
-      { id: 'adv-onnuri', name: '온누리스토어', organizationId: 'org-pepper' }, // 같은 회사
     ];
     setAvailableAdvertisers(mockAdvertisers);
-    setCurrentAdvertiserId(null); // 전체 보기로 시작
-
+    setCurrentAdvertiserId(null);
     setLoading(false);
+    */
 
-    // 디버깅: 현재 권한 정보 출력
-    console.log('=== Auth Context Debug ===');
-    console.log('Role:', mockUser.role);
-    console.log('Organization Type:', 'master');
-    console.log('Organization ID:', null);
-
-    /* Supabase 연동 시 아래 코드 사용
+    // ✅ Supabase 실제 연동
     supabase.auth.getSession().then(({ data: { session } }) => {
       setUser(session?.user ?? null);
       if (session?.user) {
@@ -90,99 +73,112 @@ export const AuthProvider = ({ children }) => {
         setAdvertiserId(null);
         setRole(null);
         setOrganizationType(null);
+        setAvailableAdvertisers([]);
         setLoading(false);
       }
     });
 
     return () => subscription.unsubscribe();
-    */
   }, []);
 
-  /* Supabase 연동 시 사용할 함수
+  // ✅ 사용자 메타데이터 조회 함수
   const fetchUserMetadata = async (userId) => {
-    const { data, error } = await supabase
-      .from('users')
-      .select(`
-        organization_id,
-        advertiser_id,
-        role,
-        organizations (
-          type
-        )
-      `)
-      .eq('id', userId)
-      .single();
+    try {
+      const userData = await getUserMetadata(userId);
+      console.log('✅ 사용자 메타데이터:', userData);
 
-    if (data) {
-      setOrganizationId(data.organization_id);
-      setAdvertiserId(data.advertiser_id);
-      setRole(data.role);
-      setOrganizationType(data.organizations?.type);
+      setOrganizationId(userData.organization_id);
+      setAdvertiserId(userData.advertiser_id);
+      setRole(userData.role);
+
+      // organizationType 결정 로직
+      // 1. organizations 테이블에 연결된 경우 (agency)
+      // 2. advertiser_id가 있는 경우 'advertiser'로 설정
+      // 3. organization_type 필드 사용 (레거시)
+      let orgType = userData.organizations?.type || userData.organization_type;
+      if (!orgType && userData.advertiser_id) {
+        orgType = 'advertiser';
+      }
+      setOrganizationType(orgType);
+
+      console.log('✅ 설정된 role:', userData.role);
+      console.log('✅ 설정된 organization_type:', orgType);
+      console.log('✅ 설정된 advertiser_id:', userData.advertiser_id);
+
+      // 접근 가능한 광고주 목록 조회
+      const advertisers = await getAvailableAdvertisers(userData);
+      setAvailableAdvertisers(advertisers);
+      console.log('✅ 접근 가능한 광고주:', advertisers);
+
+      // 첫 번째 광고주를 기본값으로 설정
+      if (advertisers && advertisers.length > 0) {
+        setCurrentAdvertiserId(advertisers[0].id);
+        console.log('✅ 현재 광고주 ID:', advertisers[0].id);
+      }
+
+      setLoading(false);
+    } catch (error) {
+      console.error('메타데이터 조회 실패:', error);
+      setLoading(false);
     }
-    setLoading(false);
   };
-  */
 
   const signIn = async (email, password) => {
-    // TODO: Supabase 인증 구현
-    console.log('Sign in:', email);
-    /* Supabase 연동 시
-    const { data, error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
-    return { data, error };
-    */
-    return { data: { user: { email } }, error: null };
+    try {
+      const data = await supabaseSignIn(email, password);
+      console.log('Sign in successful:', email);
+      return { data, error: null };
+    } catch (error) {
+      console.error('Sign in error:', error);
+      return { data: null, error };
+    }
   };
 
-  const signUp = async (email, password, userData) => {
-    // TODO: Supabase 인증 + users 테이블 생성
-    console.log('Sign up:', email, userData);
-    /* Supabase 연동 시
-    const { data: authData, error: authError } = await supabase.auth.signUp({
-      email,
-      password,
-    });
-
-    if (authError) return { data: null, error: authError };
-
-    // users 테이블에 추가 정보 저장
-    const { data: userData, error: userError } = await supabase
-      .from('users')
-      .insert({
-        id: authData.user.id,
-        organization_id: userData.organizationId,
-        advertiser_id: userData.advertiserId,
-        email: email,
-        name: userData.name,
-        role: userData.role,
-      });
-
-    return { data: userData, error: userError };
-    */
-    return { data: { user: { email } }, error: null };
+  const signUp = async (email, password, metadata = {}) => {
+    try {
+      const data = await supabaseSignUp(email, password, metadata);
+      console.log('Sign up successful:', email);
+      return { data, error: null };
+    } catch (error) {
+      console.error('Sign up error:', error);
+      return { data: null, error };
+    }
   };
 
   const signOut = async () => {
-    // TODO: Supabase 로그아웃 구현
-    console.log('Sign out');
-    setUser(null);
-    setOrganizationId(null);
-    setAdvertiserId(null);
-    setRole(null);
-    setOrganizationType(null);
-    /* Supabase 연동 시
-    const { error } = await supabase.auth.signOut();
-    return { error };
-    */
-    return { error: null };
+    try {
+      await supabaseSignOut();
+      console.log('Sign out successful');
+      setUser(null);
+      setOrganizationId(null);
+      setAdvertiserId(null);
+      setRole(null);
+      setOrganizationType(null);
+      return { error: null };
+    } catch (error) {
+      console.error('Sign out error:', error);
+      return { error };
+    }
   };
 
+  // ✅ 권한 체크 함수 (2026-01-03 수정)
   const isMaster = () => role === 'master';
-  const isOrgAdmin = () => ['org_admin', 'org_manager', 'org_staff', 'master'].includes(role);
-  const isAdvertiserAdmin = () => ['advertiser_admin', 'org_admin', 'org_manager', 'org_staff', 'master'].includes(role);
-  const canEdit = () => ['editor', 'manager', 'advertiser_admin', 'org_admin', 'org_manager', 'org_staff', 'master'].includes(role);
+
+  // 슈퍼어드민 접근 권한 (조직관리 제외)
+  const canAccessSuperAdmin = () => ['master', 'agency_admin', 'agency_manager'].includes(role);
+
+  // 브랜드 어드민 접근 권한
+  const canAccessBrandAdmin = () => ['advertiser_admin', 'advertiser_staff', 'agency_admin', 'agency_manager', 'master'].includes(role);
+
+  // 조직관리 접근 권한 (마스터 전용)
+  const canAccessOrganization = () => role === 'master';
+
+  // 편집 권한
+  const canEdit = () => ['advertiser_admin', 'advertiser_staff', 'agency_admin', 'agency_manager', 'master'].includes(role);
+
+  // 레거시 호환성 유지
+  const isOrgAdmin = () => ['agency_admin', 'agency_manager', 'master'].includes(role);
+  const isAdvertiserAdmin = () => ['advertiser_admin', 'advertiser_staff', 'agency_admin', 'agency_manager', 'master'].includes(role);
   const isAgency = () => organizationType === 'agency';
 
   // 브랜드 전환 함수
@@ -265,6 +261,9 @@ export const AuthProvider = ({ children }) => {
     isAdvertiserAdmin,
     canEdit,
     isAgency,
+    canAccessSuperAdmin,
+    canAccessBrandAdmin,
+    canAccessOrganization,
     // 브랜드 전환 기능
     availableAdvertisers,
     currentAdvertiserId,

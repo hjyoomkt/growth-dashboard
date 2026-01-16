@@ -6,20 +6,45 @@ import {
   useColorModeValue,
 } from "@chakra-ui/react";
 import Card from "components/card/Card.js";
-import React, { useMemo } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import ReactApexChart from "react-apexcharts";
 import { useDateRange } from "contexts/DateRangeContext";
+import { useAuth } from "contexts/AuthContext";
+import { getDailyROASAndCost } from "services/supabaseService";
 
 export default function ROASAdCost(props) {
   const { ...rest } = props;
 
   const { startDate, endDate } = useDateRange();
+  const { currentAdvertiserId, availableAdvertisers } = useAuth();
+  const [roasData, setRoasData] = useState([]);
+
+  // ===== 2025-12-31: Supabase 데이터 조회 =====
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        const availableAdvertiserIds = (availableAdvertisers || []).map(adv => adv.id);
+        const data = await getDailyROASAndCost({
+          advertiserId: currentAdvertiserId,
+          availableAdvertiserIds,
+          startDate,
+          endDate,
+        });
+        setRoasData(data || []);
+      } catch (error) {
+        console.error('일별 ROAS 조회 실패:', error);
+        setRoasData([]);
+      }
+    };
+    fetchData();
+  }, [currentAdvertiserId, availableAdvertisers, startDate, endDate]);
 
   // Chakra Color Mode
   const textColor = useColorModeValue("secondaryGray.900", "white");
 
   // 동적 날짜 및 데이터 생성
   const { chartOptions, chartSeries } = useMemo(() => {
+    /* ❌ Mock 랜덤 데이터 (원복용 보존)
     const start = new Date(startDate);
     const end = new Date(endDate);
     const diffTime = Math.abs(end - start);
@@ -40,6 +65,40 @@ export default function ROASAdCost(props) {
       adCostData.push(Math.floor(Math.random() * 50000) + 50000);
       roasData.push((Math.random() * 3 + 1).toFixed(2));
     }
+    */
+
+    // ✅ Supabase 실제 데이터 - 빈 배열 방어 강화
+    const safeData = roasData && Array.isArray(roasData) && roasData.length > 0 ? roasData : [];
+
+    // 데이터가 없으면 null 반환 (차트 렌더링 완전 차단)
+    if (safeData.length === 0) {
+      return {
+        chartOptions: null,
+        chartSeries: null
+      };
+    }
+
+    // Invalid Date 필터링
+    const validData = safeData.filter(d => {
+      const date = new Date(d.date);
+      return !isNaN(date.getTime()) &&
+             typeof d.cost === 'number' && !Number.isNaN(d.cost) &&
+             typeof d.roas === 'number' && !Number.isNaN(d.roas);
+    });
+
+    if (validData.length === 0) {
+      return {
+        chartOptions: null,
+        chartSeries: null
+      };
+    }
+
+    const categories = validData.map(d => {
+      const date = new Date(d.date);
+      return `${date.getMonth() + 1}/${date.getDate()}`;
+    });
+    const adCostData = validData.map(d => d.cost);
+    const roasValues = validData.map(d => d.roas * 100); // 퍼센티지로 변환 (10.0 → 1000%)
 
     const series = [
       {
@@ -50,7 +109,7 @@ export default function ROASAdCost(props) {
       {
         name: "ROAS",
         type: "line",
-        data: roasData,
+        data: roasValues,
       },
     ];
 
@@ -79,7 +138,7 @@ export default function ROASAdCost(props) {
       },
       labels: categories,
       markers: {
-        size: 0,
+        size: validData.length === 1 ? 6 : 0,
       },
       xaxis: {
         labels: {
@@ -94,7 +153,7 @@ export default function ROASAdCost(props) {
           showDuplicates: false,
           trim: true,
         },
-        tickAmount: Math.min(diffDays, 10),
+        tickAmount: Math.min(validData.length, 10),
         axisBorder: {
           show: false,
         },
@@ -130,7 +189,7 @@ export default function ROASAdCost(props) {
               fontWeight: "500",
             },
             formatter: function (val) {
-              return val.toFixed(2);
+              return val.toFixed(0) + '%';
             },
           },
         },
@@ -144,7 +203,7 @@ export default function ROASAdCost(props) {
             if (seriesIndex === 0) {
               return "₩" + val.toLocaleString();
             }
-            return val.toFixed(2);
+            return val.toFixed(0) + '%';
           },
         },
       },
@@ -169,7 +228,7 @@ export default function ROASAdCost(props) {
     };
 
     return { chartOptions: options, chartSeries: series };
-  }, [startDate, endDate, textColor]);
+  }, [roasData, textColor]);
 
   return (
     <Card
@@ -185,12 +244,18 @@ export default function ROASAdCost(props) {
         </Text>
       </Flex>
       <Box h='350px' w='100%' px='15px' pb='15px'>
-        <ReactApexChart
-          options={chartOptions}
-          series={chartSeries}
-          type='line'
-          height='100%'
-        />
+        {!chartSeries || !chartOptions || chartSeries.length === 0 ? (
+          <Flex h='100%' align='center' justify='center'>
+            <Text color='secondaryGray.600'>데이터가 없습니다</Text>
+          </Flex>
+        ) : (
+          <ReactApexChart
+            options={chartOptions}
+            series={chartSeries}
+            type='line'
+            height='100%'
+          />
+        )}
       </Box>
     </Card>
   );

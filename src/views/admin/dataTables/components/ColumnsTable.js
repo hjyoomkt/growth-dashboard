@@ -129,6 +129,7 @@ export default function ColumnTable(props) {
       w="100%"
       px="0px"
       overflowX={{ sm: 'scroll', lg: 'hidden' }}
+      position="relative"
     >
       <Flex px="25px" mb="8px" justifyContent="space-between" align="center">
         <Text
@@ -142,6 +143,40 @@ export default function ColumnTable(props) {
         </Text>
         <Menu />
       </Flex>
+
+      {/* 개발 중 오버레이 */}
+      <Box
+        position="absolute"
+        top="0"
+        left="0"
+        right="0"
+        bottom="0"
+        bg="rgba(128, 128, 128, 0.7)"
+        backdropFilter="blur(4px)"
+        display="flex"
+        alignItems="center"
+        justifyContent="center"
+        borderRadius="20px"
+        zIndex="10"
+      >
+        <Box textAlign="center">
+          <Text
+            color="white"
+            fontSize="24px"
+            fontWeight="700"
+            mb="8px"
+          >
+            대시보드 서비스 개발 중
+          </Text>
+          <Text
+            color="whiteAlpha.900"
+            fontSize="md"
+          >
+            준비 중인 기능입니다
+          </Text>
+        </Box>
+      </Box>
+
       <Box>
         <Table variant="simple" color="gray.500" mb="24px" mt="12px">
           <Thead>

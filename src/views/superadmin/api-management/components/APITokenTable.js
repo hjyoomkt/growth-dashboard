@@ -45,6 +45,7 @@ import {
   MenuButton,
   MenuItem,
   MenuList,
+  Divider,
 } from '@chakra-ui/react';
 import {
   createColumnHelper,
@@ -58,12 +59,13 @@ import * as React from 'react';
 import { MdEdit, MdDelete, MdAdd, MdSearch, MdLink, MdCheckCircle, MdOutlineError, MdSchedule, MdSync, MdKeyboardArrowDown } from 'react-icons/md';
 import { useAuth } from 'contexts/AuthContext';
 import { checkYesterdayData, getYesterdayDate, isAfter10AM } from 'utils/dataCollectionChecker';
+import { supabase, createApiToken, updateApiToken } from 'services/supabaseService';
 
 const columnHelper = createColumnHelper();
 
 export default function APITokenTable(props) {
   const { ...rest } = props;
-  const { isAgency, advertiserId, availableAdvertisers } = useAuth();
+  const { isAgency, advertiserId, availableAdvertisers, organizationId } = useAuth();
   const [sorting, setSorting] = React.useState([]);
   const textColor = useColorModeValue('secondaryGray.900', 'white');
   const borderColor = useColorModeValue('gray.200', 'whiteAlpha.100');
@@ -76,8 +78,11 @@ export default function APITokenTable(props) {
   const { isOpen: isConversionModalOpen, onOpen: onConversionModalOpen, onClose: onConversionModalClose } = useDisclosure();
   const { isOpen: isSyncModalOpen, onOpen: onSyncModalOpen, onClose: onSyncModalClose } = useDisclosure();
   const { isOpen: isSyncWarningOpen, onOpen: onSyncWarningOpen, onClose: onSyncWarningClose } = useDisclosure();
+  const { isOpen: isInitialCollectionModalOpen, onOpen: onInitialCollectionModalOpen, onClose: onInitialCollectionModalClose } = useDisclosure();
   const [editMode, setEditMode] = React.useState(false);
   const [selectedToken, setSelectedToken] = React.useState(null);
+  const [savedIntegrationId, setSavedIntegrationId] = React.useState(null);
+  const [isCollectionStarting, setIsCollectionStarting] = React.useState(false);
 
   // 데이터 연동 상태
   const [syncConfig, setSyncConfig] = React.useState({
@@ -91,6 +96,7 @@ export default function APITokenTable(props) {
   // Form states
   const [formData, setFormData] = React.useState({
     advertiser: '',
+    advertiserId: '', // UUID 추가
     accountDescription: '', // 계정 설명/메모
     platform: '',
     // Google Ads 전용 필드
@@ -107,6 +113,11 @@ export default function APITokenTable(props) {
     accountId: '',
     apiToken: '',
     status: 'active',
+    // 초기 데이터 수집 설정
+    initialCollectionEnabled: true, // 초기 수집 활성화 여부
+    initialCollectionRange: 'lastMonth', // yesterday, lastWeek, lastMonth, custom, skip
+    customStartDate: '',
+    customEndDate: '',
   });
 
   // Mock conversion actions (향후 Supabase Edge Function으로 교체)
@@ -119,46 +130,17 @@ export default function APITokenTable(props) {
 
   const [selectedConversionActions, setSelectedConversionActions] = React.useState([]);
 
-  // Mock 데이터 (향후 Supabase로 교체 예정)
-  // TODO: Supabase 연동 시 아래 내용으로 교체
-  // - useEffect에서 Supabase의 api_tokens 테이블 조회
-  // - 실시간 구독으로 데이터 변경 감지
-  // - 오전 10시 이후 자동으로 dataCollectionStatus 업데이트
-  const [allData, setAllData] = React.useState([
-    {
-      id: 1,
-      advertiserId: 'adv-nike',
-      advertiser: '나이키',
-      platform: 'Google Ads',
-      customerId: '7521796943',
-      refreshToken: '1//06***...***ts',
-      lastUpdated: '2024.12.01',
-      status: 'active',
-      dataCollectionStatus: 'success', // success, error, pending (오전 10시 기준으로 전일자 데이터 체크)
-    },
-    {
-      id: 2,
-      advertiserId: 'adv-adidas',
-      advertiser: '아디다스',
-      platform: 'Meta Ads',
-      accountId: 'act_9876543210',
-      apiToken: 'meta_*********************abc',
-      lastUpdated: '2024.11.28',
-      status: 'active',
-      dataCollectionStatus: 'error', // 데이터 수집 실패 (오전 10시 이후 전일자 데이터 없음)
-    },
-    {
-      id: 3,
-      advertiserId: 'adv-peppertux',
-      advertiser: '페퍼툭스',
-      platform: 'Naver Ads',
-      accountId: 'naver-123456',
-      apiToken: 'naver_********************def',
-      lastUpdated: '2024.11.15',
-      status: 'inactive',
-      dataCollectionStatus: 'pending', // 오전 10시 이전 또는 데이터 수집 대기중
-    },
-  ]);
+  // GCP 소스 설정 (organization: 대행사 GCP 사용, custom: 직접 입력)
+  const [gcpSource, setGcpSource] = React.useState('organization');
+  const [organizationGcp, setOrganizationGcp] = React.useState({
+    clientId: '',
+    clientSecret: '',
+    developerToken: '',
+  });
+  const [isLoadingOrgGcp, setIsLoadingOrgGcp] = React.useState(false);
+
+  const [allData, setAllData] = React.useState([]);
+  const [isLoadingTokens, setIsLoadingTokens] = React.useState(false);
 
   // 권한에 따라 데이터 필터링
   const data = React.useMemo(() => {
@@ -167,7 +149,7 @@ export default function APITokenTable(props) {
       return allData;
     }
     // 클라이언트는 자신의 브랜드 데이터만 접근
-    return allData.filter(item => item.advertiserId === advertiserId);
+    return allData.filter(item => item.advertiser_id === advertiserId);
   }, [allData, isAgency, advertiserId]);
 
   // TODO: Supabase 연동 후 주석 해제
@@ -210,6 +192,7 @@ export default function APITokenTable(props) {
     setSelectedToken(null);
     setFormData({
       advertiser: '',
+      advertiserId: '',
       accountDescription: '',
       platform: '',
       customerId: '',
@@ -230,30 +213,159 @@ export default function APITokenTable(props) {
   const handleEdit = (token) => {
     setEditMode(true);
     setSelectedToken(token);
+    setGcpSource(token.gcp_source || 'organization');
     setFormData({
-      advertiser: token.advertiser || '',
+      advertiser: token.advertiser_name || '',
+      accountDescription: token.account_description || '',
       platform: token.platform || '',
-      customerId: token.customerId || '',
-      managerAccountId: token.managerAccountId || '',
-      developerToken: token.developerToken || '',
-      targetConversionActionId: token.targetConversionActionId || [],
-      refreshToken: token.refreshToken || '',
-      clientId: token.clientId || '',
-      clientSecret: token.clientSecret || '',
-      secretKey: token.secretKey || '',
-      accountId: token.accountId || '',
-      apiToken: token.apiToken || '',
+      customerId: token.customer_id || '',
+      managerAccountId: token.manager_account_id || '',
+      developerToken: token.developer_token_vault_id || '',
+      targetConversionActionId: token.target_conversion_action_ids || [],
+      refreshToken: token.refresh_token_vault_id || '',
+      clientId: token.client_id_vault_id || '',
+      clientSecret: token.client_secret_vault_id || '',
+      secretKey: token.secret_key_vault_id || '',
+      accountId: token.account_id || '',
+      apiToken: token.api_token_vault_id || '',
       status: token.status || 'active',
     });
     onOpen();
   };
 
+  // 조직 GCP 설정 조회
+  const fetchOrganizationGcp = React.useCallback(async () => {
+    if (!organizationId) return;
+
+    setIsLoadingOrgGcp(true);
+    try {
+      const { data, error } = await supabase
+        .from('organizations')
+        .select('google_client_id_vault_id, google_client_secret_vault_id, google_developer_token_vault_id')
+        .eq('id', organizationId)
+        .single();
+
+      if (error) {
+        console.error('[Organization GCP] 조회 실패:', error);
+        return;
+      }
+
+      if (data?.google_client_id_vault_id && data?.google_client_secret_vault_id) {
+        setOrganizationGcp({
+          clientId: data.google_client_id_vault_id,
+          clientSecret: data.google_client_secret_vault_id,
+          developerToken: data.google_developer_token_vault_id || '',
+        });
+      }
+    } catch (error) {
+      console.error('[Organization GCP] 조회 에러:', error);
+    } finally {
+      setIsLoadingOrgGcp(false);
+    }
+  }, [organizationId]);
+
+  // API 토큰 목록 조회
+  const fetchTokens = React.useCallback(async () => {
+    setIsLoadingTokens(true);
+    try {
+      const { data, error } = await supabase
+        .from('integrations')
+        .select(`
+          *,
+          advertisers!advertiser_id (
+            id,
+            name
+          )
+        `)
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+
+      // advertisers 관계 데이터를 advertiser_name으로 매핑
+      const mappedData = (data || []).map(item => ({
+        ...item,
+        advertiser_name: item.advertisers?.name || '알 수 없음',
+      }));
+
+      setAllData(mappedData);
+    } catch (error) {
+      console.error('[API Tokens] 조회 실패:', error);
+      toast({
+        title: '토큰 목록 조회 실패',
+        description: error.message,
+        status: 'error',
+        duration: 3000,
+        isClosable: true,
+      });
+    } finally {
+      setIsLoadingTokens(false);
+    }
+  }, [toast]);
+
+  React.useEffect(() => {
+    if (organizationId) {
+      fetchOrganizationGcp();
+    }
+    fetchTokens();
+  }, [organizationId, fetchOrganizationGcp, fetchTokens]);
+
   // 전환 액션 조회 모달 열기
-  const handleOpenConversionModal = () => {
-    // TODO: Supabase Edge Function으로 실제 Google Ads API 호출
-    // 현재는 mock 데이터 사용
-    setSelectedConversionActions([]);
-    onConversionModalOpen();
+  const handleOpenConversionModal = async () => {
+    console.log('[Conversion Action] 조회 시작');
+    console.log('[Conversion Action] formData:', {
+      customerId: formData.customerId || '비어있음',
+      developerToken: formData.developerToken || '비어있음',
+      refreshToken: formData.refreshToken || '비어있음',
+      clientId: formData.clientId || '비어있음',
+      clientSecret: formData.clientSecret || '비어있음',
+      gcpSource,
+    });
+
+    // GCP 정보 결정
+    let clientId = formData.clientId;
+    let clientSecret = formData.clientSecret;
+    let developerToken = formData.developerToken;
+
+    if (gcpSource === 'organization') {
+      clientId = organizationGcp.clientId;
+      clientSecret = organizationGcp.clientSecret;
+      developerToken = organizationGcp.developerToken || formData.developerToken;
+    }
+
+    console.log('[Conversion Action] 사용할 GCP:', {
+      gcpSource,
+      clientId: clientId || '비어있음',
+      clientSecret: clientSecret ? '있음' : '비어있음',
+      developerToken: developerToken || '비어있음',
+    });
+
+    // 필수 필드 확인
+    if (!formData.customerId || !developerToken || !formData.refreshToken || !clientId || !clientSecret) {
+      toast({
+        title: '필수 정보 누락',
+        description: '전환 액션 조회를 위해 Customer ID, Developer Token, Refresh Token, Client ID, Client Secret을 먼저 입력해주세요.',
+        status: 'warning',
+        duration: 4000,
+        isClosable: true,
+      });
+      return;
+    }
+
+    try {
+      // TODO: Edge Function 호출하여 실제 전환 액션 조회
+      // 현재는 mock 데이터 사용
+      setSelectedConversionActions([]);
+      onConversionModalOpen();
+    } catch (error) {
+      console.error('[Conversion Action] 조회 실패:', error);
+      toast({
+        title: '전환 액션 조회 실패',
+        description: error.message || '전환 액션을 불러오는 데 실패했습니다.',
+        status: 'error',
+        duration: 4000,
+        isClosable: true,
+      });
+    }
   };
 
   // 전환 액션 선택 토글
@@ -327,45 +439,280 @@ export default function APITokenTable(props) {
   };
 
   // 최종 연동 실행
-  const handleExecuteSync = () => {
+  const handleExecuteSync = async () => {
     onSyncWarningClose();
 
-    // TODO: Supabase Edge Function으로 실제 데이터 연동 구현
-    // 1. 선택된 플랫폼의 API 토큰 조회
-    // 2. 기간에 맞는 데이터 조회
-    // 3. updateMode에 따라 데이터 삽입/업데이트
-    // 4. 진행 상황 표시
+    try {
+      // 1. 선택된 플랫폼의 Integration 조회
+      const selectedToken = data.find(token => token.platform === syncConfig.selectedPlatform);
 
-    toast({
-      title: '데이터 연동 시작',
-      description: '백그라운드에서 데이터 연동이 진행됩니다. 완료 시 알림을 받게 됩니다.',
-      status: 'info',
-      duration: 5000,
-      isClosable: true,
-    });
+      if (!selectedToken) {
+        toast({
+          title: '연동 실패',
+          description: '선택된 플랫폼을 찾을 수 없습니다.',
+          status: 'error',
+          duration: 3000,
+          isClosable: true,
+        });
+        return;
+      }
+
+      // 2. 날짜 계산
+      let startDate, endDate;
+      const today = new Date();
+
+      switch (syncConfig.dateRange) {
+        case 'yesterday':
+          const yesterday = new Date(today);
+          yesterday.setDate(yesterday.getDate() - 1);
+          startDate = endDate = yesterday.toISOString().split('T')[0];
+          break;
+        case 'lastWeek':
+          const weekAgo = new Date(today);
+          weekAgo.setDate(weekAgo.getDate() - 7);
+          startDate = weekAgo.toISOString().split('T')[0];
+          endDate = new Date(today).toISOString().split('T')[0];
+          break;
+        case 'lastMonth':
+          const monthAgo = new Date(today);
+          monthAgo.setDate(monthAgo.getDate() - 30);
+          startDate = monthAgo.toISOString().split('T')[0];
+          endDate = new Date(today).toISOString().split('T')[0];
+          break;
+        case 'all':
+          const twoYearsAgo = new Date(today);
+          twoYearsAgo.setFullYear(twoYearsAgo.getFullYear() - 2);
+          const yesterdayAll = new Date(today);
+          yesterdayAll.setDate(yesterdayAll.getDate() - 1);
+          startDate = twoYearsAgo.toISOString().split('T')[0];
+          endDate = yesterdayAll.toISOString().split('T')[0];
+          break;
+        case 'custom':
+          startDate = syncConfig.startDate;
+          endDate = syncConfig.endDate;
+          break;
+        default:
+          throw new Error('Invalid date range');
+      }
+
+      // 3. initial-collection Edge Function 호출
+      const response = await fetch(
+        `${process.env.REACT_APP_SUPABASE_URL}/functions/v1/initial-collection`,
+        {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${process.env.REACT_APP_SUPABASE_ANON_KEY}`,
+            'Content-Type': 'application/json',
+            'apikey': process.env.REACT_APP_SUPABASE_ANON_KEY,
+          },
+          body: JSON.stringify({
+            integration_id: selectedToken.id,
+            start_date: startDate,
+            end_date: endDate,
+          }),
+        }
+      );
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || '데이터 수집 시작 실패');
+      }
+
+      toast({
+        title: '데이터 연동 시작',
+        description: `${selectedToken.platform} 데이터 수집이 시작되었습니다. CollectionMonitor에서 진행 상황을 확인하세요.`,
+        status: 'success',
+        duration: 5000,
+        isClosable: true,
+      });
+
+    } catch (error) {
+      console.error('데이터 연동 실패:', error);
+      toast({
+        title: '연동 실패',
+        description: error.message,
+        status: 'error',
+        duration: 5000,
+        isClosable: true,
+      });
+    }
   };
 
-  const handleDelete = (tokenId) => {
-    // Mock 삭제 (향후 Supabase API 호출로 교체)
-    setAllData(prevData => prevData.filter(item => item.id !== tokenId));
-    toast({
-      title: 'API 토큰 삭제 완료',
-      description: 'API 토큰이 삭제되었습니다.',
-      status: 'success',
-      duration: 3000,
-      isClosable: true,
-    });
+  // 초기 수집 트리거 함수
+  const triggerInitialCollection = async (integrationId, formData) => {
+    try {
+      // 날짜 범위 계산
+      let startDate, endDate;
+      const today = new Date();
+      const yesterday = new Date(today);
+      yesterday.setDate(yesterday.getDate() - 1);
+      const yesterdayStr = yesterday.toISOString().split('T')[0];
+
+      const twoYearsAgo = new Date(today);
+      twoYearsAgo.setFullYear(today.getFullYear() - 2);
+
+      switch (formData.initialCollectionRange) {
+        case 'yesterday':
+          startDate = endDate = yesterdayStr;
+          break;
+        case 'lastWeek':
+          const weekAgo = new Date(today);
+          weekAgo.setDate(weekAgo.getDate() - 7);
+          startDate = weekAgo.toISOString().split('T')[0];
+          endDate = yesterdayStr;
+          break;
+        case 'lastMonth':
+          const monthAgo = new Date(today);
+          monthAgo.setDate(monthAgo.getDate() - 30);
+          startDate = monthAgo.toISOString().split('T')[0];
+          endDate = yesterdayStr;
+          break;
+        case 'maxRange':
+          startDate = twoYearsAgo.toISOString().split('T')[0];
+          endDate = yesterdayStr;
+          break;
+        case 'custom':
+          // 2년 제약 검증
+          const customStart = new Date(formData.customStartDate);
+          const customEnd = new Date(formData.customEndDate);
+
+          if (customStart < twoYearsAgo) {
+            toast({
+              title: '날짜 범위 오류',
+              description: '최대 2년 전까지의 데이터만 수집할 수 있습니다.',
+              status: 'warning',
+              duration: 5000,
+              isClosable: true,
+            });
+            return false;
+          }
+
+          if (customEnd > yesterday) {
+            toast({
+              title: '날짜 범위 오류',
+              description: '어제까지의 날짜만 선택할 수 있습니다.',
+              status: 'warning',
+              duration: 5000,
+              isClosable: true,
+            });
+            return false;
+          }
+
+          if (customStart > customEnd) {
+            toast({
+              title: '날짜 범위 오류',
+              description: '시작 날짜는 종료 날짜보다 빠를 수 없습니다.',
+              status: 'warning',
+              duration: 5000,
+              isClosable: true,
+            });
+            return false;
+          }
+
+          startDate = formData.customStartDate;
+          endDate = formData.customEndDate;
+          break;
+        default:
+          return; // skip
+      }
+
+      // initial-collection Edge Function 호출
+      const response = await fetch(
+        `${process.env.REACT_APP_SUPABASE_URL}/functions/v1/initial-collection`,
+        {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${process.env.REACT_APP_SUPABASE_ANON_KEY}`,
+            'Content-Type': 'application/json',
+            'apikey': process.env.REACT_APP_SUPABASE_ANON_KEY,
+          },
+          body: JSON.stringify({
+            integration_id: integrationId,
+            start_date: startDate,
+            end_date: endDate,
+          }),
+        }
+      );
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || '초기 데이터 수집 시작 실패');
+      }
+
+      toast({
+        title: '데이터 수집 시작',
+        description: `${startDate} ~ ${endDate} 기간의 데이터 수집이 시작되었습니다. 하단 모니터에서 진행 상황을 확인하세요.`,
+        status: 'success',
+        duration: 5000,
+        isClosable: true,
+      });
+
+      return true;
+
+    } catch (error) {
+      console.error('초기 데이터 수집 실패:', error);
+      toast({
+        title: '수집 시작 실패',
+        description: error.message,
+        status: 'error',
+        duration: 5000,
+        isClosable: true,
+      });
+      return false;
+    }
   };
 
-  const handleSave = () => {
+  const handleDelete = async (tokenId) => {
+    try {
+      const { error } = await supabase
+        .from('integrations')
+        .delete()
+        .eq('id', tokenId);
+
+      if (error) throw error;
+
+      toast({
+        title: 'API 토큰 삭제 완료',
+        description: 'API 토큰이 삭제되었습니다.',
+        status: 'success',
+        duration: 3000,
+        isClosable: true,
+      });
+
+      fetchTokens();
+    } catch (error) {
+      console.error('[API Token] 삭제 실패:', error);
+      toast({
+        title: '삭제 실패',
+        description: error.message,
+        status: 'error',
+        duration: 3000,
+        isClosable: true,
+      });
+    }
+  };
+
+  const handleSave = async () => {
     // 플랫폼별 필수 필드 검증
     const isGoogleAds = formData.platform === 'Google Ads';
     const isNaverAds = formData.platform === 'Naver Ads';
+
+    // GCP 검증
+    let clientId = formData.clientId;
+    let clientSecret = formData.clientSecret;
+    let developerToken = formData.developerToken;
+
+    if (isGoogleAds && gcpSource === 'organization') {
+      clientId = organizationGcp.clientId;
+      clientSecret = organizationGcp.clientSecret;
+      developerToken = organizationGcp.developerToken || formData.developerToken;
+    }
+
     const hasRequiredFields = formData.advertiser && formData.platform &&
       (isGoogleAds
-        ? formData.customerId && formData.managerAccountId && formData.developerToken &&
+        ? formData.customerId && formData.managerAccountId && developerToken &&
           formData.targetConversionActionId.length > 0 && formData.refreshToken &&
-          formData.clientId && formData.clientSecret
+          clientId && clientSecret
         : isNaverAds
         ? formData.accountId && formData.apiToken && formData.secretKey
         : formData.accountId && formData.apiToken);
@@ -381,50 +728,81 @@ export default function APITokenTable(props) {
       return;
     }
 
-    if (editMode && selectedToken) {
-      // Mock 수정 (향후 Supabase API 호출로 교체)
-      setAllData(prevData =>
-        prevData.map(item =>
-          item.id === selectedToken.id
-            ? {
-                ...item,
-                ...formData,
-                lastUpdated: new Date().toISOString().split('T')[0].replace(/-/g, '.'),
-              }
-            : item
-        )
-      );
-      toast({
-        title: 'API 토큰 수정 완료',
-        description: 'API 토큰이 수정되었습니다.',
-        status: 'success',
-        duration: 3000,
-        isClosable: true,
-      });
-    } else {
-      // Mock 추가 (향후 Supabase API 호출로 교체)
-      const newToken = {
-        id: allData.length + 1,
-        advertiserId: advertiserId, // 현재 로그인한 사용자의 브랜드 ID
-        ...formData,
-        lastUpdated: new Date().toISOString().split('T')[0].replace(/-/g, '.'),
+    try {
+      const tokenData = {
+        advertiserId: formData.advertiserId,
+        platform: formData.platform,
+        status: formData.status,
+        // Google Ads
+        ...(isGoogleAds && {
+          customerId: formData.customerId,
+          managerAccountId: formData.managerAccountId,
+          developerToken: developerToken,
+          targetConversionActionId: formData.targetConversionActionId[0],
+          refreshToken: formData.refreshToken,
+          clientId: clientId,
+          clientSecret: clientSecret,
+        }),
+        // Naver Ads
+        ...(isNaverAds && {
+          accountId: formData.accountId,
+          apiToken: formData.apiToken,
+          secretKey: formData.secretKey,
+        }),
+        // Meta/Kakao Ads
+        ...(!isGoogleAds && !isNaverAds && {
+          accountId: formData.accountId,
+          apiToken: formData.apiToken,
+        }),
       };
-      setAllData(prevData => [...prevData, newToken]);
+
+      if (editMode && selectedToken) {
+        // 수정 모드: 바로 저장
+        await updateApiToken(selectedToken.id, tokenData);
+
+        toast({
+          title: 'API 토큰 수정 완료',
+          description: 'API 토큰이 수정되었습니다.',
+          status: 'success',
+          duration: 3000,
+          isClosable: true,
+        });
+
+        onClose();
+        fetchTokens();
+      } else {
+        // 신규 추가 모드: 토큰 저장 후 초기 수집 모달로 이동
+        const result = await createApiToken(tokenData);
+        setSavedIntegrationId(result?.id);
+
+        toast({
+          title: 'API 토큰 추가 완료',
+          description: '초기 데이터 수집을 설정합니다.',
+          status: 'success',
+          duration: 2000,
+          isClosable: true,
+        });
+
+        // 토큰 추가 모달 닫고 초기 수집 모달 열기
+        onClose();
+        fetchTokens();
+        onInitialCollectionModalOpen();
+      }
+    } catch (error) {
+      console.error('[API Token] 저장 실패:', error);
       toast({
-        title: 'API 토큰 추가 완료',
-        description: '새로운 API 토큰이 추가되었습니다.',
-        status: 'success',
+        title: '저장 실패',
+        description: error.message,
+        status: 'error',
         duration: 3000,
         isClosable: true,
       });
     }
-
-    onClose();
   };
 
   const columns = [
-    columnHelper.accessor('advertiser', {
-      id: 'advertiser',
+    columnHelper.accessor('advertiser_name', {
+      id: 'advertiser_name',
       header: () => (
         <Text
           justifyContent="space-between"
@@ -483,18 +861,18 @@ export default function APITokenTable(props) {
       ),
       cell: (info) => {
         const row = info.row.original;
-        // Google Ads: customerId 표시
+        // Google Ads: customer_id 표시
         if (row.platform === 'Google Ads') {
           return (
             <Text color={textColor} fontSize="sm" fontWeight="500">
-              {row.customerId || '-'}
+              {row.customer_id || '-'}
             </Text>
           );
         }
-        // 기타 플랫폼: accountId 표시
+        // 기타 플랫폼: account_id 표시
         return (
           <Text color={textColor} fontSize="sm" fontWeight="500">
-            {info.getValue() || '-'}
+            {row.account_id || '-'}
           </Text>
         );
       },
@@ -513,24 +891,24 @@ export default function APITokenTable(props) {
       ),
       cell: (info) => {
         const row = info.row.original;
-        // Google Ads: developerToken 표시
+        // Google Ads: developer_token_vault_id 표시
         if (row.platform === 'Google Ads') {
           return (
             <Text color="gray.400" fontSize="sm" fontWeight="500" fontFamily="monospace">
-              {row.developerToken ? row.developerToken.substring(0, 20) + '***' : '-'}
+              {row.developer_token_vault_id ? '••••••••' : '-'}
             </Text>
           );
         }
-        // 기타 플랫폼: apiToken 표시
+        // 기타 플랫폼: api_token_vault_id 표시
         return (
           <Text color="gray.400" fontSize="sm" fontWeight="500" fontFamily="monospace">
-            {info.getValue() || '-'}
+            {row.api_token_vault_id ? '••••••••' : '-'}
           </Text>
         );
       },
     }),
-    columnHelper.accessor('lastUpdated', {
-      id: 'lastUpdated',
+    columnHelper.accessor('updated_at', {
+      id: 'updated_at',
       header: () => (
         <Text
           justifyContent="space-between"
@@ -543,7 +921,7 @@ export default function APITokenTable(props) {
       ),
       cell: (info) => (
         <Text color={textColor} fontSize="sm" fontWeight="500">
-          {info.getValue()}
+          {info.getValue() ? new Date(info.getValue()).toLocaleDateString('ko-KR') : '-'}
         </Text>
       ),
     }),
@@ -784,7 +1162,7 @@ export default function APITokenTable(props) {
                       {availableAdvertisers && availableAdvertisers.map((adv) => (
                         <MenuItem
                           key={adv.id}
-                          onClick={() => setFormData({ ...formData, advertiser: adv.name })}
+                          onClick={() => setFormData({ ...formData, advertiser: adv.name, advertiserId: adv.id })}
                           bg={formData.advertiser === adv.name ? brandColor : 'transparent'}
                           color={formData.advertiser === adv.name ? 'white' : textColor}
                           _hover={{
@@ -888,6 +1266,36 @@ export default function APITokenTable(props) {
             {/* Google Ads 전용 필드 */}
             {formData.platform === 'Google Ads' ? (
               <>
+                {/* GCP 소스 선택 */}
+                <FormControl mb={4}>
+                  <FormLabel fontSize="sm" fontWeight="500" mb={2}>
+                    GCP 설정 방식
+                  </FormLabel>
+                  <RadioGroup value={gcpSource} onChange={setGcpSource}>
+                    <Stack spacing={2}>
+                      <Radio value="organization" colorScheme="brand" size="sm">
+                        <HStack>
+                          <Text fontSize="sm" fontWeight="400">대행사 GCP 사용</Text>
+                          {organizationGcp.clientId && (
+                            <Badge colorScheme="green" fontSize="xs">설정됨</Badge>
+                          )}
+                        </HStack>
+                      </Radio>
+                      <Radio value="custom" colorScheme="brand" size="sm">
+                        <Text fontSize="sm" fontWeight="400">직접 입력</Text>
+                      </Radio>
+                    </Stack>
+                  </RadioGroup>
+                  {gcpSource === 'organization' && !organizationGcp.clientId && (
+                    <Alert status="warning" mt={2} fontSize="xs">
+                      <AlertIcon boxSize="12px" />
+                      <AlertDescription fontSize="xs">
+                        대행사 GCP 설정이 없습니다. 관리자 대시보드에서 먼저 설정해주세요.
+                      </AlertDescription>
+                    </Alert>
+                  )}
+                </FormControl>
+
                 <FormControl mb={4} isRequired>
                   <FormLabel fontSize="sm" fontWeight="500" mb={2}>
                     광고 계정 ID *
@@ -896,7 +1304,7 @@ export default function APITokenTable(props) {
                     placeholder="Customer ID (예: 1234567890)"
                     value={formData.customerId}
                     onChange={(e) => setFormData({ ...formData, customerId: e.target.value })}
-                    
+
                     fontSize="sm"
                   />
                 </FormControl>
@@ -923,9 +1331,15 @@ export default function APITokenTable(props) {
                     placeholder="Developer Token"
                     value={formData.developerToken}
                     onChange={(e) => setFormData({ ...formData, developerToken: e.target.value })}
-                    
+                    isDisabled={gcpSource === 'organization' && organizationGcp.developerToken}
+
                     fontSize="sm"
                   />
+                  {gcpSource === 'organization' && organizationGcp.developerToken && (
+                    <Text fontSize="xs" color="green.500" mt={1}>
+                      ✓ 대행사 설정 사용 중
+                    </Text>
+                  )}
                 </FormControl>
 
                 <FormControl mb={4} isRequired>
@@ -998,32 +1412,44 @@ export default function APITokenTable(props) {
                   </VStack>
                 </FormControl>
 
-                <FormControl mb={4} isRequired>
-                  <FormLabel fontSize="sm" fontWeight="500" mb={2}>
-                    GCP Client ID *
-                  </FormLabel>
-                  <Input
-                    placeholder="Client ID"
-                    value={formData.clientId}
-                    onChange={(e) => setFormData({ ...formData, clientId: e.target.value })}
-                    
-                    fontSize="sm"
-                  />
-                </FormControl>
+                {gcpSource === 'custom' && (
+                  <>
+                    <FormControl mb={4} isRequired>
+                      <FormLabel fontSize="sm" fontWeight="500" mb={2}>
+                        GCP Client ID *
+                      </FormLabel>
+                      <Input
+                        placeholder="Client ID"
+                        value={formData.clientId}
+                        onChange={(e) => setFormData({ ...formData, clientId: e.target.value })}
 
-                <FormControl mb={4} isRequired>
-                  <FormLabel fontSize="sm" fontWeight="500" mb={2}>
-                    GCP Client Secret *
-                  </FormLabel>
-                  <Input
-                    type="password"
-                    placeholder="Client Secret"
-                    value={formData.clientSecret}
-                    onChange={(e) => setFormData({ ...formData, clientSecret: e.target.value })}
-                    
-                    fontSize="sm"
-                  />
-                </FormControl>
+                        fontSize="sm"
+                      />
+                    </FormControl>
+
+                    <FormControl mb={4} isRequired>
+                      <FormLabel fontSize="sm" fontWeight="500" mb={2}>
+                        GCP Client Secret *
+                      </FormLabel>
+                      <Input
+                        type="password"
+                        placeholder="Client Secret"
+                        value={formData.clientSecret}
+                        onChange={(e) => setFormData({ ...formData, clientSecret: e.target.value })}
+
+                        fontSize="sm"
+                      />
+                    </FormControl>
+                  </>
+                )}
+                {gcpSource === 'organization' && organizationGcp.clientId && (
+                  <Alert status="info" mb={4} fontSize="xs">
+                    <AlertIcon boxSize="12px" />
+                    <AlertDescription fontSize="xs">
+                      대행사의 GCP 설정을 사용합니다. Client ID와 Client Secret은 자동으로 적용됩니다.
+                    </AlertDescription>
+                  </Alert>
+                )}
               </>
             ) : formData.platform === 'Naver Ads' ? (
               <>
@@ -1150,10 +1576,10 @@ export default function APITokenTable(props) {
           </ModalBody>
 
           <ModalFooter>
-            <Button colorScheme="brand" mr={3} onClick={handleSave}>
-              저장
+            <Button onClick={onClose} mr={3}>취소</Button>
+            <Button colorScheme="brand" onClick={handleSave}>
+              {editMode ? '저장' : '다음'}
             </Button>
-            <Button onClick={onClose}>취소</Button>
           </ModalFooter>
         </ModalContent>
       </Modal>
@@ -1250,7 +1676,7 @@ export default function APITokenTable(props) {
                     textAlign='left'>
                     {syncConfig.selectedPlatform ?
                       data.find(token => token.platform === syncConfig.selectedPlatform) ?
-                        `${data.find(token => token.platform === syncConfig.selectedPlatform).advertiser} - ${syncConfig.selectedPlatform}`
+                        `${data.find(token => token.platform === syncConfig.selectedPlatform).advertiser_name} - ${syncConfig.selectedPlatform}`
                         : syncConfig.selectedPlatform
                       : '연동할 매체를 선택하세요'}
                   </MenuButton>
@@ -1272,7 +1698,7 @@ export default function APITokenTable(props) {
                         justifyContent='center'
                         textAlign='center'
                         minH='auto'>
-                        {token.advertiser} - {token.platform}
+                        {token.advertiser_name} - {token.platform}
                       </MenuItem>
                     ))}
                   </MenuList>
@@ -1459,6 +1885,193 @@ export default function APITokenTable(props) {
               size="sm"
             >
               취소
+            </Button>
+          </ModalFooter>
+        </ModalContent>
+      </Modal>
+
+      {/* Initial Collection Setup Modal */}
+      <Modal isOpen={isInitialCollectionModalOpen} onClose={onInitialCollectionModalClose} size="lg" isCentered>
+        <ModalOverlay />
+        <ModalContent>
+          <ModalHeader fontSize="lg" fontWeight="600">
+            초기 데이터 수집 설정
+          </ModalHeader>
+          <ModalCloseButton />
+          <ModalBody pb={6}>
+            <Text fontSize="sm" color="gray.600" mb={4}>
+              토큰이 성공적으로 저장되었습니다. 과거 데이터 수집을 설정하세요.
+            </Text>
+
+            <FormControl mb={4}>
+              <FormLabel fontSize="sm" fontWeight="600" mb={2}>
+                수집 기간 선택
+              </FormLabel>
+              <Text fontSize="xs" color="gray.500" mb={3}>
+                최대 2년 전까지 데이터를 수집할 수 있습니다.
+              </Text>
+              <Menu>
+                <MenuButton
+                  as={Button}
+                  rightIcon={<Icon as={MdKeyboardArrowDown} />}
+                  bg={inputBg}
+                  border='1px solid'
+                  borderColor={borderColor}
+                  color={textColor}
+                  fontWeight='500'
+                  fontSize='sm'
+                  _hover={{ bg: bgHover }}
+                  _active={{ bg: bgHover }}
+                  px='16px'
+                  h='44px'
+                  borderRadius='12px'
+                  textAlign='left'
+                  w="100%">
+                  {formData.initialCollectionRange === 'yesterday' ? '어제' :
+                   formData.initialCollectionRange === 'lastWeek' ? '지난 주 (7일)' :
+                   formData.initialCollectionRange === 'lastMonth' ? '지난 달 (30일)' :
+                   formData.initialCollectionRange === 'maxRange' ? '최대 (2년)' :
+                   formData.initialCollectionRange === 'custom' ? '직접 입력' :
+                   formData.initialCollectionRange === 'skip' ? '나중에 하기' : '지난 달 (30일)'}
+                </MenuButton>
+                <MenuList minW='auto' w='fit-content' px='8px' py='8px'>
+                  {[
+                    {value: 'yesterday', label: '어제'},
+                    {value: 'lastWeek', label: '지난 주 (7일)'},
+                    {value: 'lastMonth', label: '지난 달 (30일)'},
+                    {value: 'maxRange', label: '최대 (2년)'},
+                    {value: 'custom', label: '직접 입력'},
+                    {value: 'skip', label: '나중에 하기'},
+                  ].map((option) => (
+                    <MenuItem
+                      key={option.value}
+                      onClick={() => setFormData({ ...formData, initialCollectionRange: option.value })}
+                      bg={formData.initialCollectionRange === option.value ? brandColor : 'transparent'}
+                      color={formData.initialCollectionRange === option.value ? 'white' : textColor}
+                      _hover={{
+                        bg: formData.initialCollectionRange === option.value ? brandColor : bgHover,
+                      }}
+                      fontWeight={formData.initialCollectionRange === option.value ? '600' : '500'}
+                      fontSize='sm'
+                      px='12px'
+                      py='8px'
+                      borderRadius='8px'
+                      justifyContent='center'
+                      textAlign='center'
+                      minH='auto'>
+                      {option.label}
+                    </MenuItem>
+                  ))}
+                </MenuList>
+              </Menu>
+            </FormControl>
+
+            {/* 직접 입력 날짜 선택 */}
+            {formData.initialCollectionRange === 'custom' && (
+              <FormControl mb={4}>
+                <FormLabel fontSize="sm" fontWeight="500" mb={2}>
+                  수집 기간 선택 (최대 2년)
+                </FormLabel>
+                <Flex gap={3}>
+                  <Input
+                    type="date"
+                    value={formData.customStartDate}
+                    onChange={(e) => setFormData({ ...formData, customStartDate: e.target.value })}
+                    placeholder="시작 날짜"
+                    bg={inputBg}
+                    border='1px solid'
+                    borderColor={borderColor}
+                    color={textColor}
+                    fontSize='sm'
+                    fontWeight='500'
+                    _placeholder={{ color: 'secondaryGray.600', fontWeight: '400' }}
+                    h='44px'
+                    borderRadius='12px'
+                    max={(() => {
+                      const yesterday = new Date();
+                      yesterday.setDate(yesterday.getDate() - 1);
+                      return yesterday.toISOString().split('T')[0];
+                    })()}
+                    min={new Date(new Date().setFullYear(new Date().getFullYear() - 2)).toISOString().split('T')[0]}
+                  />
+                  <Text alignSelf="center" fontSize="sm" color="gray.500">~</Text>
+                  <Input
+                    type="date"
+                    value={formData.customEndDate}
+                    onChange={(e) => setFormData({ ...formData, customEndDate: e.target.value })}
+                    placeholder="종료 날짜"
+                    bg={inputBg}
+                    border='1px solid'
+                    borderColor={borderColor}
+                    color={textColor}
+                    fontSize='sm'
+                    fontWeight='500'
+                    _placeholder={{ color: 'secondaryGray.600', fontWeight: '400' }}
+                    h='44px'
+                    borderRadius='12px'
+                    max={(() => {
+                      const yesterday = new Date();
+                      yesterday.setDate(yesterday.getDate() - 1);
+                      return yesterday.toISOString().split('T')[0];
+                    })()}
+                    min={formData.customStartDate || new Date(new Date().setFullYear(new Date().getFullYear() - 2)).toISOString().split('T')[0]}
+                  />
+                </Flex>
+              </FormControl>
+            )}
+
+            {formData.initialCollectionRange === 'skip' ? (
+              <Alert status="info" borderRadius="md" fontSize="sm">
+                <AlertIcon />
+                <Box>
+                  <AlertTitle fontSize="sm">나중에 수집하기</AlertTitle>
+                  <AlertDescription fontSize="xs">
+                    스케줄러만 활성화됩니다. 내일 새벽부터 매일 자동 수집됩니다.
+                  </AlertDescription>
+                </Box>
+              </Alert>
+            ) : formData.initialCollectionRange !== 'skip' && (
+              <Alert status="warning" borderRadius="md" fontSize="sm">
+                <AlertIcon />
+                <Box>
+                  <AlertTitle fontSize="sm">주의사항</AlertTitle>
+                  <AlertDescription fontSize="xs">
+                    데이터 수집에는 시간이 소요될 수 있습니다. CollectionMonitor에서 진행 상황을 확인할 수 있습니다.
+                  </AlertDescription>
+                </Box>
+              </Alert>
+            )}
+          </ModalBody>
+
+          <ModalFooter>
+            <Button onClick={onInitialCollectionModalClose} mr={3}>
+              {formData.initialCollectionRange === 'skip' ? '건너뛰기' : '취소'}
+            </Button>
+            <Button
+              colorScheme="brand"
+              isLoading={isCollectionStarting}
+              loadingText="시작 중..."
+              onClick={async () => {
+                if (formData.initialCollectionRange === 'skip') {
+                  onInitialCollectionModalClose();
+                  toast({
+                    title: '설정 완료',
+                    description: '스케줄러가 활성화되었습니다. 내일 새벽부터 자동 수집됩니다.',
+                    status: 'info',
+                    duration: 5000,
+                    isClosable: true,
+                  });
+                } else {
+                  setIsCollectionStarting(true);
+                  const success = await triggerInitialCollection(savedIntegrationId, formData);
+                  setIsCollectionStarting(false);
+                  if (success) {
+                    onInitialCollectionModalClose();
+                  }
+                }
+              }}
+            >
+              {formData.initialCollectionRange === 'skip' ? '완료' : '시작'}
             </Button>
           </ModalFooter>
         </ModalContent>

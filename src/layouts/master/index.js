@@ -1,10 +1,11 @@
 // Chakra imports
-import { Portal, Box, useDisclosure } from '@chakra-ui/react';
+import { Portal, Box, useDisclosure, Spinner, Center } from '@chakra-ui/react';
 import Footer from 'components/footer/FooterAdmin.js';
 // Layout components
 import Navbar from 'components/navbar/NavbarAdmin.js';
 import Sidebar from 'components/sidebar/Sidebar.js';
 import { SidebarContext } from 'contexts/SidebarContext';
+import { useAuth } from 'contexts/AuthContext';
 import React, { useState } from 'react';
 import { Navigate, Route, Routes } from 'react-router-dom';
 import masterRoutes from 'masterRoutes.js';
@@ -12,9 +13,25 @@ import masterRoutes from 'masterRoutes.js';
 // Custom Chakra theme
 export default function MasterLayout(props) {
   const { ...rest } = props;
+  const { user, loading } = useAuth();
   // states and functions
   const [fixed] = useState(false);
   const [toggleSidebar, setToggleSidebar] = useState(false);
+  const { onOpen } = useDisclosure();
+
+  // 로딩 중
+  if (loading) {
+    return (
+      <Center h="100vh">
+        <Spinner size="xl" />
+      </Center>
+    );
+  }
+
+  // 인증되지 않은 사용자 리다이렉트
+  if (!user) {
+    return <Navigate to="/auth/sign-in" replace />;
+  }
   // functions for changing the states from components
   const getRoute = () => {
     return window.location.pathname !== '/master/full-screen-maps';
@@ -104,7 +121,6 @@ export default function MasterLayout(props) {
   };
 
   document.documentElement.dir = 'ltr';
-  const { onOpen } = useDisclosure();
 
   return (
     <Box>

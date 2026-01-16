@@ -13,6 +13,9 @@ import {
   Thead,
   Tr,
   useColorModeValue,
+  Spinner,
+  Alert,
+  AlertIcon,
 } from '@chakra-ui/react';
 import {
   createColumnHelper,
@@ -27,6 +30,8 @@ import Menu from 'components/menu/MainMenu';
 import { AndroidLogo, AppleLogo, WindowsLogo } from 'components/icons/Icons';
 import * as React from 'react';
 import { useDateRange } from 'contexts/DateRangeContext';
+import { useAuth } from 'contexts/AuthContext';
+import { getMediaROASAnalysis } from 'services/supabaseService';
 // Assets
 
 const columnHelper = createColumnHelper();
@@ -35,10 +40,58 @@ const columnHelper = createColumnHelper();
 export default function ComplexTable(props) {
   const { tableData } = props;
   const { startDate, endDate } = useDateRange();
+  const { currentAdvertiserId, availableAdvertisers } = useAuth();
   const [sorting, setSorting] = React.useState([]);
+  const [mediaData, setMediaData] = React.useState([]);
+  const [isLoading, setIsLoading] = React.useState(true);
+  const [error, setError] = React.useState(null);
   const textColor = useColorModeValue('secondaryGray.900', 'white');
   const iconColor = useColorModeValue('secondaryGray.500', 'white');
   const borderColor = useColorModeValue('gray.200', 'whiteAlpha.100');
+
+  // Supabase에서 매체별 ROAS 데이터 조회
+  React.useEffect(() => {
+    const fetchData = async () => {
+      try {
+        setIsLoading(true);
+        setError(null);
+
+        // availableAdvertiserIds 계산
+        const availableAdvertiserIds = availableAdvertisers?.map(adv => adv.id) || [];
+
+        const data = await getMediaROASAnalysis({
+          advertiserId: currentAdvertiserId,
+          availableAdvertiserIds,
+          startDate,
+          endDate,
+        });
+
+        // tech 정보 추가 (UI용)
+        const techMapping = {
+          'Google': ['apple', 'android'],
+          'Naver': ['apple', 'windows'],
+          'Meta': ['android', 'windows'],
+          'Kakao': ['apple'],
+          'Criteo': ['windows'],
+        };
+
+        const enhancedData = data.map(item => ({
+          ...item,
+          tech: techMapping[item.name] || [],
+          date: formatDateRange(startDate, endDate),
+        }));
+
+        setMediaData(enhancedData);
+      } catch (err) {
+        console.error("매체별 ROAS 분석 데이터 조회 실패:", err);
+        setError("데이터를 불러오는데 실패했습니다.");
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchData();
+  }, [currentAdvertiserId, availableAdvertisers, startDate, endDate]);
 
   // 날짜 포맷팅 함수
   const formatDateRange = (start, end) => {
@@ -57,34 +110,7 @@ export default function ComplexTable(props) {
     return `${startDay}.${startMonth}.${startYear} - ${endDay}.${endMonth}.${endYear}`;
   };
 
-  // 매체별 ROAS 데이터 생성
-  const generateMediaData = React.useMemo(() => {
-    const mediaList = [
-      { name: 'Google', tech: ['apple', 'android'] },
-      { name: 'Naver', tech: ['apple', 'windows'] },
-      { name: 'Meta', tech: ['android', 'windows'] },
-      { name: 'Kakao', tech: ['apple'] },
-      { name: 'Criteo', tech: ['windows'] },
-    ];
-
-    const roasValues = mediaList.map(() => Math.floor(Math.random() * 400) + 100);
-    const maxRoas = Math.max(...roasValues);
-
-    return mediaList.map((media, index) => {
-      const roas = roasValues[index];
-      const progressPercent = Math.round((roas / maxRoas) * 100);
-
-      return {
-        name: media.name,
-        tech: media.tech,
-        date: formatDateRange(startDate, endDate),
-        roas: roas,
-        progress: progressPercent,
-      };
-    });
-  }, [startDate, endDate]);
-
-  let defaultData = tableData || generateMediaData;
+  let defaultData = mediaData;
   const columns = [
     columnHelper.accessor('name', {
       id: 'name',
@@ -95,7 +121,7 @@ export default function ComplexTable(props) {
           fontSize={{ sm: '10px', lg: '12px' }}
           color="gray.400"
         >
-          NAME
+          매체
         </Text>
       ),
       cell: (info) => (
@@ -106,8 +132,8 @@ export default function ComplexTable(props) {
         </Flex>
       ),
     }),
-    columnHelper.accessor('tech', {
-      id: 'tech',
+    columnHelper.accessor('progress', {
+      id: 'status',
       header: () => (
         <Text
           justifyContent="space-between"
@@ -115,40 +141,30 @@ export default function ComplexTable(props) {
           fontSize={{ sm: '10px', lg: '12px' }}
           color="gray.400"
         >
-          STATUS
+          상태
         </Text>
       ),
-      cell: (info) => (
-        <Flex align="center">
-          {info.getValue().map((item, key) => {
-            if (item === 'apple') {
-              return (
-                <AppleLogo
-                  key={key}
-                  color={iconColor}
-                  me="16px"
-                  h="18px"
-                  w="15px"
-                />
-              );
-            } else if (item === 'android') {
-              return (
-                <AndroidLogo
-                  key={key}
-                  color={iconColor}
-                  me="16px"
-                  h="18px"
-                  w="16px"
-                />
-              );
-            } else if (item === 'windows') {
-              return (
-                <WindowsLogo key={key} color={iconColor} h="18px" w="19px" />
-              );
-            }
-          })}
-        </Flex>
-      ),
+      cell: (info) => {
+        const progressPercent = info.getValue();
+        let status = '보통';
+        let statusColor = 'blue.500';
+
+        if (progressPercent >= 80) {
+          status = '좋음';
+          statusColor = 'green.500';
+        } else if (progressPercent < 50) {
+          status = '나쁨';
+          statusColor = 'red.500';
+        }
+
+        return (
+          <Flex align="center">
+            <Text color={statusColor} fontSize="sm" fontWeight="700">
+              {status}
+            </Text>
+          </Flex>
+        );
+      },
     }),
     columnHelper.accessor('date', {
       id: 'date',
@@ -159,7 +175,7 @@ export default function ComplexTable(props) {
           fontSize={{ sm: '10px', lg: '12px' }}
           color="gray.400"
         >
-          DATE
+          기간
         </Text>
       ),
       cell: (info) => (
@@ -211,10 +227,10 @@ export default function ComplexTable(props) {
   ];
   const [data, setData] = React.useState(() => [...defaultData]);
 
-  // startDate, endDate 변경 시 데이터 업데이트
+  // mediaData 변경 시 data 업데이트
   React.useEffect(() => {
-    setData([...generateMediaData]);
-  }, [generateMediaData]);
+    setData([...mediaData]);
+  }, [mediaData]);
 
   const table = useReactTable({
     data,
@@ -227,6 +243,7 @@ export default function ComplexTable(props) {
     getSortedRowModel: getSortedRowModel(),
     debugTable: true,
   });
+
   return (
     <Card
       flexDirection="column"
@@ -245,9 +262,26 @@ export default function ComplexTable(props) {
         </Text>
         <Menu />
       </Flex>
-      <Box>
-        <Table variant="simple" color="gray.500" mb="24px" mt="12px">
-          <Thead>
+
+      {isLoading ? (
+        <Flex justify='center' align='center' minH='200px'>
+          <Spinner size='xl' color='brand.500' />
+        </Flex>
+      ) : error ? (
+        <Alert status='error' mx='25px' mb='20px'>
+          <AlertIcon />
+          {error}
+        </Alert>
+      ) : mediaData.length === 0 ? (
+        <Flex justify='center' align='center' minH='200px'>
+          <Text color='gray.500' fontSize='md'>
+            선택한 기간에 데이터가 없습니다.
+          </Text>
+        </Flex>
+      ) : (
+        <Box>
+          <Table variant="simple" color="gray.500" mb="24px" mt="12px">
+            <Thead>
             {table.getHeaderGroups().map((headerGroup) => (
               <Tr key={headerGroup.id}>
                 {headerGroup.headers.map((header) => {
@@ -309,6 +343,7 @@ export default function ComplexTable(props) {
           </Tbody>
         </Table>
       </Box>
+      )}
     </Card>
   );
 }

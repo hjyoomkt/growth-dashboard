@@ -25,6 +25,7 @@ import { MdOutlineRemoveRedEye, MdCheckCircle } from "react-icons/md";
 import { RiEyeCloseLine } from "react-icons/ri";
 import { FcGoogle } from "react-icons/fc";
 import { FaFacebook } from "react-icons/fa";
+import { supabase } from "config/supabase";
 
 function InviteSignUpForm({ initialCode, onSuccess }) {
   const [inviteCode, setInviteCode] = useState(initialCode || "");
@@ -40,6 +41,7 @@ function InviteSignUpForm({ initialCode, onSuccess }) {
     // 신규 광고주 등록 시 추가 정보
     organizationName: "",
     businessNumber: "",
+    websiteUrl: "",
     contactEmail: "",
     contactPhone: "",
   });
@@ -71,74 +73,81 @@ function InviteSignUpForm({ initialCode, onSuccess }) {
     setValidatingCode(true);
     setCodeError(null);
 
-    // TODO: Supabase 연동 시 실제 검증 로직
-    // Mock 데이터로 시뮬레이션 (즉시 검증)
-    setTimeout(() => {
-      if (code === "DEMO-1234" || code.startsWith("NIKE-") || code.startsWith("ABC-") || code.startsWith("INVITE-")) {
-        // 초대 타입 판별
-        const isNewAdvertiser = code.startsWith("INVITE-NEW-ORG-"); // 신규 조직 생성
-        const isNewBrand = code.startsWith("INVITE-NEW-BRAND-"); // 기존 조직에 브랜드 추가
-
-        setInviteData({
-          organizationName: isNewAdvertiser || isNewBrand ? null : "나이키 코리아",
-          advertiserName: isNewAdvertiser || isNewBrand ? null : "나이키 브랜드 A",
-          role: isNewAdvertiser || isNewBrand ? "advertiser_admin" : code.includes("ORG") ? "org_manager" : "editor",
-          invitedBy: "김철수 (Admin)",
-          invitedEmail: "john@nike.com",
-          isNewAdvertiser: isNewAdvertiser, // 신규 조직 플래그
-          isNewBrand: isNewBrand, // 신규 브랜드 플래그
-          existingOrganizationName: isNewBrand ? "페퍼스 주식회사" : null, // 기존 조직명 (브랜드 추가 시)
-        });
-        setCodeError(null);
-      } else {
-        setCodeError("유효하지 않거나 만료된 초대 코드입니다.");
-        setInviteData(null);
-      }
-      setValidatingCode(false);
-    }, 100);
-
-    /* Supabase 연동 시
     try {
       const { data, error } = await supabase
         .from('invitation_codes')
-        .select(`
-          *,
-          organizations (name, type),
-          advertisers (name),
-          users!created_by (name)
-        `)
+        .select('*')
         .eq('code', code)
         .single();
 
       if (error || !data) {
         setCodeError('유효하지 않은 초대 코드입니다.');
+        setInviteData(null);
+        setValidatingCode(false);
         return;
       }
 
       if (data.used) {
         setCodeError('이미 사용된 초대 코드입니다.');
+        setInviteData(null);
+        setValidatingCode(false);
         return;
       }
 
       if (new Date(data.expires_at) < new Date()) {
         setCodeError('만료된 초대 코드입니다.');
+        setInviteData(null);
+        setValidatingCode(false);
         return;
       }
 
+      // invite_type 필드로 초대 타입 구분
+      const isNewAdvertiser = data.invite_type === 'new_organization';
+      const isNewBrand = data.invite_type === 'new_brand';
+
+      // 조직/광고주 정보 추가 조회 (필요 시)
+      let organizationName = null;
+      let advertiserName = null;
+
+      if (data.organization_id && !isNewAdvertiser) {
+        const { data: orgData } = await supabase
+          .from('organizations')
+          .select('name')
+          .eq('id', data.organization_id)
+          .single();
+        organizationName = orgData?.name;
+      }
+
+      if (data.advertiser_id) {
+        const { data: advData } = await supabase
+          .from('advertisers')
+          .select('name')
+          .eq('id', data.advertiser_id)
+          .single();
+        advertiserName = advData?.name;
+      }
+
       setInviteData({
-        organizationName: data.organizations.name,
-        advertiserName: data.advertisers?.name,
+        organizationName: organizationName,
+        advertiserName: advertiserName,
         role: data.role,
-        invitedBy: data.users.name,
+        invitedBy: '관리자',
         invitedEmail: data.invited_email,
+        isNewAdvertiser: isNewAdvertiser,
+        isNewBrand: isNewBrand,
+        existingOrganizationName: isNewBrand ? organizationName : null,
+        invitationId: data.id,
+        organizationId: data.organization_id,
+        advertiserId: data.advertiser_id,
       });
       setCodeError(null);
     } catch (err) {
+      console.error('초대 코드 검증 오류:', err);
       setCodeError('초대 코드 확인 중 오류가 발생했습니다.');
+      setInviteData(null);
     } finally {
       setValidatingCode(false);
     }
-    */
   };
 
   const handleChange = (e) => {
@@ -176,38 +185,104 @@ function InviteSignUpForm({ initialCode, onSuccess }) {
 
     setIsLoading(true);
 
-    // TODO: Supabase 회원가입 로직
-    setTimeout(() => {
-      console.log("Invite signup:", formData, inviteCode);
-      setIsLoading(false);
-      if (onSuccess) onSuccess();
-    }, 1000);
-
-    /* Supabase 연동 시
     try {
-      // 1. Auth 계정 생성
+      // 1. Auth 계정 생성 (초대받은 이메일로)
       const { data: authData, error: authError } = await supabase.auth.signUp({
-        email: formData.email,
+        email: inviteData.invitedEmail,
         password: formData.password,
+        options: {
+          emailRedirectTo: `${window.location.origin}/auth/callback`,
+          data: {
+            name: formData.name,
+          }
+        }
       });
 
       if (authError) throw authError;
 
-      // 2. Users 테이블에 추가 정보 저장
+      let finalOrganizationId = inviteData.organizationId;
+      let finalAdvertiserId = inviteData.advertiserId;
+
+      // 2. 신규 광고주(조직) 생성
+      if (inviteData.isNewAdvertiser) {
+        // organizations 테이블에 신규 조직 생성
+        const { data: newOrg, error: orgError } = await supabase
+          .from('organizations')
+          .insert({
+            name: formData.organizationName,
+            type: 'advertiser',
+          })
+          .select()
+          .single();
+
+        if (orgError) throw orgError;
+        finalOrganizationId = newOrg.id;
+
+        // advertisers 테이블에 신규 브랜드 생성
+        const { data: newAdv, error: advError } = await supabase
+          .from('advertisers')
+          .insert({
+            name: formData.organizationName,
+            organization_id: newOrg.id,
+            business_number: formData.businessNumber,
+            website_url: formData.websiteUrl,
+            contact_email: formData.contactEmail || formData.email,
+            contact_phone: formData.contactPhone,
+          })
+          .select()
+          .single();
+
+        if (advError) throw advError;
+        finalAdvertiserId = newAdv.id;
+      }
+
+      // 3. 기존 조직에 신규 브랜드 추가
+      if (inviteData.isNewBrand) {
+        const { data: newAdv, error: advError } = await supabase
+          .from('advertisers')
+          .insert({
+            name: formData.organizationName,
+            organization_id: inviteData.organizationId,
+            business_number: formData.businessNumber,
+            website_url: formData.websiteUrl,
+            contact_email: formData.contactEmail || formData.email,
+            contact_phone: formData.contactPhone,
+          })
+          .select()
+          .single();
+
+        if (advError) throw advError;
+        finalAdvertiserId = newAdv.id;
+      }
+
+      // 4. Users 테이블에 추가 정보 저장
       const { error: userError } = await supabase
         .from('users')
         .insert({
           id: authData.user.id,
-          organization_id: inviteData.organizationId,
-          advertiser_id: inviteData.advertiserId,
-          email: formData.email,
+          organization_id: finalOrganizationId,
+          advertiser_id: finalAdvertiserId,
+          email: inviteData.invitedEmail,
           name: formData.name,
           role: inviteData.role,
+          status: 'active',
         });
 
       if (userError) throw userError;
 
-      // 3. 초대 코드 사용 처리
+      // 5. user_advertisers 테이블에 매핑 추가
+      if (finalAdvertiserId) {
+        const { error: userAdvError } = await supabase
+          .from('user_advertisers')
+          .insert({
+            user_id: authData.user.id,
+            advertiser_id: finalAdvertiserId,
+          });
+
+        if (userAdvError) throw userAdvError;
+      }
+
+      // 6. 초대 코드 사용 처리
       await supabase
         .from('invitation_codes')
         .update({
@@ -219,11 +294,11 @@ function InviteSignUpForm({ initialCode, onSuccess }) {
 
       if (onSuccess) onSuccess();
     } catch (err) {
-      setError(err.message);
+      console.error('회원가입 오류:', err);
+      setError(err.message || '회원가입 중 오류가 발생했습니다.');
     } finally {
       setIsLoading(false);
     }
-    */
   };
 
   // TODO: Supabase OAuth 로그인 핸들러
@@ -374,21 +449,23 @@ function InviteSignUpForm({ initialCode, onSuccess }) {
       </FormControl>
 
       {/* 이메일 입력 */}
-      <FormControl mb="20px" isDisabled={!inviteData}>
+      <FormControl mb="20px" isDisabled={true}>
         <FormLabel fontSize="sm" fontWeight="500" color={textColor}>
           이메일 주소 *
         </FormLabel>
         <Input
           name="email"
           type="email"
-          value={formData.email}
+          value={inviteData?.invitedEmail || formData.email}
           onChange={handleChange}
           isRequired
           variant="auth"
           fontSize="sm"
-          placeholder={inviteData?.invitedEmail || "email@example.com"}
+          placeholder="your.email@company.com"
           size="lg"
           borderRadius="10px"
+          isReadOnly
+          bg={useColorModeValue('gray.100', 'navy.800')}
         />
       </FormControl>
 
@@ -456,12 +533,12 @@ function InviteSignUpForm({ initialCode, onSuccess }) {
           <Divider my="24px" />
 
           <Heading size="sm" color={textColor} mb="16px">
-            {inviteData?.isNewBrand ? '브랜드 정보' : '광고주 정보'}
+            브랜드 정보
           </Heading>
 
           <FormControl mb="20px">
             <FormLabel fontSize="sm" fontWeight="500" color={textColor}>
-              {inviteData?.isNewBrand ? '브랜드명' : '광고주명'} *
+              브랜드명 *
             </FormLabel>
             <Input
               name="organizationName"
@@ -470,7 +547,7 @@ function InviteSignUpForm({ initialCode, onSuccess }) {
               isRequired
               variant="auth"
               fontSize="sm"
-              placeholder={inviteData?.isNewBrand ? "예: 페퍼툭스" : "예: 나이키 코리아"}
+              placeholder="예: 페퍼스"
               size="lg"
               borderRadius="10px"
             />
@@ -494,6 +571,23 @@ function InviteSignUpForm({ initialCode, onSuccess }) {
 
           <FormControl mb="20px">
             <FormLabel fontSize="sm" fontWeight="500" color={textColor}>
+              홈페이지 주소
+            </FormLabel>
+            <Input
+              name="websiteUrl"
+              type="url"
+              value={formData.websiteUrl}
+              onChange={handleChange}
+              variant="auth"
+              fontSize="sm"
+              placeholder="예: https://www.example.com"
+              size="lg"
+              borderRadius="10px"
+            />
+          </FormControl>
+
+          <FormControl mb="20px">
+            <FormLabel fontSize="sm" fontWeight="500" color={textColor}>
               담당자 이메일
             </FormLabel>
             <Input
@@ -503,7 +597,7 @@ function InviteSignUpForm({ initialCode, onSuccess }) {
               onChange={handleChange}
               variant="auth"
               fontSize="sm"
-              placeholder="미입력 시 로그인 이메일 사용"
+              placeholder="contact@company.com (미입력 시 로그인 이메일 사용)"
               size="lg"
               borderRadius="10px"
             />

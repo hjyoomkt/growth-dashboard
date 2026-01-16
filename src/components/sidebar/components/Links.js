@@ -18,16 +18,25 @@ export function SidebarLinks(props) {
   let brandColor = useColorModeValue("brand.500", "brand.400");
 
   const { routes } = props;
-  const { role, organizationType, isMaster } = useAuth();
+  const {
+    role,
+    organizationType,
+    isMaster,
+    canAccessSuperAdmin,
+    canAccessBrandAdmin,
+    canAccessOrganization
+  } = useAuth();
 
-  // 권한 체크 함수들
-  // const isMaster = role === 'master'; // useAuth에서 가져옴
-  // 조직 레벨 관리자만 (advertiser_admin 제외)
-  const isOrgAdmin = ['master', 'org_admin', 'org_manager', 'org_staff'].includes(role);
-  // 모든 관리자 (advertiser_admin 포함, org_staff는 제외 - 슈퍼 어드민 접근 불가)
-  const isAdmin = ['master', 'org_admin', 'org_manager', 'advertiser_admin', 'manager'].includes(role);
-  const isSuperAdmin = ['master', 'org_admin', 'org_manager', 'advertiser_admin', 'manager'].includes(role);
-  // 조직 타입 체크
+  // 디버그 로그
+  console.log('[Sidebar Links] 권한 정보:', {
+    role,
+    organizationType,
+    isMaster: isMaster?.(),
+    canAccessSuperAdmin: canAccessSuperAdmin?.(),
+    canAccessBrandAdmin: canAccessBrandAdmin?.()
+  });
+
+  // ✅ 권한 체크 함수 (2026-01-03 수정)
   const isAgency = organizationType === 'agency';
   const isAdvertiser = organizationType === 'advertiser';
 
@@ -57,32 +66,36 @@ export function SidebarLinks(props) {
         return null;
       }
 
-      // Master 전용 메뉴 권한 체크 (조직 관리 등)
+      // ✅ 조직관리 전용 (마스터만)
       if (route.masterOnly && !isMaster()) {
         return null;
       }
 
-      // 조직 레벨 관리자 전용 메뉴 권한 체크 (팀원 관리 등)
-      if (route.orgAdminOnly && !isOrgAdmin) {
+      // ✅ 광고주 관리 전용 (마스터, agency_admin만)
+      if (route.agencyAdminOnly && !(isMaster() || role === 'agency_admin')) {
         return null;
       }
 
-      // Admin 전용 메뉴 권한 체크 (API 관리, 권한 관리 등)
-      if (route.adminOnly && !isAdmin) {
+      // ✅ 슈퍼어드민 레이아웃 (마스터, 에이전시 대표/관리자)
+      if (route.layout === '/superadmin' && !canAccessSuperAdmin()) {
         return null;
       }
 
-      // 최고 관리자 전용 메뉴 권한 체크
-      if (route.superAdminOnly && !isSuperAdmin) {
+      // ✅ 브랜드어드민 레이아웃 (브랜드 대표/부운영자, 에이전시, 마스터)
+      if (route.layout === '/brandadmin' && !canAccessBrandAdmin()) {
         return null;
       }
 
-      // 대행사 전용 메뉴 권한 체크 (마스터는 제외)
+      // /admin 경로에 있을 때는 "브랜드 관리" 메뉴만 숨김
+      if (route.name === '브랜드 관리' && location.pathname.startsWith('/admin')) {
+        return null;
+      }
+
+      // ✅ 레거시 권한 체크 (하위 호환성)
       if (route.agencyOnly && !isAgency && !isMaster()) {
         return null;
       }
 
-      // 클라이언트 전용 메뉴 권한 체크 (마스터는 제외)
       if (route.advertiserOnly && !isAdvertiser && !isMaster()) {
         return null;
       }

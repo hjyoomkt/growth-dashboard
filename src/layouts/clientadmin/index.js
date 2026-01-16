@@ -14,7 +14,7 @@ import { useAuth } from 'contexts/AuthContext';
 // Custom Chakra theme
 export default function ClientAdminLayout(props) {
   const { ...rest } = props;
-  const { role, loading } = useAuth();
+  const { user, role, loading } = useAuth();
   const navigate = useNavigate();
   const { onOpen } = useDisclosure();
 
@@ -29,14 +29,19 @@ export default function ClientAdminLayout(props) {
   const brandColor = useColorModeValue('brand.500', 'brand.400');
   const badgeBg = useColorModeValue('secondaryGray.100', 'whiteAlpha.100');
 
-  // 권한 체크: Master, 클라이언트 최고관리자, 클라이언트 관리자만 접근 가능
+  // 권한 체크: Master, 클라이언트 최고관리자, 클라이언트 관리자, 직원 접근 가능
   const canAccessClientAdmin = () => {
-    return ['master', 'advertiser_admin', 'manager'].includes(role);
+    return ['master', 'advertiser_admin', 'advertiser_staff', 'manager'].includes(role);
   };
 
   // 로딩 중이면 대기
   if (loading) {
     return null;
+  }
+
+  // 인증되지 않은 사용자 리다이렉트
+  if (!user) {
+    return <Navigate to="/auth/sign-in" replace />;
   }
 
   // 권한이 없으면 접근 거부 화면 표시

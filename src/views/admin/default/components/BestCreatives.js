@@ -19,14 +19,38 @@ import {
 } from "@chakra-ui/react";
 import { MdKeyboardArrowDown } from 'react-icons/md';
 import Card from "components/card/Card.js";
-import React, { useState, useMemo } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { IoHeart, IoHeartOutline } from "react-icons/io5";
 import { useDateRange } from "contexts/DateRangeContext";
+import { useAuth } from "contexts/AuthContext";
+import { getBestCreatives } from "services/supabaseService";
 
 export default function BestCreatives(props) {
   const { creativeData = [], ...rest } = props;
 
   const { startDate, endDate } = useDateRange();
+  const { currentAdvertiserId, availableAdvertisers } = useAuth();
+  const [creativesData, setCreativesData] = useState([]);
+
+  // ===== 2025-12-31: Supabase 데이터 조회 =====
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        const availableAdvertiserIds = (availableAdvertisers || []).map(adv => adv.id);
+        const data = await getBestCreatives({
+          advertiserId: currentAdvertiserId,
+          availableAdvertiserIds,
+          startDate,
+          endDate,
+          limit: 6,
+        });
+        setCreativesData(data);
+      } catch (error) {
+        console.error('BEST 크리에이티브 조회 실패:', error);
+      }
+    };
+    fetchData();
+  }, [currentAdvertiserId, availableAdvertisers, startDate, endDate]);
 
   const textColor = useColorModeValue("navy.700", "white");
   const textColorSecondary = useColorModeValue("secondaryGray.600", "white");
@@ -38,7 +62,7 @@ export default function BestCreatives(props) {
   // 매체 필터 상태
   const [selectedMedia, setSelectedMedia] = useState("");
 
-  // 기간 기반 임시 데이터 생성
+  /* ❌ Mock 임시 데이터 (원복용 보존)
   const defaultData = useMemo(() => {
     const start = new Date(startDate);
     const end = new Date(endDate);
@@ -53,8 +77,14 @@ export default function BestCreatives(props) {
       { adName: "광고 F", media: "구글", author: "구글 마케팅팀", imageUrl: "", videoUrl: "", isVideo: false, cost: Math.floor(Math.random() * 50000 + 400000), conversions: Math.floor(Math.random() * 25 + 100), ctr: (Math.random() * 1 + 2.5).toFixed(1), roas: Math.floor(Math.random() * 100 + 350), currentBid: "₩430,000", bidders: [], dateRange: dateRangeStr },
     ];
   }, [startDate, endDate]);
+  */
 
-  const data = creativeData.length > 0 ? creativeData : defaultData;
+  // ✅ Supabase 실제 데이터 우선, props 데이터 대체
+  const data = useMemo(() => {
+    if (creativesData.length > 0) return creativesData;
+    if (creativeData.length > 0) return creativeData;
+    return [];
+  }, [creativesData, creativeData]);
 
   // 매체 목록 추출
   const mediaList = useMemo(() => {
@@ -189,7 +219,6 @@ function CreativeCard({ creative, rankBadge, textColor, textColorSecondary }) {
                 width='100%'
                 height='100%'
                 style={{ border: 'none', minHeight: '200px' }}
-                allow='autoplay'
                 title={creative.adName}
               />
             </Box>

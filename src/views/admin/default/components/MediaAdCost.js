@@ -7,36 +7,47 @@ import {
 } from "@chakra-ui/react";
 import Card from "components/card/Card.js";
 import BarChart from "components/charts/BarChart";
-import React, { useMemo } from "react";
+import React, { useMemo, useState, useEffect } from "react";
 import { useDateRange } from "contexts/DateRangeContext";
+import { useAuth } from "contexts/AuthContext";
+import { getMediaAdCost } from "services/supabaseService";
 
 export default function MediaAdCost(props) {
   const { mediaData, ...rest } = props;
 
   const { startDate, endDate } = useDateRange();
+  const { currentAdvertiserId, availableAdvertisers } = useAuth();
+  const [mediaDataFromDB, setMediaDataFromDB] = useState([]);
+
+  // ===== 2025-12-31: Supabase 데이터 조회 =====
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        const availableAdvertiserIds = (availableAdvertisers || []).map(adv => adv.id);
+        const data = await getMediaAdCost({
+          advertiserId: currentAdvertiserId,
+          availableAdvertiserIds,
+          startDate,
+          endDate,
+        });
+        setMediaDataFromDB(data || []);
+      } catch (error) {
+        console.error('매체별 광고비 조회 실패:', error);
+        setMediaDataFromDB([]);
+      }
+    };
+    fetchData();
+  }, [currentAdvertiserId, availableAdvertisers, startDate, endDate]);
 
   // Chakra Color Mode
   const textColor = useColorModeValue("secondaryGray.900", "white");
 
-  // 동적 데이터 처리: props로 받은 mediaData 사용, 없으면 기간 기반 임시 데이터 생성
+  // ===== 2025-12-31: Supabase 데이터 우선 사용 =====
   const data = useMemo(() => {
     if (mediaData) return mediaData;
-
-    const start = new Date(startDate);
-    const end = new Date(endDate);
-    const diffTime = Math.abs(end - start);
-    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
-
-    const dailyAvg = diffDays > 0 ? diffDays : 1;
-
-    return [
-      { name: "Google", value: Math.floor((Math.random() * 50000 + 200000) * dailyAvg / 7) },
-      { name: "Naver", value: Math.floor((Math.random() * 40000 + 150000) * dailyAvg / 7) },
-      { name: "Meta", value: Math.floor((Math.random() * 30000 + 120000) * dailyAvg / 7) },
-      { name: "Kakao", value: Math.floor((Math.random() * 25000 + 100000) * dailyAvg / 7) },
-      { name: "Criteo", value: Math.floor((Math.random() * 20000 + 60000) * dailyAvg / 7) },
-    ];
-  }, [mediaData, startDate, endDate]);
+    if (mediaDataFromDB.length > 0) return mediaDataFromDB;
+    return [];
+  }, [mediaData, mediaDataFromDB, startDate, endDate]);
   const categories = data.map((item) => item.name);
   const values = data.map((item) => item.value);
 
@@ -131,7 +142,13 @@ export default function MediaAdCost(props) {
       </Flex>
 
       <Box h='350px' mt='auto' w='100%' px='15px'>
-        <BarChart key={`${startDate}-${endDate}`} chartData={barChartData} chartOptions={barChartOptions} />
+        {data.length === 0 ? (
+          <Flex h='100%' align='center' justify='center'>
+            <Text color='secondaryGray.600'>데이터가 없습니다</Text>
+          </Flex>
+        ) : (
+          <BarChart  chartData={barChartData} chartOptions={barChartOptions} />
+        )}
       </Box>
     </Card>
   );

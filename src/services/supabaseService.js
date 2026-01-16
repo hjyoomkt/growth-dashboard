@@ -1,0 +1,2317 @@
+import { supabase } from '../config/supabase';
+
+// supabase 객체 export
+export { supabase };
+
+/**
+ * Supabase API 서비스
+ * 데이터베이스 CRUD 작업을 위한 함수들
+ */
+
+// ============================================
+// 인증 (Authentication)
+// ============================================
+
+/**
+ * 이메일로 회원가입
+ */
+export const signUp = async (email, password, metadata = {}) => {
+  const { data, error } = await supabase.auth.signUp({
+    email,
+    password,
+    options: {
+      data: metadata, // 추가 사용자 정보 (이름, 프로필 등)
+    },
+  });
+
+  if (error) throw error;
+  return data;
+};
+
+/**
+ * 이메일로 로그인
+ */
+export const signIn = async (email, password) => {
+  const { data, error } = await supabase.auth.signInWithPassword({
+    email,
+    password,
+  });
+
+  if (error) throw error;
+  return data;
+};
+
+/**
+ * 로그아웃
+ */
+export const signOut = async () => {
+  const { error } = await supabase.auth.signOut();
+  if (error) throw error;
+};
+
+/**
+ * 현재 로그인된 사용자 가져오기
+ */
+export const getCurrentUser = async () => {
+  const { data: { user }, error } = await supabase.auth.getUser();
+  if (error) throw error;
+  return user;
+};
+
+/**
+ * 비밀번호 재설정 이메일 보내기
+ */
+export const resetPassword = async (email) => {
+  const { error } = await supabase.auth.resetPasswordForEmail(email);
+  if (error) throw error;
+};
+
+/**
+ * 사용자 메타데이터 조회 (organizations, advertisers 조인)
+ * user_advertisers 테이블을 통한 다대다 관계 지원
+ * @param {string} userId - Supabase Auth user ID
+ */
+export const getUserMetadata = async (userId) => {
+  // 1. 기본 사용자 정보 조회
+  const { data: userData, error: userError } = await supabase
+    .from('users')
+    .select(`
+      *,
+      organizations(id, name, type),
+      advertisers(id, name)
+    `)
+    .eq('id', userId)
+    .single();
+
+  if (userError) throw userError;
+
+  // 2. user_advertisers에서 접근 가능한 모든 브랜드 조회
+  const { data: userAdvertisers, error: uaError } = await supabase
+    .from('user_advertisers')
+    .select(`
+      advertisers(id, name, advertiser_group_id)
+    `)
+    .eq('user_id', userId);
+
+  if (uaError) throw uaError;
+
+  // 3. 접근 가능한 브랜드 목록 추가
+  userData.accessible_advertisers = (userAdvertisers || [])
+    .map(ua => ua.advertisers)
+    .filter(Boolean);
+
+  return userData;
+};
+
+/**
+ * 접근 가능한 광고주 목록 조회
+ * user_advertisers 테이블을 통한 다대다 관계 지원
+ * @param {object} userData - 사용자 메타데이터
+ */
+export const getAvailableAdvertisers = async (userData) => {
+  const isAgency = ['agency_admin', 'agency_manager', 'agency_staff'].includes(userData.role);
+  const isAdvertiser = ['advertiser_admin', 'advertiser_staff'].includes(userData.role);
+
+  if (userData.role === 'master') {
+    // Master: 모든 광고주
+    const { data, error } = await supabase.from('advertisers').select('*');
+    if (error) {
+      console.error('[getAvailableAdvertisers] 조회 실패:', error);
+      throw error;
+    }
+    console.log('[getAvailableAdvertisers] 조회 성공 (master):', { count: data?.length });
+    return data || [];
+  } else if (userData.role === 'agency_admin') {
+    // Agency Admin(대표): 같은 organization의 모든 브랜드 접근
+    if (!userData.organization_id) {
+      console.error('[getAvailableAdvertisers] organization_id가 null입니다:', userData);
+      return [];
+    }
+    const { data, error } = await supabase
+      .from('advertisers')
+      .select('*')
+      .eq('organization_id', userData.organization_id);
+    if (error) {
+      console.error('[getAvailableAdvertisers] 조회 실패:', error);
+      throw error;
+    }
+    console.log('[getAvailableAdvertisers] 조회 성공 (agency_admin):', { count: data?.length });
+    return data || [];
+  } else if (isAgency || isAdvertiser) {
+    // Agency Staff/Manager & Advertiser: user_advertisers를 통해 접근 가능한 브랜드만
+    const { data: userAdvertisers, error: uaError } = await supabase
+      .from('user_advertisers')
+      .select(`
+        advertisers(*)
+      `)
+      .eq('user_id', userData.id);
+
+    if (uaError) {
+      console.error('[getAvailableAdvertisers] user_advertisers 조회 실패:', uaError);
+      throw uaError;
+    }
+
+    const advertisers = (userAdvertisers || [])
+      .map(ua => ua.advertisers)
+      .filter(Boolean);
+
+    console.log('[getAvailableAdvertisers] 조회 성공:', { role: userData.role, count: advertisers.length });
+    return advertisers;
+  }
+
+  return [];
+};
+
+// ============================================
+// 사용자 관리 (Users)
+// ============================================
+
+/**
+ * 모든 사용자 조회 (권한별 필터링)
+ * user_advertisers 테이블을 통한 다대다 관계 지원
+ * @param {object} currentUser - 현재 로그인한 사용자 정보
+ */
+export const getUsers = async (currentUser) => {
+  const isAgency = ['agency_admin', 'agency_manager', 'agency_staff'].includes(currentUser.role);
+  const isAdvertiser = ['advertiser_admin', 'advertiser_staff'].includes(currentUser.role);
+
+  if (currentUser.role === 'master') {
+    // Master: 모든 사용자 조회 가능
+    const { data, error } = await supabase
+      .from('users')
+      .select(`
+        *,
+        organizations(id, name, type),
+        advertisers(id, name)
+      `)
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      console.error('[getUsers] 조회 실패:', error);
+      throw error;
+    }
+
+    // 각 사용자의 접근 가능한 브랜드 목록 추가
+    const usersWithAdvertisers = await Promise.all(
+      (data || []).map(async (user) => {
+        const { data: userAdvertisers } = await supabase
+          .from('user_advertisers')
+          .select(`
+            advertisers(id, name)
+          `)
+          .eq('user_id', user.id);
+
+        user.accessible_advertisers = (userAdvertisers || [])
+          .map(ua => ua.advertisers)
+          .filter(Boolean);
+
+        return user;
+      })
+    );
+
+    console.log('[getUsers] 조회 성공 (master):', { count: usersWithAdvertisers.length });
+    return usersWithAdvertisers;
+
+  } else if (isAgency) {
+    // Agency: 같은 organization 내 사용자 + 소유한 브랜드의 사용자
+    const orgId = currentUser.organization_id || currentUser.organizationId;
+    if (!orgId) {
+      console.error('[getUsers] Agency user organization_id is null:', currentUser);
+      return [];
+    }
+
+    // 1. 같은 organization 내 사용자 조회
+    const { data: orgUsers, error: orgError } = await supabase
+      .from('users')
+      .select(`
+        *,
+        organizations(id, name, type),
+        advertisers(id, name)
+      `)
+      .eq('organization_id', orgId)
+      .order('created_at', { ascending: false });
+
+    if (orgError) {
+      console.error('[getUsers] 조회 실패:', orgError);
+      throw orgError;
+    }
+
+    // 2. 에이전시가 소유한 브랜드 ID 목록 조회
+    const { data: ownedAdvertisers, error: advError } = await supabase
+      .from('advertisers')
+      .select('id')
+      .eq('organization_id', orgId);
+
+    if (advError) {
+      console.error('[getUsers] advertisers 조회 실패:', advError);
+      throw advError;
+    }
+
+    const advertiserIds = (ownedAdvertisers || []).map(adv => adv.id);
+
+    // 3. 해당 브랜드에 접근 가능한 사용자 조회 (user_advertisers 기반)
+    let brandUsers = [];
+    if (advertiserIds.length > 0) {
+      const { data: userAdvertisers, error: uaError } = await supabase
+        .from('user_advertisers')
+        .select(`
+          user_id,
+          users(
+            *,
+            organizations(id, name, type),
+            advertisers(id, name)
+          )
+        `)
+        .in('advertiser_id', advertiserIds);
+
+      if (uaError) {
+        console.error('[getUsers] user_advertisers 조회 실패:', uaError);
+      } else {
+        brandUsers = (userAdvertisers || [])
+          .map(ua => ua.users)
+          .filter(Boolean)
+          .filter(user => user.organization_id !== orgId); // 중복 제거 (organization 소속은 이미 포함됨)
+      }
+    }
+
+    // 4. 중복 제거 및 병합
+    const userMap = new Map();
+    [...(orgUsers || []), ...brandUsers].forEach(user => {
+      if (!userMap.has(user.id)) {
+        userMap.set(user.id, user);
+      }
+    });
+
+    // 5. 각 사용자의 접근 가능한 브랜드 목록 추가
+    const usersWithAdvertisers = await Promise.all(
+      Array.from(userMap.values()).map(async (user) => {
+        const { data: userAdvertisers } = await supabase
+          .from('user_advertisers')
+          .select(`
+            advertisers(id, name)
+          `)
+          .eq('user_id', user.id);
+
+        user.accessible_advertisers = (userAdvertisers || [])
+          .map(ua => ua.advertisers)
+          .filter(Boolean);
+
+        return user;
+      })
+    );
+
+    console.log('[getUsers] 조회 성공 (agency):', { count: usersWithAdvertisers.length });
+    return usersWithAdvertisers;
+
+  } else if (isAdvertiser) {
+    // Advertiser: user_advertisers를 통해 같은 브랜드에 접근 가능한 사용자
+    const { data: userAdvertisers, error: uaError } = await supabase
+      .from('user_advertisers')
+      .select('advertiser_id')
+      .eq('user_id', currentUser.id);
+
+    if (uaError || !userAdvertisers || userAdvertisers.length === 0) {
+      console.error('[getUsers] user_advertisers 조회 실패 또는 접근 가능한 브랜드 없음:', currentUser);
+      return [];
+    }
+
+    const advertiserIds = userAdvertisers.map(ua => ua.advertiser_id);
+
+    // 같은 브랜드에 접근 가능한 사용자 조회
+    const { data: sameAdvertiserUsers, error: userError } = await supabase
+      .from('user_advertisers')
+      .select(`
+        user_id,
+        users(
+          *,
+          organizations(id, name, type),
+          advertisers(id, name)
+        )
+      `)
+      .in('advertiser_id', advertiserIds);
+
+    if (userError) {
+      console.error('[getUsers] 사용자 조회 실패:', userError);
+      throw userError;
+    }
+
+    // 중복 제거
+    const userMap = new Map();
+    (sameAdvertiserUsers || []).forEach(ua => {
+      if (ua.users && !userMap.has(ua.users.id)) {
+        userMap.set(ua.users.id, ua.users);
+      }
+    });
+
+    // 각 사용자의 접근 가능한 브랜드 목록 추가
+    const usersWithAdvertisers = await Promise.all(
+      Array.from(userMap.values()).map(async (user) => {
+        const { data: userAdvertisers } = await supabase
+          .from('user_advertisers')
+          .select(`
+            advertisers(id, name)
+          `)
+          .eq('user_id', user.id);
+
+        user.accessible_advertisers = (userAdvertisers || [])
+          .map(ua => ua.advertisers)
+          .filter(Boolean);
+
+        return user;
+      })
+    );
+
+    console.log('[getUsers] 조회 성공 (advertiser):', { count: usersWithAdvertisers.length });
+    return usersWithAdvertisers;
+  }
+
+  return [];
+};
+
+/**
+ * 대표운영자 중복 체크
+ * @param {string} role - 체크할 역할 (advertiser_admin 또는 agency_admin)
+ * @param {string} organizationId - 조직 ID
+ * @param {string} advertiserId - 광고주 ID
+ * @param {string} excludeUserId - 제외할 사용자 ID (현재 수정 중인 사용자)
+ */
+export const checkAdminRoleDuplicate = async (role, organizationId, advertiserId, excludeUserId = null) => {
+  // 브랜드 대표운영자 체크
+  if (role === 'advertiser_admin' && advertiserId) {
+    let query = supabase
+      .from('users')
+      .select('id, email, name')
+      .eq('role', 'advertiser_admin')
+      .eq('advertiser_id', advertiserId)
+      .eq('status', 'active');
+
+    if (excludeUserId) {
+      query = query.neq('id', excludeUserId);
+    }
+
+    const { data, error } = await query;
+    if (error) throw error;
+
+    if (data && data.length > 0) {
+      return {
+        isDuplicate: true,
+        existingAdmin: data[0],
+        message: `이미 브랜드 대표운영자가 존재합니다: ${data[0].name || data[0].email}`
+      };
+    }
+  }
+
+  // 에이전시 대표운영자 체크
+  if (role === 'agency_admin' && organizationId) {
+    let query = supabase
+      .from('users')
+      .select('id, email, name')
+      .eq('role', 'agency_admin')
+      .eq('organization_id', organizationId)
+      .eq('status', 'active');
+
+    if (excludeUserId) {
+      query = query.neq('id', excludeUserId);
+    }
+
+    const { data, error } = await query;
+    if (error) throw error;
+
+    if (data && data.length > 0) {
+      return {
+        isDuplicate: true,
+        existingAdmin: data[0],
+        message: `이미 에이전시 대표운영자가 존재합니다: ${data[0].name || data[0].email}`
+      };
+    }
+  }
+
+  return { isDuplicate: false };
+};
+
+/**
+ * 사용자 역할 변경
+ * @param {string} userId - 변경할 사용자 ID
+ * @param {string} newRole - 새로운 역할
+ * @param {object} currentUser - 현재 로그인한 사용자 정보 (권한 검증용)
+ */
+export const updateUserRole = async (userId, newRole, currentUser = null) => {
+  // 1. 대상 사용자 정보 조회
+  const { data: targetUser, error: fetchError } = await supabase
+    .from('users')
+    .select('*')
+    .eq('id', userId)
+    .single();
+
+  if (fetchError) throw fetchError;
+
+  // 2. 권한 검증 (백엔드에서도 재검증)
+  if (currentUser) {
+    const roleHierarchy = {
+      master: 100,
+      agency_admin: 7,
+      agency_manager: 6,
+      agency_staff: 5,
+      advertiser_admin: 4,
+      advertiser_staff: 3,
+      editor: 2,
+      viewer: 1,
+    };
+
+    const currentRoleLevel = roleHierarchy[currentUser.role] || 0;
+    const targetRoleLevel = roleHierarchy[targetUser.role] || 0;
+    const newRoleLevel = roleHierarchy[newRole] || 0;
+
+    // Master가 아닌 경우, 자신보다 높거나 같은 권한을 가진 사용자는 수정 불가 (동급 차단)
+    if (currentUser.role !== 'master' && targetRoleLevel >= currentRoleLevel) {
+      throw new Error('자신과 동급이거나 상위 권한을 가진 사용자는 수정할 수 없습니다.');
+    }
+
+    // Master가 아닌 경우, 자신보다 높거나 같은 권한으로 변경 불가 (동급 차단)
+    if (currentUser.role !== 'master' && newRoleLevel >= currentRoleLevel) {
+      throw new Error('자신보다 높거나 동급의 권한으로 변경할 수 없습니다.');
+    }
+  }
+
+  // 3. 대표운영자 중복 체크
+  if (newRole === 'advertiser_admin' || newRole === 'agency_admin') {
+    const duplicateCheck = await checkAdminRoleDuplicate(
+      newRole,
+      targetUser.organization_id,
+      targetUser.advertiser_id,
+      userId
+    );
+
+    if (duplicateCheck.isDuplicate) {
+      throw new Error(duplicateCheck.message);
+    }
+  }
+
+  // 4. 역할 업데이트
+  const { data, error } = await supabase
+    .from('users')
+    .update({ role: newRole })
+    .eq('id', userId)
+    .select()
+    .single();
+
+  if (error) throw error;
+  return data;
+};
+
+/**
+ * 사용자 상태 변경 (액세스 토글)
+ * @param {string} userId - 변경할 사용자 ID
+ * @param {string} status - 새로운 상태 ('active' | 'inactive')
+ * @param {object} currentUser - 현재 로그인한 사용자 정보 (권한 검증용)
+ */
+export const updateUserStatus = async (userId, status, currentUser = null) => {
+  // 1. 대상 사용자 정보 조회
+  const { data: targetUser, error: fetchError } = await supabase
+    .from('users')
+    .select('*')
+    .eq('id', userId)
+    .single();
+
+  if (fetchError) throw fetchError;
+
+  // 2. 권한 검증 (자신과 동급이거나 상위 권한 사용자의 액세스 변경 불가)
+  if (currentUser) {
+    const roleHierarchy = {
+      master: 100,
+      agency_admin: 7,
+      agency_manager: 6,
+      agency_staff: 5,
+      advertiser_admin: 4,
+      advertiser_staff: 3,
+      editor: 2,
+      viewer: 1,
+    };
+
+    const currentRoleLevel = roleHierarchy[currentUser.role] || 0;
+    const targetRoleLevel = roleHierarchy[targetUser.role] || 0;
+
+    // Master가 아닌 경우, 자신보다 높거나 같은 권한을 가진 사용자는 수정 불가 (동급 차단)
+    if (currentUser.role !== 'master' && targetRoleLevel >= currentRoleLevel) {
+      throw new Error('자신과 동급이거나 상위 권한을 가진 사용자의 액세스는 변경할 수 없습니다.');
+    }
+  }
+
+  // 3. 상태 업데이트
+  const { data, error } = await supabase
+    .from('users')
+    .update({ status })
+    .eq('id', userId)
+    .select()
+    .single();
+
+  if (error) throw error;
+  return data;
+};
+
+/**
+ * 사용자 역할 및 브랜드 접근 권한 변경
+ * @param {string} userId - 변경할 사용자 ID
+ * @param {string} newRole - 새로운 역할
+ * @param {Array<string>} advertiserIds - 접근 가능한 브랜드 ID 목록
+ * @param {object} currentUser - 현재 로그인한 사용자 정보 (권한 검증용)
+ */
+export const updateUserRoleAndAdvertisers = async (userId, newRole, advertiserIds = [], currentUser = null) => {
+  // 1. 대상 사용자 정보 조회
+  const { data: targetUser, error: fetchError } = await supabase
+    .from('users')
+    .select('*')
+    .eq('id', userId)
+    .single();
+
+  if (fetchError) throw fetchError;
+
+  // 2. 권한 검증 (updateUserRole과 동일)
+  if (currentUser) {
+    const roleHierarchy = {
+      master: 100,
+      agency_admin: 7,
+      agency_manager: 6,
+      agency_staff: 5,
+      advertiser_admin: 4,
+      advertiser_staff: 3,
+      editor: 2,
+      viewer: 1,
+    };
+
+    const currentRoleLevel = roleHierarchy[currentUser.role] || 0;
+    const targetRoleLevel = roleHierarchy[targetUser.role] || 0;
+    const newRoleLevel = roleHierarchy[newRole] || 0;
+
+    // 디버깅 로그
+    console.log('[updateUserRoleAndAdvertisers] 권한 체크:', {
+      currentUser: currentUser,
+      currentUserRole: currentUser.role,
+      currentRoleLevel: currentRoleLevel,
+      targetUser: { role: targetUser.role, level: targetRoleLevel },
+      newRole: { role: newRole, level: newRoleLevel },
+      check1: targetRoleLevel >= currentRoleLevel,
+      check2: newRoleLevel >= currentRoleLevel
+    });
+
+    // Master가 아닌 경우, 자신보다 높거나 같은 권한을 가진 사용자는 수정 불가 (동급 차단)
+    if (currentUser.role !== 'master' && targetRoleLevel >= currentRoleLevel) {
+      throw new Error('자신과 동급이거나 상위 권한을 가진 사용자는 수정할 수 없습니다.');
+    }
+
+    // Master가 아닌 경우, 자신보다 높거나 같은 권한으로 변경 불가 (동급 차단)
+    if (currentUser.role !== 'master' && newRoleLevel >= currentRoleLevel) {
+      throw new Error('자신보다 높거나 동급의 권한으로 변경할 수 없습니다.');
+    }
+  }
+
+  // 3. 대표운영자 중복 체크
+  if (newRole === 'advertiser_admin' || newRole === 'agency_admin') {
+    const duplicateCheck = await checkAdminRoleDuplicate(
+      newRole,
+      targetUser.organization_id,
+      targetUser.advertiser_id,
+      userId
+    );
+
+    if (duplicateCheck.isDuplicate) {
+      throw new Error(duplicateCheck.message);
+    }
+  }
+
+  // 4. 역할 업데이트
+  const { error: roleError } = await supabase
+    .from('users')
+    .update({ role: newRole })
+    .eq('id', userId);
+
+  if (roleError) throw roleError;
+
+  // 5. user_advertisers 업데이트
+  // 기존 관계 삭제
+  const { error: deleteError } = await supabase
+    .from('user_advertisers')
+    .delete()
+    .eq('user_id', userId);
+
+  if (deleteError) throw deleteError;
+
+  // 새 관계 추가
+  if (advertiserIds && advertiserIds.length > 0) {
+    const insertData = advertiserIds.map(advertiserId => ({
+      user_id: userId,
+      advertiser_id: advertiserId,
+    }));
+
+    const { error: insertError } = await supabase
+      .from('user_advertisers')
+      .insert(insertData);
+
+    if (insertError) throw insertError;
+  }
+
+  // 6. 업데이트된 사용자 정보 반환
+  const { data, error } = await supabase
+    .from('users')
+    .select(`
+      *,
+      organizations(id, name, type),
+      advertisers(id, name)
+    `)
+    .eq('id', userId)
+    .single();
+
+  if (error) throw error;
+  return data;
+};
+
+/**
+ * 초대 코드 생성
+ * @param {object} inviteData - 초대 정보
+ * @returns {object} 생성된 초대 코드 정보
+ */
+export const createInviteCode = async (inviteData) => {
+  const code = `INVITE-${Math.random().toString(36).substring(2, 10).toUpperCase()}`;
+  const expiresAt = new Date();
+  expiresAt.setDate(expiresAt.getDate() + 7); // 7일 후 만료
+
+  const { data, error } = await supabase
+    .from('invitation_codes')
+    .insert({
+      code: code,
+      organization_id: inviteData.organizationId || null,
+      advertiser_id: inviteData.advertiserId || null,
+      invited_email: inviteData.email,
+      role: inviteData.role,
+      created_by: inviteData.createdBy,
+      expires_at: expiresAt.toISOString(),
+      invite_type: inviteData.inviteType || 'existing_member',
+    })
+    .select()
+    .single();
+
+  if (error) throw error;
+
+  // Edge Function 호출하여 Supabase Auth로 초대 이메일 발송
+  try {
+    await sendInviteEmail({
+      inviteCode: code,
+      invitedEmail: inviteData.email,
+      inviteType: inviteData.inviteType || 'existing_member',
+    });
+  } catch (emailError) {
+    console.error('Failed to send invite email:', emailError);
+    // 이메일 발송 실패해도 초대 코드는 생성됨
+  }
+
+  return { ...data, code };
+};
+
+/**
+ * Edge Function을 통해 초대 이메일 발송
+ * @param {object} emailData - 이메일 발송 정보
+ */
+export const sendInviteEmail = async (emailData) => {
+  const { data, error } = await supabase.functions.invoke('send-invite-email', {
+    body: emailData,
+  });
+
+  if (error) throw error;
+  return data;
+};
+
+// ============================================
+// 데이터베이스 작업 (Database Operations)
+// ============================================
+
+/**
+ * 테이블에서 모든 데이터 가져오기
+ * @param {string} tableName - 테이블 이름
+ * @param {object} options - 정렬, 필터 옵션
+ */
+export const getAllData = async (tableName, options = {}) => {
+  let query = supabase.from(tableName).select('*');
+
+  // 정렬
+  if (options.orderBy) {
+    query = query.order(options.orderBy, { ascending: options.ascending ?? true });
+  }
+
+  // 필터
+  if (options.filter) {
+    Object.entries(options.filter).forEach(([key, value]) => {
+      query = query.eq(key, value);
+    });
+  }
+
+  // 제한
+  if (options.limit) {
+    query = query.limit(options.limit);
+  }
+
+  const { data, error } = await query;
+  if (error) throw error;
+  return data;
+};
+
+/**
+ * ID로 특정 데이터 가져오기
+ */
+export const getDataById = async (tableName, id) => {
+  const { data, error } = await supabase
+    .from(tableName)
+    .select('*')
+    .eq('id', id)
+    .single();
+
+  if (error) throw error;
+  return data;
+};
+
+/**
+ * 새 데이터 추가
+ */
+export const insertData = async (tableName, newData) => {
+  const { data, error } = await supabase
+    .from(tableName)
+    .insert([newData])
+    .select();
+
+  if (error) throw error;
+  return data;
+};
+
+/**
+ * 데이터 수정
+ */
+export const updateData = async (tableName, id, updates) => {
+  const { data, error } = await supabase
+    .from(tableName)
+    .update(updates)
+    .eq('id', id)
+    .select();
+
+  if (error) throw error;
+  return data;
+};
+
+/**
+ * 데이터 삭제
+ */
+export const deleteData = async (tableName, id) => {
+  const { error } = await supabase
+    .from(tableName)
+    .delete()
+    .eq('id', id);
+
+  if (error) throw error;
+};
+
+/**
+ * 요일별 전환수 조회 (일~토 집계)
+ */
+export const getWeeklyConversions = async ({ advertiserId, availableAdvertiserIds, startDate, endDate }) => {
+  let query = supabase
+    .from('ad_performance')
+    .select('date, conversions');
+
+  if (advertiserId) {
+    query = query.eq('advertiser_id', advertiserId);
+  } else if (availableAdvertiserIds && availableAdvertiserIds.length > 0) {
+    query = query.in('advertiser_id', availableAdvertiserIds);
+  }
+  if (startDate) query = query.gte('date', startDate);
+  if (endDate) query = query.lte('date', endDate);
+  query = query.is('deleted_at', null);
+
+  const { data, error } = await query;
+  if (error) throw error;
+
+  // 요일별 집계 (0=일요일 ~ 6=토요일)
+  const dayConversions = [0, 0, 0, 0, 0, 0, 0];
+
+  (data || []).forEach(row => {
+    const date = new Date(row.date);
+    const dayOfWeek = date.getDay();
+    dayConversions[dayOfWeek] += Number(row.conversions) || 0;
+  });
+
+  // 월~일 순서로 재배열
+  return [
+    dayConversions[1], // 월
+    dayConversions[2], // 화
+    dayConversions[3], // 수
+    dayConversions[4], // 목
+    dayConversions[5], // 금
+    dayConversions[6], // 토
+    dayConversions[0], // 일
+  ];
+};
+
+/**
+ * 조건에 맞는 데이터 검색
+ */
+export const searchData = async (tableName, column, searchTerm) => {
+  const { data, error } = await supabase
+    .from(tableName)
+    .select('*')
+    .ilike(column, `%${searchTerm}%`);
+
+  if (error) throw error;
+  return data;
+};
+
+// ============================================
+// 스토리지 (Storage)
+// ============================================
+
+/**
+ * 파일 업로드
+ */
+export const uploadFile = async (bucketName, filePath, file) => {
+  const { data, error } = await supabase.storage
+    .from(bucketName)
+    .upload(filePath, file);
+
+  if (error) throw error;
+  return data;
+};
+
+/**
+ * 파일 다운로드 URL 가져오기
+ */
+export const getFileUrl = (bucketName, filePath) => {
+  const { data } = supabase.storage
+    .from(bucketName)
+    .getPublicUrl(filePath);
+
+  return data.publicUrl;
+};
+
+/**
+ * 파일 삭제
+ */
+export const deleteFile = async (bucketName, filePath) => {
+  const { error } = await supabase.storage
+    .from(bucketName)
+    .remove([filePath]);
+
+  if (error) throw error;
+};
+
+// ============================================
+// 실시간 구독 (Realtime Subscriptions)
+// ============================================
+
+/**
+ * 테이블 변경사항 실시간 구독
+ */
+export const subscribeToTable = (tableName, callback) => {
+  const subscription = supabase
+    .channel(`${tableName}_changes`)
+    .on(
+      'postgres_changes',
+      { event: '*', schema: 'public', table: tableName },
+      callback
+    )
+    .subscribe();
+
+  return subscription;
+};
+
+/**
+ * 구독 취소
+ */
+export const unsubscribe = (subscription) => {
+  supabase.removeChannel(subscription);
+};
+
+// ============================================
+// 성과 데이터 조회 (Ad Performance)
+// ============================================
+
+/**
+ * KPI 집계 데이터 조회
+ * @param {object} params - 필터 파라미터
+ * @param {string} params.advertiserId - 광고주 ID (선택)
+ * @param {string} params.startDate - 시작일 (YYYY-MM-DD)
+ * @param {string} params.endDate - 종료일 (YYYY-MM-DD)
+ */
+export const getKPIData = async ({ advertiserId, availableAdvertiserIds, startDate, endDate }) => {
+  let query = supabase
+    .from('ad_performance')
+    .select('cost, impressions, clicks, conversions, conversion_value');
+
+  // 광고주 필터
+  if (advertiserId) {
+    query = query.eq('advertiser_id', advertiserId);
+  } else if (availableAdvertiserIds && availableAdvertiserIds.length > 0) {
+    // "전체 브랜드" 선택 시 접근 가능한 광고주만 필터링
+    query = query.in('advertiser_id', availableAdvertiserIds);
+  }
+
+  // 날짜 필터
+  if (startDate) {
+    query = query.gte('date', startDate);
+  }
+  if (endDate) {
+    query = query.lte('date', endDate);
+  }
+
+  // Soft delete 제외
+  query = query.is('deleted_at', null);
+
+  const { data, error } = await query;
+  if (error) throw error;
+
+  // 클라이언트에서 집계 계산
+  const totals = (data || []).reduce(
+    (acc, row) => ({
+      cost: acc.cost + (Number(row.cost) || 0),
+      impressions: acc.impressions + (Number(row.impressions) || 0),
+      clicks: acc.clicks + (Number(row.clicks) || 0),
+      conversions: acc.conversions + (Number(row.conversions) || 0),
+      conversion_value: acc.conversion_value + (Number(row.conversion_value) || 0),
+    }),
+    { cost: 0, impressions: 0, clicks: 0, conversions: 0, conversion_value: 0 }
+  );
+
+  // CVR, ROAS 계산
+  totals.cvr = totals.clicks > 0 ? (totals.conversions / totals.clicks) * 100 : 0;
+  totals.roas = totals.cost > 0 ? totals.conversion_value / totals.cost : 0;
+
+  return totals;
+};
+
+/**
+ * 일별 광고비 데이터 조회
+ * @param {object} params - 필터 파라미터
+ */
+export const getDailyAdCost = async ({ advertiserId, availableAdvertiserIds, startDate, endDate }) => {
+  let query = supabase
+    .from('ad_performance')
+    .select('date, cost');
+
+  if (advertiserId) {
+    query = query.eq('advertiser_id', advertiserId);
+  } else if (availableAdvertiserIds && availableAdvertiserIds.length > 0) {
+    query = query.in('advertiser_id', availableAdvertiserIds);
+  }
+  if (startDate) {
+    query = query.gte('date', startDate);
+  }
+  if (endDate) {
+    query = query.lte('date', endDate);
+  }
+
+  query = query.is('deleted_at', null).order('date', { ascending: true });
+
+  const { data, error } = await query;
+  if (error) throw error;
+
+  // 날짜별로 그룹화하여 합산
+  const groupedData = (data || []).reduce((acc, row) => {
+    const date = row.date;
+    if (!acc[date]) {
+      acc[date] = 0;
+    }
+    acc[date] += Number(row.cost) || 0;
+    return acc;
+  }, {});
+
+  // [{date, cost}] 형식으로 변환
+  return Object.entries(groupedData).map(([date, cost]) => ({
+    date,
+    cost,
+  }));
+};
+
+/**
+ * 매체별 광고비 데이터 조회
+ * @param {object} params - 필터 파라미터
+ */
+export const getMediaAdCost = async ({ advertiserId, availableAdvertiserIds, startDate, endDate }) => {
+  let query = supabase
+    .from('ad_performance')
+    .select('source, cost');
+
+  if (advertiserId) {
+    query = query.eq('advertiser_id', advertiserId);
+  } else if (availableAdvertiserIds && availableAdvertiserIds.length > 0) {
+    query = query.in('advertiser_id', availableAdvertiserIds);
+  }
+  if (startDate) {
+    query = query.gte('date', startDate);
+  }
+  if (endDate) {
+    query = query.lte('date', endDate);
+  }
+
+  query = query.is('deleted_at', null);
+
+  const { data, error } = await query;
+  if (error) throw error;
+
+  // 매체별로 그룹화하여 합산
+  const groupedData = (data || []).reduce((acc, row) => {
+    const source = row.source;
+    if (!acc[source]) {
+      acc[source] = 0;
+    }
+    acc[source] += Number(row.cost) || 0;
+    return acc;
+  }, {});
+
+  // [{name, value}] 형식으로 변환
+  return Object.entries(groupedData).map(([name, value]) => ({
+    name,
+    value,
+  }));
+};
+
+/**
+ * 일별 매출(conversion_value) 데이터 조회
+ * @param {object} params - 필터 파라미터
+ */
+export const getDailyRevenue = async ({ advertiserId, availableAdvertiserIds, startDate, endDate }) => {
+  let query = supabase
+    .from('ad_performance')
+    .select('date, conversion_value');
+
+  // 광고주 필터
+  if (advertiserId) {
+    query = query.eq('advertiser_id', advertiserId);
+  } else if (availableAdvertiserIds && availableAdvertiserIds.length > 0) {
+    // "전체 브랜드" 선택 시 접근 가능한 광고주만 필터링
+    query = query.in('advertiser_id', availableAdvertiserIds);
+  }
+  if (startDate) {
+    query = query.gte('date', startDate);
+  }
+  if (endDate) {
+    query = query.lte('date', endDate);
+  }
+
+  query = query.is('deleted_at', null).order('date', { ascending: true });
+
+  const { data, error } = await query;
+  if (error) throw error;
+
+  // 날짜별로 그룹화하여 합산
+  const groupedData = (data || []).reduce((acc, row) => {
+    const date = row.date;
+    if (!acc[date]) {
+      acc[date] = 0;
+    }
+    acc[date] += Number(row.conversion_value) || 0;
+    return acc;
+  }, {});
+
+  // [{date, revenue}] 형식으로 변환
+  return Object.entries(groupedData).map(([date, revenue]) => ({
+    date,
+    revenue,
+  }));
+};
+
+/**
+ * 매체별 매출(conversion_value) 데이터 조회
+ * @param {object} params - 필터 파라미터
+ */
+export const getMediaRevenue = async ({ advertiserId, availableAdvertiserIds, startDate, endDate }) => {
+  let query = supabase
+    .from('ad_performance')
+    .select('source, conversion_value');
+
+  // 광고주 필터
+  if (advertiserId) {
+    query = query.eq('advertiser_id', advertiserId);
+  } else if (availableAdvertiserIds && availableAdvertiserIds.length > 0) {
+    // "전체 브랜드" 선택 시 접근 가능한 광고주만 필터링
+    query = query.in('advertiser_id', availableAdvertiserIds);
+  }
+  if (startDate) {
+    query = query.gte('date', startDate);
+  }
+  if (endDate) {
+    query = query.lte('date', endDate);
+  }
+
+  query = query.is('deleted_at', null);
+
+  const { data, error } = await query;
+  if (error) throw error;
+
+  // 매체별로 그룹화하여 합산
+  const groupedData = (data || []).reduce((acc, row) => {
+    const source = row.source;
+    if (!acc[source]) {
+      acc[source] = 0;
+    }
+    acc[source] += Number(row.conversion_value) || 0;
+    return acc;
+  }, {});
+
+  // [{name, value}] 형식으로 변환
+  return Object.entries(groupedData).map(([name, value]) => ({
+    name,
+    value,
+  }));
+};
+
+/**
+ * 매체별 광고 요약 데이터 조회 (테이블용)
+ * @param {object} params - 필터 파라미터
+ * @param {string} params.advertiserId - 광고주 ID (선택)
+ * @param {string} params.startDate - 시작일 (YYYY-MM-DD)
+ * @param {string} params.endDate - 종료일 (YYYY-MM-DD)
+ */
+export const getMediaAdSummary = async ({ advertiserId, availableAdvertiserIds, startDate, endDate }) => {
+  let query = supabase
+    .from('ad_performance')
+    .select('source, cost, impressions, clicks, conversions, conversion_value');
+
+  // 광고주 필터
+  if (advertiserId) {
+    query = query.eq('advertiser_id', advertiserId);
+  } else if (availableAdvertiserIds && availableAdvertiserIds.length > 0) {
+    // "전체 브랜드" 선택 시 접근 가능한 광고주만 필터링
+    query = query.in('advertiser_id', availableAdvertiserIds);
+  }
+  if (startDate) {
+    query = query.gte('date', startDate);
+  }
+  if (endDate) {
+    query = query.lte('date', endDate);
+  }
+
+  query = query.is('deleted_at', null);
+
+  const { data, error } = await query;
+  if (error) throw error;
+
+  // 매체별로 그룹화하여 집계
+  const groupedData = (data || []).reduce((acc, row) => {
+    const source = row.source;
+    if (!acc[source]) {
+      acc[source] = {
+        media: source,
+        cost: 0,
+        impressions: 0,
+        clicks: 0,
+        conversions: 0,
+        conversionValue: 0,
+      };
+    }
+    acc[source].cost += Number(row.cost) || 0;
+    acc[source].impressions += Number(row.impressions) || 0;
+    acc[source].clicks += Number(row.clicks) || 0;
+    acc[source].conversions += Number(row.conversions) || 0;
+    acc[source].conversionValue += Number(row.conversion_value) || 0;
+    return acc;
+  }, {});
+
+  // 배열로 변환
+  return Object.values(groupedData);
+};
+
+/**
+ * 캠페인별 광고 요약 데이터 조회
+ * @param {object} params - 필터 파라미터
+ * @param {string} params.advertiserId - 광고주 ID (선택)
+ * @param {string} params.startDate - 시작일 (YYYY-MM-DD)
+ * @param {string} params.endDate - 종료일 (YYYY-MM-DD)
+ */
+export const getCampaignAdSummary = async ({ advertiserId, availableAdvertiserIds, startDate, endDate }) => {
+  let query = supabase
+    .from('ad_performance')
+    .select('source, campaign_name, cost, impressions, clicks, conversions, conversion_value');
+
+  // 광고주 필터
+  if (advertiserId) {
+    query = query.eq('advertiser_id', advertiserId);
+  } else if (availableAdvertiserIds && availableAdvertiserIds.length > 0) {
+    // "전체 브랜드" 선택 시 접근 가능한 광고주만 필터링
+    query = query.in('advertiser_id', availableAdvertiserIds);
+  }
+  if (startDate) {
+    query = query.gte('date', startDate);
+  }
+  if (endDate) {
+    query = query.lte('date', endDate);
+  }
+
+  query = query.is('deleted_at', null);
+
+  const { data, error } = await query;
+  if (error) throw error;
+
+  // 캠페인별로 그룹화하여 집계
+  const groupedData = (data || []).reduce((acc, row) => {
+    const key = `${row.source}_${row.campaign_name}`;
+    if (!acc[key]) {
+      acc[key] = {
+        media: row.source,
+        key: row.campaign_name,
+        cost: 0,
+        impressions: 0,
+        clicks: 0,
+        conversions: 0,
+        conversionValue: 0,
+      };
+    }
+    acc[key].cost += Number(row.cost) || 0;
+    acc[key].impressions += Number(row.impressions) || 0;
+    acc[key].clicks += Number(row.clicks) || 0;
+    acc[key].conversions += Number(row.conversions) || 0;
+    acc[key].conversionValue += Number(row.conversion_value) || 0;
+    return acc;
+  }, {});
+
+  // 배열로 변환
+  return Object.values(groupedData);
+};
+
+/**
+ * 일별 광고 요약 데이터 조회
+ * @param {object} params - 필터 파라미터
+ * @param {string} params.advertiserId - 광고주 ID (선택)
+ * @param {string} params.startDate - 시작일 (YYYY-MM-DD)
+ * @param {string} params.endDate - 종료일 (YYYY-MM-DD)
+ */
+export const getDailyAdSummary = async ({ advertiserId, availableAdvertiserIds, startDate, endDate }) => {
+  let query = supabase
+    .from('ad_performance')
+    .select('date, cost, impressions, clicks, conversions, conversion_value');
+
+  // 광고주 필터
+  if (advertiserId) {
+    query = query.eq('advertiser_id', advertiserId);
+  } else if (availableAdvertiserIds && availableAdvertiserIds.length > 0) {
+    // "전체 브랜드" 선택 시 접근 가능한 광고주만 필터링
+    query = query.in('advertiser_id', availableAdvertiserIds);
+  }
+  if (startDate) {
+    query = query.gte('date', startDate);
+  }
+  if (endDate) {
+    query = query.lte('date', endDate);
+  }
+
+  query = query.is('deleted_at', null).order('date', { ascending: true });
+
+  const { data, error } = await query;
+  if (error) throw error;
+
+  // 날짜별로 그룹화하여 집계
+  const groupedData = (data || []).reduce((acc, row) => {
+    const date = row.date;
+    if (!acc[date]) {
+      acc[date] = {
+        key: date,
+        cost: 0,
+        impressions: 0,
+        clicks: 0,
+        conversions: 0,
+        conversionValue: 0,
+      };
+    }
+    acc[date].cost += Number(row.cost) || 0;
+    acc[date].impressions += Number(row.impressions) || 0;
+    acc[date].clicks += Number(row.clicks) || 0;
+    acc[date].conversions += Number(row.conversions) || 0;
+    acc[date].conversionValue += Number(row.conversion_value) || 0;
+    return acc;
+  }, {});
+
+  // 배열로 변환
+  return Object.values(groupedData);
+};
+
+/**
+ * 주별 광고 요약 데이터 조회
+ * @param {object} params - 필터 파라미터
+ * @param {string} params.advertiserId - 광고주 ID (선택)
+ * @param {string} params.startDate - 시작일 (YYYY-MM-DD)
+ * @param {string} params.endDate - 종료일 (YYYY-MM-DD)
+ */
+export const getWeeklyAdSummary = async ({ advertiserId, availableAdvertiserIds, startDate, endDate }) => {
+  let query = supabase
+    .from('ad_performance')
+    .select('date, cost, impressions, clicks, conversions, conversion_value');
+
+  // 광고주 필터
+  if (advertiserId) {
+    query = query.eq('advertiser_id', advertiserId);
+  } else if (availableAdvertiserIds && availableAdvertiserIds.length > 0) {
+    // "전체 브랜드" 선택 시 접근 가능한 광고주만 필터링
+    query = query.in('advertiser_id', availableAdvertiserIds);
+  }
+  if (startDate) {
+    query = query.gte('date', startDate);
+  }
+  if (endDate) {
+    query = query.lte('date', endDate);
+  }
+
+  query = query.is('deleted_at', null).order('date', { ascending: true });
+
+  const { data, error } = await query;
+  if (error) throw error;
+
+  // 주별로 그룹화 (월요일 시작)
+  const groupedData = {};
+
+  (data || []).forEach(row => {
+    const date = new Date(row.date);
+    const dayOfWeek = date.getDay();
+    const daysToMonday = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
+
+    const monday = new Date(date);
+    monday.setDate(date.getDate() + daysToMonday);
+
+    const sunday = new Date(monday);
+    sunday.setDate(monday.getDate() + 6);
+
+    const weekKey = `${monday.getMonth() + 1}/${monday.getDate()} ~ ${sunday.getMonth() + 1}/${sunday.getDate()}`;
+
+    if (!groupedData[weekKey]) {
+      groupedData[weekKey] = {
+        key: weekKey,
+        cost: 0,
+        impressions: 0,
+        clicks: 0,
+        conversions: 0,
+        conversionValue: 0,
+      };
+    }
+
+    groupedData[weekKey].cost += Number(row.cost) || 0;
+    groupedData[weekKey].impressions += Number(row.impressions) || 0;
+    groupedData[weekKey].clicks += Number(row.clicks) || 0;
+    groupedData[weekKey].conversions += Number(row.conversions) || 0;
+    groupedData[weekKey].conversionValue += Number(row.conversion_value) || 0;
+  });
+
+  return Object.values(groupedData);
+};
+
+/**
+ * 월별 광고 요약 데이터 조회
+ * @param {object} params - 필터 파라미터
+ * @param {string} params.advertiserId - 광고주 ID (선택)
+ * @param {string} params.startDate - 시작일 (YYYY-MM-DD)
+ * @param {string} params.endDate - 종료일 (YYYY-MM-DD)
+ */
+export const getMonthlyAdSummary = async ({ advertiserId, availableAdvertiserIds, startDate, endDate }) => {
+  let query = supabase
+    .from('ad_performance')
+    .select('date, cost, impressions, clicks, conversions, conversion_value');
+
+  // 광고주 필터
+  if (advertiserId) {
+    query = query.eq('advertiser_id', advertiserId);
+  } else if (availableAdvertiserIds && availableAdvertiserIds.length > 0) {
+    // "전체 브랜드" 선택 시 접근 가능한 광고주만 필터링
+    query = query.in('advertiser_id', availableAdvertiserIds);
+  }
+  if (startDate) {
+    query = query.gte('date', startDate);
+  }
+  if (endDate) {
+    query = query.lte('date', endDate);
+  }
+
+  query = query.is('deleted_at', null);
+
+  const { data, error } = await query;
+  if (error) throw error;
+
+  // 월별로 그룹화
+  const groupedData = (data || []).reduce((acc, row) => {
+    const date = new Date(row.date);
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const monthKey = `${year}년 ${month}월`;
+
+    if (!acc[monthKey]) {
+      acc[monthKey] = {
+        key: monthKey,
+        cost: 0,
+        impressions: 0,
+        clicks: 0,
+        conversions: 0,
+        conversionValue: 0,
+      };
+    }
+
+    acc[monthKey].cost += Number(row.cost) || 0;
+    acc[monthKey].impressions += Number(row.impressions) || 0;
+    acc[monthKey].clicks += Number(row.clicks) || 0;
+    acc[monthKey].conversions += Number(row.conversions) || 0;
+    acc[monthKey].conversionValue += Number(row.conversion_value) || 0;
+    return acc;
+  }, {});
+
+  return Object.values(groupedData);
+};
+
+/**
+ * 매체별 ROAS 분석 데이터 조회
+ * @param {object} params - 필터 파라미터
+ * @param {string} params.advertiserId - 광고주 ID (선택)
+ * @param {array} params.availableAdvertiserIds - 접근 가능한 광고주 ID 목록
+ * @param {string} params.startDate - 시작일 (YYYY-MM-DD)
+ * @param {string} params.endDate - 종료일 (YYYY-MM-DD)
+ */
+export const getMediaROASAnalysis = async ({ advertiserId, availableAdvertiserIds, startDate, endDate }) => {
+  let query = supabase
+    .from('ad_performance')
+    .select('source, cost, conversion_value');
+
+  // 브랜드 필터링
+  if (advertiserId) {
+    query = query.eq('advertiser_id', advertiserId);
+  } else if (availableAdvertiserIds && availableAdvertiserIds.length > 0) {
+    query = query.in('advertiser_id', availableAdvertiserIds);
+  }
+
+  if (startDate) {
+    query = query.gte('date', startDate);
+  }
+  if (endDate) {
+    query = query.lte('date', endDate);
+  }
+
+  query = query.is('deleted_at', null);
+
+  const { data, error } = await query;
+  if (error) throw error;
+
+  // 매체별로 그룹화하여 ROAS 계산
+  const groupedData = (data || []).reduce((acc, row) => {
+    const source = row.source;
+    if (!acc[source]) {
+      acc[source] = {
+        name: source,
+        cost: 0,
+        conversionValue: 0,
+      };
+    }
+    acc[source].cost += Number(row.cost) || 0;
+    acc[source].conversionValue += Number(row.conversion_value) || 0;
+    return acc;
+  }, {});
+
+  // ROAS 계산 및 배열로 변환
+  const mediaArray = Object.values(groupedData).map(media => ({
+    name: media.name,
+    roas: media.cost > 0 ? Math.round((media.conversionValue / media.cost) * 100) : 0,
+  }));
+
+  // ROAS 높은 순으로 정렬
+  mediaArray.sort((a, b) => b.roas - a.roas);
+
+  // 최대 ROAS 찾기
+  const maxRoas = Math.max(...mediaArray.map(m => m.roas), 1);
+
+  // progress 계산 (최대 ROAS 대비 백분율)
+  return mediaArray.map(media => ({
+    name: media.name,
+    roas: media.roas,
+    progress: Math.round((media.roas / maxRoas) * 100),
+  }));
+};
+
+/**
+ * 일별 ROAS 및 광고비 데이터 조회
+ * @param {object} params - 필터 파라미터
+ */
+export const getDailyROASAndCost = async ({ advertiserId, availableAdvertiserIds, startDate, endDate }) => {
+  let query = supabase
+    .from('ad_performance')
+    .select('date, cost, conversion_value');
+
+  // 광고주 필터
+  if (advertiserId) {
+    query = query.eq('advertiser_id', advertiserId);
+  } else if (availableAdvertiserIds && availableAdvertiserIds.length > 0) {
+    // "전체 브랜드" 선택 시 접근 가능한 광고주만 필터링
+    query = query.in('advertiser_id', availableAdvertiserIds);
+  }
+  if (startDate) {
+    query = query.gte('date', startDate);
+  }
+  if (endDate) {
+    query = query.lte('date', endDate);
+  }
+
+  query = query.is('deleted_at', null).order('date', { ascending: true });
+
+  const { data, error } = await query;
+  if (error) throw error;
+
+  // 날짜별로 그룹화하여 합산
+  const groupedData = (data || []).reduce((acc, row) => {
+    const date = row.date;
+    if (!acc[date]) {
+      acc[date] = { cost: 0, conversion_value: 0 };
+    }
+    acc[date].cost += Number(row.cost) || 0;
+    acc[date].conversion_value += Number(row.conversion_value) || 0;
+    return acc;
+  }, {});
+
+  // [{date, cost, roas}] 형식으로 변환
+  return Object.entries(groupedData).map(([date, values]) => ({
+    date,
+    cost: values.cost,
+    roas: values.cost > 0 ? values.conversion_value / values.cost : 0,
+  }));
+};
+
+/**
+ * BEST 크리에이티브 조회 (광고비 순 정렬)
+ * @param {object} params - 필터 파라미터
+ * @param {string} params.advertiserId - 광고주 ID (선택)
+ * @param {string} params.startDate - 시작일 (YYYY-MM-DD)
+ * @param {string} params.endDate - 종료일 (YYYY-MM-DD)
+ * @param {number} params.limit - 조회 개수 (기본값: 6)
+ */
+export const getBestCreatives = async ({ advertiserId, availableAdvertiserIds, startDate, endDate, limit = 6 }) => {
+  // ===== 2025-12-31: Supabase 크리에이티브 데이터 조회 =====
+
+  // 1. ad_performance 데이터 조회 (성과 데이터)
+  let performanceQuery = supabase
+    .from('ad_performance')
+    .select('ad_id, source, cost, impressions, clicks, conversions, conversion_value');
+
+  // 광고주 필터
+  if (advertiserId) {
+    performanceQuery = performanceQuery.eq('advertiser_id', advertiserId);
+  } else if (availableAdvertiserIds && availableAdvertiserIds.length > 0) {
+    // "전체 브랜드" 선택 시 접근 가능한 광고주만 필터링
+    performanceQuery = performanceQuery.in('advertiser_id', availableAdvertiserIds);
+  }
+  if (startDate) {
+    performanceQuery = performanceQuery.gte('date', startDate);
+  }
+  if (endDate) {
+    performanceQuery = performanceQuery.lte('date', endDate);
+  }
+  performanceQuery = performanceQuery.is('deleted_at', null);
+
+  const { data: performanceData, error: performanceError } = await performanceQuery;
+  if (performanceError) throw performanceError;
+
+  // 2. ad_id별로 성과 집계
+  const aggregatedPerformance = (performanceData || []).reduce((acc, row) => {
+    const adId = row.ad_id;
+    if (!acc[adId]) {
+      acc[adId] = {
+        ad_id: adId,
+        source: row.source,
+        cost: 0,
+        impressions: 0,
+        clicks: 0,
+        conversions: 0,
+        conversion_value: 0,
+      };
+    }
+    acc[adId].cost += Number(row.cost) || 0;
+    acc[adId].impressions += Number(row.impressions) || 0;
+    acc[adId].clicks += Number(row.clicks) || 0;
+    acc[adId].conversions += Number(row.conversions) || 0;
+    acc[adId].conversion_value += Number(row.conversion_value) || 0;
+    return acc;
+  }, {});
+
+  // 3. ad_creatives 데이터 조회 (크리에이티브 정보)
+  const adIds = Object.keys(aggregatedPerformance);
+  if (adIds.length === 0) {
+    return [];
+  }
+
+  const { data: creativesData, error: creativesError } = await supabase
+    .from('ad_creatives')
+    .select('ad_id, ad_name, url, creative_type')
+    .in('ad_id', adIds)
+    .is('deleted_at', null);
+
+  if (creativesError) throw creativesError;
+
+  // 4. 성과 + 크리에이티브 JOIN 및 계산
+  const joinedData = (creativesData || []).map(creative => {
+    const performance = aggregatedPerformance[creative.ad_id] || {};
+    const cost = performance.cost || 0;
+    const impressions = performance.impressions || 0;
+    const clicks = performance.clicks || 0;
+    const conversions = performance.conversions || 0;
+    const conversion_value = performance.conversion_value || 0;
+
+    // CTR, ROAS 계산
+    const ctr = impressions > 0 ? (clicks / impressions) * 100 : 0;
+    const roas = cost > 0 ? (conversion_value / cost) * 100 : 0;
+
+    // creative_type에 따라 이미지/영상 구분
+    const isVideo = creative.creative_type === 'video' || creative.creative_type === 'VIDEO';
+
+    // url 컬럼 사용 (이미지/비디오 모두 url에 저장됨)
+    const mediaUrl = creative.url || '';
+
+    return {
+      adName: creative.ad_name || '광고명 없음',
+      media: performance.source || '알 수 없음',
+      author: performance.source ? `${performance.source} 광고팀` : '알 수 없음',
+      imageUrl: isVideo ? '' : mediaUrl,
+      videoUrl: isVideo ? mediaUrl : '',
+      isVideo,
+      cost,
+      conversions,
+      ctr: ctr.toFixed(1),
+      roas: Math.round(roas),
+      currentBid: `₩${Math.round(cost).toLocaleString()}`,
+      bidders: [],
+      dateRange: `${startDate} ~ ${endDate}`,
+    };
+  });
+
+  // 5. 광고비 순으로 정렬 (내림차순) 및 상위 N개 선택
+  const sorted = joinedData.sort((a, b) => b.cost - a.cost);
+  return sorted.slice(0, limit);
+};
+
+/**
+ * 모든 크리에이티브 조회 (페이지네이션용)
+ * @param {object} params - 필터 파라미터
+ * @param {string} params.advertiserId - 광고주 ID (선택)
+ * @param {string} params.startDate - 시작일 (YYYY-MM-DD)
+ * @param {string} params.endDate - 종료일 (YYYY-MM-DD)
+ */
+export const getAllCreatives = async ({ advertiserId, availableAdvertiserIds, startDate, endDate }) => {
+  // ===== 2025-12-31: Supabase 크리에이티브 데이터 조회 =====
+
+  // 1. ad_performance 데이터 조회 (성과 데이터)
+  let performanceQuery = supabase
+    .from('ad_performance')
+    .select('ad_id, source, campaign_name, cost, impressions, clicks, conversions, conversion_value');
+
+  // 광고주 필터
+  if (advertiserId) {
+    performanceQuery = performanceQuery.eq('advertiser_id', advertiserId);
+  } else if (availableAdvertiserIds && availableAdvertiserIds.length > 0) {
+    // "전체 브랜드" 선택 시 접근 가능한 광고주만 필터링
+    performanceQuery = performanceQuery.in('advertiser_id', availableAdvertiserIds);
+  }
+  if (startDate) {
+    performanceQuery = performanceQuery.gte('date', startDate);
+  }
+  if (endDate) {
+    performanceQuery = performanceQuery.lte('date', endDate);
+  }
+  performanceQuery = performanceQuery.is('deleted_at', null);
+
+  const { data: performanceData, error: performanceError } = await performanceQuery;
+  if (performanceError) throw performanceError;
+
+  // 2. ad_id별로 성과 집계
+  const aggregatedPerformance = (performanceData || []).reduce((acc, row) => {
+    const adId = row.ad_id;
+    if (!acc[adId]) {
+      acc[adId] = {
+        ad_id: adId,
+        source: row.source,
+        campaign_name: row.campaign_name,
+        cost: 0,
+        impressions: 0,
+        clicks: 0,
+        conversions: 0,
+        conversion_value: 0,
+      };
+    }
+    acc[adId].cost += Number(row.cost) || 0;
+    acc[adId].impressions += Number(row.impressions) || 0;
+    acc[adId].clicks += Number(row.clicks) || 0;
+    acc[adId].conversions += Number(row.conversions) || 0;
+    acc[adId].conversion_value += Number(row.conversion_value) || 0;
+    return acc;
+  }, {});
+
+  // 3. ad_creatives 데이터 조회 (크리에이티브 정보)
+  const adIds = Object.keys(aggregatedPerformance);
+  if (adIds.length === 0) {
+    return [];
+  }
+
+  const { data: creativesData, error: creativesError } = await supabase
+    .from('ad_creatives')
+    .select('ad_id, ad_name, url, creative_type')
+    .in('ad_id', adIds)
+    .is('deleted_at', null);
+
+  if (creativesError) throw creativesError;
+
+  // 4. ad_id 기준 중복 제거 (동일 광고에 여러 크리에이티브가 있을 수 있음)
+  const uniqueCreatives = Object.values(
+    (creativesData || []).reduce((acc, creative) => {
+      if (!acc[creative.ad_id]) {
+        acc[creative.ad_id] = creative;
+      }
+      return acc;
+    }, {})
+  );
+
+  // 5. 성과 + 크리에이티브 JOIN 및 계산
+  const joinedData = uniqueCreatives.map(creative => {
+    const performance = aggregatedPerformance[creative.ad_id] || {};
+    const cost = performance.cost || 0;
+    const impressions = performance.impressions || 0;
+    const clicks = performance.clicks || 0;
+    const conversions = performance.conversions || 0;
+    const conversion_value = performance.conversion_value || 0;
+
+    // CTR, ROAS 계산
+    const ctr = impressions > 0 ? (clicks / impressions) * 100 : 0;
+    const roas = cost > 0 ? (conversion_value / cost) * 100 : 0;
+
+    // creative_type에 따라 이미지/영상 구분
+    const isVideo = creative.creative_type === 'video' || creative.creative_type === 'VIDEO';
+
+    // url 컬럼 사용 (이미지/비디오 모두 url에 저장됨)
+    const mediaUrl = creative.url || '';
+
+    return {
+      adName: creative.ad_name || '광고명 없음',
+      media: performance.source || '알 수 없음',
+      campaign: performance.campaign_name || '캠페인 없음',
+      author: performance.source ? `${performance.source} 광고팀` : '알 수 없음',
+      imageUrl: isVideo ? '' : mediaUrl,
+      videoUrl: isVideo ? mediaUrl : '',
+      isVideo,
+      cost,
+      impressions,
+      clicks,
+      conversions,
+      ctr: ctr.toFixed(1),
+      roas: Math.round(roas),
+      currentBid: `₩${Math.round(cost).toLocaleString()}`,
+      bidders: [],
+      dateRange: `${startDate} ~ ${endDate}`,
+    };
+  });
+
+  // 6. 광고비 순으로 정렬 (내림차순)
+  return joinedData.sort((a, b) => b.cost - a.cost);
+};
+
+// ============================================
+// API 토큰 관리 (API Tokens)
+// ============================================
+
+/**
+ * API 토큰 목록 조회 (integrations 테이블)
+ * @param {string} advertiserId - 광고주 ID (선택, 클라이언트용)
+ * @returns {Array} API 토큰 목록 (camelCase 변환됨, 토큰 값 노출 안 함)
+ */
+export const getApiTokens = async (advertiserId = null) => {
+  let query = supabase
+    .from('integrations')
+    .select(`
+      *,
+      advertisers(name)
+    `)
+    .eq('integration_type', 'token')
+    .is('deleted_at', null);
+
+  // 클라이언트는 자신의 토큰만 조회
+  if (advertiserId) {
+    query = query.eq('advertiser_id', advertiserId);
+  }
+
+  const { data, error } = await query;
+  if (error) throw error;
+
+  // snake_case → camelCase 변환
+  return (data || []).map(token => ({
+    id: token.id,
+    advertiserId: token.advertiser_id,
+    advertiser: token.advertisers?.name || '',
+    platform: token.platform,
+    customerId: token.legacy_customer_id,
+    managerAccountId: token.legacy_manager_account_id,
+    targetConversionActionId: token.legacy_target_conversion_action_id || [],
+    clientId: token.legacy_client_id,
+    accountId: token.legacy_account_id,
+    status: token.status,
+    dataCollectionStatus: token.data_collection_status,
+    lastUpdated: token.last_checked ? new Date(token.last_checked).toISOString().split('T')[0].replace(/-/g, '.') : '',
+    createdAt: token.created_at,
+    updatedAt: token.updated_at,
+    hasAccessToken: !!token.oauth_access_token_encrypted,
+    hasRefreshToken: !!token.oauth_refresh_token_encrypted,
+    hasDeveloperToken: false,
+    hasClientSecret: false,
+    hasSecretKey: false,
+  }));
+};
+
+/**
+ * API 토큰 생성 (Vault 연동)
+ * @param {object} tokenData - 토큰 데이터 (camelCase)
+ * @returns {object} 생성된 토큰
+ */
+export const createApiToken = async (tokenData) => {
+  // 1. integrations 레코드 먼저 생성 (평문 토큰 없이)
+  const dbData = {
+    advertiser_id: tokenData.advertiserId,
+    platform: tokenData.platform,
+    integration_type: 'token', // Token 타입
+    status: tokenData.status || 'active',
+    legacy_customer_id: tokenData.customerId,
+    legacy_manager_account_id: tokenData.managerAccountId,
+    legacy_target_conversion_action_id: tokenData.targetConversionActionId ? [tokenData.targetConversionActionId] : null,
+    legacy_client_id: tokenData.clientId,
+    legacy_account_id: tokenData.accountId,
+  };
+
+  const { data: insertedToken, error: insertError } = await supabase
+    .from('integrations')
+    .insert([dbData])
+    .select()
+    .single();
+
+  if (insertError) throw insertError;
+
+  // 2. Vault에 민감 정보 저장 (직접 fetch 호출)
+  try {
+    const credentials = {};
+    if (tokenData.apiToken) credentials.access_token = tokenData.apiToken;
+    if (tokenData.refreshToken) credentials.refresh_token = tokenData.refreshToken;
+    if (tokenData.developerToken) credentials.developer_token = tokenData.developerToken;
+    if (tokenData.clientSecret) credentials.client_secret = tokenData.clientSecret;
+    if (tokenData.secretKey) credentials.secret_key = tokenData.secretKey;
+
+    // Edge Function 호출 (Authorization 헤더에 anon key 사용)
+    const response = await fetch(
+      `${process.env.REACT_APP_SUPABASE_URL}/functions/v1/vault-store-secrets`,
+      {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${process.env.REACT_APP_SUPABASE_ANON_KEY}`,
+          'Content-Type': 'application/json',
+          'apikey': process.env.REACT_APP_SUPABASE_ANON_KEY,
+        },
+        body: JSON.stringify({
+          integration_id: insertedToken.id,
+          platform: tokenData.platform,
+          credentials,
+        }),
+      }
+    );
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      console.error('Vault 저장 실패:', errorData);
+      await supabase.from('integrations').delete().eq('id', insertedToken.id);
+      throw new Error(`Vault 저장 실패: ${errorData.error || response.statusText}`);
+    }
+
+    const vaultResult = await response.json();
+    console.log('Vault 저장 성공:', vaultResult);
+  } catch (vaultErr) {
+    // 롤백: 생성된 레코드 삭제
+    await supabase.from('integrations').delete().eq('id', insertedToken.id);
+    throw vaultErr;
+  }
+
+  return insertedToken;
+};
+
+/**
+ * API 토큰 수정 (integrations 테이블)
+ * @param {string} tokenId - 토큰 ID
+ * @param {object} tokenData - 수정할 데이터 (camelCase)
+ * @returns {object} 수정된 토큰
+ */
+export const updateApiToken = async (tokenId, tokenData) => {
+  // camelCase → snake_case 변환 (integrations 테이블 컬럼명)
+  const dbData = {
+    advertiser_id: tokenData.advertiserId,
+    platform: tokenData.platform,
+    legacy_customer_id: tokenData.customerId,
+    legacy_manager_account_id: tokenData.managerAccountId,
+    legacy_target_conversion_action_id: tokenData.targetConversionActionId ? [tokenData.targetConversionActionId] : null,
+    legacy_client_id: tokenData.clientId,
+    legacy_account_id: tokenData.accountId,
+    status: tokenData.status,
+    updated_at: new Date().toISOString(),
+  };
+
+  const { data, error } = await supabase
+    .from('integrations')
+    .update(dbData)
+    .eq('id', tokenId)
+    .select()
+    .single();
+
+  if (error) throw error;
+  return data;
+};
+
+/**
+ * API 토큰 삭제 (Hard delete, integrations 테이블)
+ * @param {string} tokenId - 토큰 ID
+ */
+export const deleteApiToken = async (tokenId) => {
+  const { error } = await supabase
+    .from('integrations')
+    .delete()
+    .eq('id', tokenId);
+
+  if (error) throw error;
+};
+
+// ============================================
+// 사용자 통계 (User Statistics)
+// ============================================
+
+/**
+ * 사용자 통계 조회
+ * @returns {object} 총 사용자, 관리자 계정, 활성 사용자 수
+ */
+export const getUserStats = async () => {
+  // 총 사용자 수 (master 제외)
+  const { count: totalUsers, error: totalError } = await supabase
+    .from('users')
+    .select('*', { count: 'exact', head: true })
+    .neq('role', 'master')
+    .is('deleted_at', null);
+
+  if (totalError) throw totalError;
+
+  // 관리자 계정 수 (agency_admin, agency_manager, advertiser_admin, advertiser_staff) - master 제외
+  const { count: adminUsers, error: adminError } = await supabase
+    .from('users')
+    .select('*', { count: 'exact', head: true })
+    .in('role', ['agency_admin', 'agency_manager', 'advertiser_admin', 'advertiser_staff'])
+    .is('deleted_at', null);
+
+  if (adminError) throw adminError;
+
+  // 활성 사용자 수 (status = 'active', master 제외)
+  const { count: activeUsers, error: activeError } = await supabase
+    .from('users')
+    .select('*', { count: 'exact', head: true })
+    .eq('status', 'active')
+    .neq('role', 'master')
+    .is('deleted_at', null);
+
+  if (activeError) throw activeError;
+
+  return {
+    totalUsers: totalUsers || 0,
+    adminUsers: adminUsers || 0,
+    activeUsers: activeUsers || 0,
+  };
+};
+
+// ============================================
+// 게시판 (Board)
+// ============================================
+
+/**
+ * 게시글 목록 조회
+ * @param {string} boardType - 게시판 타입 ('admin' | 'brand')
+ * @param {string} userId - 현재 사용자 ID
+ * @param {string} advertiserId - 광고주 ID (brand 게시판용)
+ * @returns {Array} 게시글 목록
+ */
+export const getBoardPosts = async (boardType, userId, advertiserId = null) => {
+  let data = [];
+
+  if (boardType === 'brand' && advertiserId) {
+    // 브랜드 게시판: 두 종류의 게시글을 조회
+    // 1. board_type='brand' AND advertiser_id=현재브랜드 (브랜드 전용)
+    const { data: brandPosts, error: brandError } = await supabase
+      .from('board_posts')
+      .select(`
+        *,
+        users!board_posts_created_by_fkey(name, email, role)
+      `)
+      .eq('board_type', 'brand')
+      .eq('advertiser_id', advertiserId)
+      .is('deleted_at', null);
+
+    if (brandError) throw brandError;
+
+    // 2. board_type='admin' (슈퍼어드민이 작성한 글 - 클라이언트 사이드에서 필터링)
+    const { data: adminPosts, error: adminError } = await supabase
+      .from('board_posts')
+      .select(`
+        *,
+        users!board_posts_created_by_fkey(name, email, role)
+      `)
+      .eq('board_type', 'admin')
+      .is('deleted_at', null);
+
+    if (adminError) throw adminError;
+
+    // admin 게시글 중 현재 브랜드 대상인 것만 필터링
+    const filteredAdminPosts = (adminPosts || []).filter(post => {
+      // target_advertiser_ids가 null이면 모든 사용자 대상 (표시)
+      if (!post.target_advertiser_ids || post.target_advertiser_ids.length === 0) {
+        return true;
+      }
+      // target_advertiser_ids에 현재 브랜드 ID가 포함되어 있는지 확인
+      return post.target_advertiser_ids.includes(advertiserId);
+    });
+
+    // 두 목록을 합치고 날짜순 정렬
+    data = [...(brandPosts || []), ...filteredAdminPosts].sort((a, b) =>
+      new Date(b.created_at) - new Date(a.created_at)
+    );
+  } else {
+    // admin 게시판: 기존 로직
+    const query = supabase
+      .from('board_posts')
+      .select(`
+        *,
+        users!board_posts_created_by_fkey(name, email, role)
+      `)
+      .eq('board_type', boardType)
+      .is('deleted_at', null)
+      .order('created_at', { ascending: false });
+
+    const { data: posts, error } = await query;
+    if (error) throw error;
+    data = posts || [];
+  }
+
+  // admin 게시판에서 advertiserId가 있으면 필터링
+  let filteredData = data;
+  if (boardType === 'admin' && advertiserId) {
+    filteredData = data.filter(post => {
+      // target_advertiser_ids가 null이면 모든 사용자 대상 (표시)
+      if (!post.target_advertiser_ids || post.target_advertiser_ids.length === 0) {
+        return true;
+      }
+      // target_advertiser_ids에 현재 브랜드 ID가 포함되어 있는지 확인
+      return post.target_advertiser_ids.includes(advertiserId);
+    });
+  }
+
+  // 읽음 상태 조회
+  const postIds = filteredData.map(post => post.id);
+  let readStatus = {};
+
+  if (postIds.length > 0 && userId) {
+    const { data: readData, error: readError } = await supabase
+      .from('board_read_status')
+      .select('post_id')
+      .eq('user_id', userId)
+      .in('post_id', postIds);
+
+    if (!readError && readData) {
+      readStatus = readData.reduce((acc, item) => {
+        acc[item.post_id] = true;
+        return acc;
+      }, {});
+    }
+  }
+
+  // 게시글 데이터 변환
+  return filteredData.map(post => ({
+    id: post.id,
+    title: post.title,
+    content: post.content,
+    author: post.users?.name || post.users?.email || '관리자',
+    authorEmail: post.users?.email || '',
+    authorRole: post.users?.role || null,
+    date: new Date(post.created_at).toISOString().split('T')[0],
+    targets: post.target_roles || ['모든 사용자'],
+    isRead: readStatus[post.id] || false,
+    createdBy: post.created_by,
+  }));
+};
+
+/**
+ * 게시글 생성
+ * @param {object} postData - 게시글 데이터
+ * @returns {object} 생성된 게시글
+ */
+export const createBoardPost = async (postData) => {
+  console.log('[createBoardPost] 호출됨:', postData);
+
+  const insertData = {
+    title: postData.title,
+    content: postData.content,
+    board_type: postData.boardType,
+    advertiser_id: postData.advertiserId || null,
+    target_roles: postData.targets,
+    target_advertiser_ids: postData.targetAdvertiserIds || null,
+    created_by: postData.createdBy,
+  };
+
+  console.log('[createBoardPost] INSERT 데이터:', insertData);
+
+  const { data, error } = await supabase
+    .from('board_posts')
+    .insert([insertData])
+    .select()
+    .single();
+
+  if (error) {
+    console.error('[createBoardPost] 에러 발생:', error);
+    console.error('[createBoardPost] 에러 상세:', {
+      message: error.message,
+      code: error.code,
+      details: error.details,
+      hint: error.hint
+    });
+    throw error;
+  }
+
+  console.log('[createBoardPost] 성공:', data);
+  return data;
+};
+
+/**
+ * 게시글 읽음 처리
+ * @param {string} postId - 게시글 ID
+ * @param {string} userId - 사용자 ID
+ */
+export const markPostAsRead = async (postId, userId) => {
+  // 이미 읽음 상태인지 확인
+  const { data: existing } = await supabase
+    .from('board_read_status')
+    .select('id')
+    .eq('post_id', postId)
+    .eq('user_id', userId)
+    .single();
+
+  if (existing) return; // 이미 읽음 처리됨
+
+  const { error } = await supabase
+    .from('board_read_status')
+    .insert([{
+      post_id: postId,
+      user_id: userId,
+      read_at: new Date().toISOString(),
+    }]);
+
+  if (error) throw error;
+};
+
+/**
+ * 게시글 삭제 (soft delete)
+ * @param {string} postId - 게시글 ID
+ */
+export const deleteBoardPost = async (postId) => {
+  console.log('[deleteBoardPost] 삭제 요청:', postId);
+
+  const { data, error } = await supabase
+    .from('board_posts')
+    .update({ deleted_at: new Date().toISOString() })
+    .eq('id', postId)
+    .select();
+
+  console.log('[deleteBoardPost] 응답:', { data, error });
+
+  if (error) throw error;
+
+  return data;
+};
+
+/**
+ * 직급 체계 확인 함수
+ * @param {string} userRole - 현재 사용자 역할
+ * @param {string} authorRole - 작성자 역할
+ * @param {string} userId - 현재 사용자 ID
+ * @param {string} authorId - 작성자 ID
+ * @returns {boolean} - 현재 사용자가 삭제 권한이 있는지
+ */
+export const canDeletePost = (userRole, authorRole, userId, authorId) => {
+  // 본인이 작성한 글은 삭제 가능
+  if (userId === authorId) return true;
+
+  const roleHierarchy = {
+    master: 8,
+    agency_admin: 7,
+    org_admin: 7,
+    agency_manager: 6,
+    org_manager: 6,
+    agency_staff: 5,
+    org_staff: 5,
+    advertiser_admin: 4,
+    manager: 3,
+    editor: 2,
+    viewer: 1,
+  };
+
+  const userLevel = roleHierarchy[userRole] || 0;
+  const authorLevel = roleHierarchy[authorRole] || 0;
+
+  // master는 모든 글 삭제 가능
+  if (userRole === 'master') return true;
+
+  // 자기보다 높거나 같은 레벨은 삭제 불가
+  return userLevel > authorLevel;
+};
+
+/**
+ * 접근 가능한 브랜드(advertiser) 목록 조회 (브랜드 추가용)
+ * @param {Object} currentUser - 현재 사용자 정보
+ * @returns {Array} - 브랜드 목록
+ */
+export const getAdvertiserOrganizations = async (currentUser) => {
+  console.log('[getAdvertiserOrganizations] 조회 시작:', currentUser);
+
+  // master, agency_admin, agency_manager만 접근 가능
+  if (!['master', 'agency_admin', 'agency_manager'].includes(currentUser.role)) {
+    throw new Error('브랜드 목록 조회 권한이 없습니다.');
+  }
+
+  let query = supabase
+    .from('advertisers')
+    .select(`
+      id,
+      name,
+      organization_id,
+      users!inner(
+        id,
+        email,
+        name,
+        role
+      )
+    `)
+    .eq('users.role', 'advertiser_admin');
+
+  // agency_admin, agency_manager는 자신의 조직이 관리하는 브랜드만 조회
+  if (currentUser.role !== 'master' && currentUser.organization_id) {
+    query = query.eq('organization_id', currentUser.organization_id);
+  }
+
+  query = query.order('name', { ascending: true });
+
+  const { data, error } = await query;
+
+  if (error) {
+    console.error('[getAdvertiserOrganizations] 에러:', error);
+    throw error;
+  }
+
+  // 데이터 변환: 각 브랜드의 관리자 정보 추출
+  const brands = (data || []).map(adv => {
+    const admin = adv.users && adv.users.length > 0 ? adv.users[0] : null;
+    return {
+      id: adv.id,
+      name: adv.name,
+      organizationId: adv.organization_id,
+      adminEmail: admin?.email || null,
+      adminName: admin?.name || null,
+    };
+  });
+
+  console.log('[getAdvertiserOrganizations] 조회 완료:', brands);
+  return brands;
+};

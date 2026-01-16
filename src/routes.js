@@ -9,6 +9,7 @@ import {
   MdOutlineShoppingCart,
   MdAdminPanelSettings,
   MdTrendingUp,
+  MdBusiness,
 } from 'react-icons/md';
 
 // Admin Imports
@@ -26,6 +27,13 @@ import ResetPassword from 'views/auth/resetPassword';
 
 // ROAS Analyzer - 독립 모듈
 import { ROASAnalyzer } from 'modules/roas-analyzer';
+
+// Brand Admin Imports
+import BrandAdminDefault from 'views/clientadmin/default';
+import BrandsManagement from 'views/clientadmin/brands';
+
+// Super Admin Imports
+import SuperAdminDefault from 'views/superadmin/default';
 
 const routes = [
   {
@@ -84,6 +92,7 @@ const routes = [
     layout: '/superadmin',
     path: '/default',
     icon: <Icon as={MdAdminPanelSettings} width="20px" height="20px" color="inherit" />,
+    component: <SuperAdminDefault />,
     adminOnly: true, // 대행사 관리자 접근 (agency 조직)
     agencyOnly: true, // 대행사만 접근 가능
   },
@@ -92,8 +101,18 @@ const routes = [
     layout: '/brandadmin',
     path: '/default',
     icon: <Icon as={MdAdminPanelSettings} width="20px" height="20px" color="inherit" />,
+    component: <BrandAdminDefault />,
     adminOnly: true, // 브랜드 관리자 접근 (advertiser 조직)
     advertiserOnly: true, // 브랜드만 접근 가능
+  },
+  {
+    name: '브랜드 관리',
+    layout: '/brandadmin',
+    path: '/brands',
+    icon: <Icon as={MdBusiness} width="20px" height="20px" color="inherit" />,
+    component: <BrandsManagement />,
+    adminOnly: true,
+    advertiserOnly: true,
   },
   {
     name: 'Sign In',

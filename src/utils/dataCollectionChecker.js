@@ -57,33 +57,34 @@ export const checkYesterdayData = async (advertiserId, platform) => {
   const yesterday = getYesterdayDate();
   const isAfter10 = isAfter10AM();
 
-  // TODO: Supabase 연동
-  // const { data, error } = await supabase
-  //   .from('ad_performance')
-  //   .select('*')
-  //   .eq('advertiser_id', advertiserId)
-  //   .eq('platform', platform)
-  //   .eq('date', yesterday)
-  //   .limit(1);
+  // Supabase 동적 import (순환 참조 방지)
+  const { supabase } = await import('../config/supabase');
 
-  // if (error) {
-  //   console.error('Data check error:', error);
-  //   return 'error';
-  // }
+  try {
+    const { data, error } = await supabase
+      .from('ad_performance')
+      .select('id')
+      .eq('advertiser_id', advertiserId)
+      .eq('source', platform)
+      .eq('date', yesterday)
+      .is('deleted_at', null)
+      .limit(1);
 
-  // if (data && data.length > 0) {
-  //   return 'success';
-  // }
+    if (error) {
+      console.error('Data check error:', error);
+      return isAfter10 ? 'error' : 'pending';
+    }
 
-  // 오전 10시 이전이면 pending, 이후면 error
-  // return isAfter10 ? 'error' : 'pending';
+    if (data && data.length > 0) {
+      return 'success';
+    }
 
-  // Mock 구현: 현재는 랜덤으로 상태 반환
-  console.log(`[Mock] Checking data for ${advertiserId} - ${platform} on ${yesterday}`);
-  console.log(`[Mock] Current time check: ${isAfter10 ? 'After 10 AM' : 'Before 10 AM'}`);
-
-  // 실제 구현에서는 위의 주석 처리된 Supabase 코드를 사용
-  return isAfter10 ? 'error' : 'pending';
+    // 오전 10시 이전이면 pending, 이후면 error
+    return isAfter10 ? 'error' : 'pending';
+  } catch (err) {
+    console.error('Exception in checkYesterdayData:', err);
+    return isAfter10 ? 'error' : 'pending';
+  }
 };
 
 /**

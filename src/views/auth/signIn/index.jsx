@@ -22,7 +22,7 @@
 */
 
 import React from "react";
-import { NavLink } from "react-router-dom";
+import { NavLink, useNavigate } from "react-router-dom";
 // Chakra imports
 import {
   Box,
@@ -39,6 +39,7 @@ import {
   Text,
   useColorModeValue,
   Image,
+  useToast,
 } from "@chakra-ui/react";
 // Assets
 import illustration from "assets/img/auth/auth.png";
@@ -46,6 +47,7 @@ import { FcGoogle } from "react-icons/fc";
 import { FaFacebook } from "react-icons/fa";
 import { MdOutlineRemoveRedEye } from "react-icons/md";
 import { RiEyeCloseLine } from "react-icons/ri";
+import { useAuth } from "contexts/AuthContext";
 
 function SignIn() {
   // Chakra color mode
@@ -61,6 +63,50 @@ function SignIn() {
   );
   const [show, setShow] = React.useState(false);
   const handleClick = () => setShow(!show);
+
+  // ===== 2025-12-31: Supabase 로그인 연동 =====
+  const [email, setEmail] = React.useState("");
+  const [password, setPassword] = React.useState("");
+  const [loading, setLoading] = React.useState(false);
+  const { signIn } = useAuth();
+  const navigate = useNavigate();
+  const toast = useToast();
+
+  const handleSignIn = async () => {
+    if (!email || !password) {
+      toast({
+        title: "입력 오류",
+        description: "이메일과 비밀번호를 입력하세요.",
+        status: "warning",
+        duration: 3000,
+        isClosable: true,
+      });
+      return;
+    }
+
+    setLoading(true);
+    const { data, error } = await signIn(email, password);
+    setLoading(false);
+
+    if (error) {
+      toast({
+        title: "로그인 실패",
+        description: error.message || "이메일 또는 비밀번호를 확인하세요.",
+        status: "error",
+        duration: 5000,
+        isClosable: true,
+      });
+    } else {
+      toast({
+        title: "로그인 성공",
+        description: "환영합니다!",
+        status: "success",
+        duration: 2000,
+        isClosable: true,
+      });
+      navigate("/admin/default");
+    }
+  };
 
   return (
     <Flex
@@ -118,6 +164,9 @@ function SignIn() {
               fontWeight="500"
               size="lg"
               borderRadius="10px"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              onKeyPress={(e) => e.key === "Enter" && handleSignIn()}
             />
           </FormControl>
 
@@ -140,6 +189,9 @@ function SignIn() {
                 type={show ? "text" : "password"}
                 variant="auth"
                 borderRadius="10px"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                onKeyPress={(e) => e.key === "Enter" && handleSignIn()}
               />
               <InputRightElement display="flex" alignItems="center" mt="4px">
                 <Icon
@@ -175,6 +227,8 @@ function SignIn() {
             h="50px"
             mb="20px"
             borderRadius="10px"
+            onClick={handleSignIn}
+            isLoading={loading}
           >
             Sign in
           </Button>
