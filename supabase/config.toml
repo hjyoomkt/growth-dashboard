@@ -11,3 +11,9 @@ entrypoint = "./functions/send-invite-email/index.ts"
 
 [functions.save-organization-gcp]
 verify_jwt = false
+
+[functions.collection-worker]
+verify_jwt = false
+
+[functions.collect-ad-data]
+verify_jwt = false

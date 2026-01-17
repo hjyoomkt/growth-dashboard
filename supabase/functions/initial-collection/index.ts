@@ -91,29 +91,31 @@ async function executeBackgroundCollection(
       // Meta: 3단계 처리 (광고 → 연령대 → 크리에이티브)
       console.log('Starting Meta Ads initial collection')
 
-      // Step 1: 광고 데이터 수집
-      await processCollectionWithChunks(
+      // Step 1: 광고 데이터 수집 (의존성 없음)
+      const adsJob = await processCollectionWithChunks(
         supabase,
         integrationId,
         startDate,
         endDate,
         'ads',
         platformConfig.chunk_size_days,
-        'Meta 광고'
+        'Meta 광고',
+        null
       )
 
-      // Step 2: 연령대 수집
-      await processCollectionWithChunks(
+      // Step 2: 연령대 수집 (광고 완료 후)
+      const demoJob = await processCollectionWithChunks(
         supabase,
         integrationId,
         startDate,
         endDate,
         'demographics',
         platformConfig.demographics_chunk_size_days || platformConfig.chunk_size_days,
-        'Meta 연령대'
+        'Meta 연령대',
+        adsJob.id
       )
 
-      // Step 3: 크리에이티브 수집 (청크 불필요)
+      // Step 3: 크리에이티브 수집 (연령대 완료 후)
       await processCollectionWithChunks(
         supabase,
         integrationId,
@@ -121,7 +123,8 @@ async function executeBackgroundCollection(
         endDate,
         'creatives',
         9999, // 크리에이티브는 청크 없이 전체 기간 1번 호출
-        'Meta 크리에이티브'
+        'Meta 크리에이티브',
+        demoJob.id
       )
 
     } else if (platform === 'Google Ads' || platform === 'Naver Ads') {
@@ -173,7 +176,8 @@ async function processCollectionWithChunks(
   endDate: string,
   collectionType: string,
   chunkSizeDays: number,
-  jobName: string
+  jobName: string,
+  dependsOnJobId: string | null = null
 ) {
   // 청크 계산
   const chunks = calculateDateChunks(startDate, endDate, chunkSizeDays)
@@ -200,7 +204,7 @@ async function processCollectionWithChunks(
       start_date: startDate,
       end_date: endDate,
       mode: 'initial',
-      status: 'running',
+      status: 'pending',
       chunks_total: chunks.length,
       chunks_completed: 0,
       chunks_failed: 0,
@@ -213,89 +217,29 @@ async function processCollectionWithChunks(
     throw new Error(`Failed to create collection job: ${jobError?.message}`)
   }
 
-  let completedCount = 0
-  let failedCount = 0
-  const errors: string[] = []
+  // 청크를 collection_queue에 INSERT (의존성 포함)
+  const queueInserts = chunks.map((chunk, index) => ({
+    job_id: job.id,
+    integration_id: integrationId,
+    chunk_index: index,
+    start_date: chunk.start,
+    end_date: chunk.end,
+    collection_type: collectionType,
+    status: 'pending',
+    depends_on_job_id: dependsOnJobId
+  }))
 
-  // 청크별 개별 호출
-  for (let i = 0; i < chunks.length; i++) {
-    const chunk = chunks[i]
-    console.log(`Processing ${jobName} chunk ${i + 1}/${chunks.length}: ${chunk.start} ~ ${chunk.end}`)
+  const { error: queueError } = await supabase
+    .from('collection_queue')
+    .insert(queueInserts)
 
-    try {
-      // collect-ad-data 호출 (단일 청크만 처리)
-      const { data, error } = await supabase.functions.invoke('collect-ad-data', {
-        headers: {
-          Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`
-        },
-        body: {
-          integration_id: integrationId,
-          start_date: chunk.start,
-          end_date: chunk.end,
-          mode: 'initial',
-          collection_type: collectionType,
-          job_id: job.id // job_id 전달
-        }
-      })
-
-      if (error || !data?.success) {
-        throw new Error(error?.message || 'Collection failed')
-      }
-
-      completedCount++
-
-      // 진행률 업데이트
-      await supabase
-        .from('collection_jobs')
-        .update({
-          chunks_completed: completedCount,
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', job.id)
-
-      console.log(`Chunk ${i + 1}/${chunks.length} completed`)
-
-    } catch (error) {
-      console.error(`Chunk ${i + 1} failed:`, error)
-      failedCount++
-      errors.push(`Chunk ${i + 1}: ${error.message}`)
-
-      // 실패 업데이트
-      await supabase
-        .from('collection_jobs')
-        .update({
-          chunks_failed: failedCount,
-          error_details: errors,
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', job.id)
-    }
+  if (queueError) {
+    throw new Error(`Failed to enqueue chunks: ${queueError.message}`)
   }
 
-  // 최종 상태 결정
-  let finalStatus = 'completed'
-  if (failedCount === chunks.length) {
-    finalStatus = 'failed'
-  } else if (failedCount > 0) {
-    finalStatus = 'partial'
-  }
+  console.log(`${jobName}: ${chunks.length} chunks enqueued to collection_queue${dependsOnJobId ? ` (depends on job ${dependsOnJobId})` : ''}`)
 
-  // Job 완료 업데이트
-  await supabase
-    .from('collection_jobs')
-    .update({
-      status: finalStatus,
-      completed_at: new Date().toISOString(),
-      error_message: errors.length > 0 ? errors.join('; ') : null,
-      updated_at: new Date().toISOString()
-    })
-    .eq('id', job.id)
-
-  console.log(`${jobName} completed: ${completedCount}/${chunks.length} chunks succeeded`)
-
-  if (finalStatus === 'failed') {
-    throw new Error(`${jobName} failed: all chunks failed`)
-  }
+  return job
 }
 
 // 날짜 청크 계산
