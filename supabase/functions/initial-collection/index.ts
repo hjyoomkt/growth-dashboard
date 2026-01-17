@@ -180,7 +180,7 @@ async function processCollectionWithChunks(
   dependsOnJobId: string | null = null
 ) {
   // 청크 계산
-  const chunks = calculateDateChunks(startDate, endDate, chunkSizeDays)
+  const chunks = calculateDateChunks(startDate, endDate, chunkSizeDays, collectionType)
   console.log(`${jobName}: ${chunks.length} chunks`)
 
   // Integration에서 advertiser_id 조회
@@ -192,6 +192,32 @@ async function processCollectionWithChunks(
 
   if (!integration) {
     throw new Error('Integration not found')
+  }
+
+  // Demographics 청크가 0개인 경우 즉시 완료 처리
+  if (collectionType === 'demographics' && chunks.length === 0) {
+    console.log(`[Demographics] 390일 제한으로 수집 가능한 기간 없음 - job 생성 후 즉시 완료`)
+
+    const { data: job } = await supabase
+      .from('collection_jobs')
+      .insert({
+        advertiser_id: integration.advertiser_id,
+        platform: integration.platform,
+        collection_type: collectionType,
+        start_date: startDate,
+        end_date: endDate,
+        mode: 'initial',
+        status: 'completed',
+        chunks_total: 0,
+        chunks_completed: 0,
+        chunks_failed: 0,
+        started_at: new Date().toISOString(),
+        completed_at: new Date().toISOString()
+      })
+      .select()
+      .single()
+
+    return job
   }
 
   // 1개 Job 생성 (전체 기간)
@@ -243,10 +269,32 @@ async function processCollectionWithChunks(
 }
 
 // 날짜 청크 계산
-function calculateDateChunks(startDate: string, endDate: string, chunkSizeDays: number): Array<{start: string, end: string}> {
+function calculateDateChunks(
+  startDate: string,
+  endDate: string,
+  chunkSizeDays: number,
+  collectionType: string = 'ads'
+): Array<{start: string, end: string}> {
   const chunks: Array<{start: string, end: string}> = []
   const start = new Date(startDate)
   const end = new Date(endDate)
+
+  // Demographics 390일 제한
+  if (collectionType === 'demographics') {
+    const today = new Date()
+    const limitDate = new Date(today)
+    limitDate.setDate(limitDate.getDate() - 390)
+
+    if (start < limitDate) {
+      console.log(`[Demographics 390일 제한] ${formatDate(start)} → ${formatDate(limitDate)}`)
+      start.setTime(limitDate.getTime())
+    }
+
+    if (start > end) {
+      console.log('[Demographics 390일 제한] 수집 가능 기간 없음')
+      return []
+    }
+  }
 
   let currentStart = new Date(start)
 
@@ -266,6 +314,7 @@ function calculateDateChunks(startDate: string, endDate: string, chunkSizeDays: 
     currentStart.setDate(currentStart.getDate() + chunkSizeDays)
   }
 
+  console.log(`[calculateDateChunks] ${collectionType}: ${chunks.length} chunks`)
   return chunks
 }
 

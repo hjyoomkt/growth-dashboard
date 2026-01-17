@@ -483,16 +483,47 @@ export default function APITokenTable(props) {
           endDate = new Date(today).toISOString().split('T')[0];
           break;
         case 'all':
-          const twoYearsAgo = new Date(today);
-          twoYearsAgo.setFullYear(twoYearsAgo.getFullYear() - 2);
+          const oneYearAgoAll = new Date(today);
+          oneYearAgoAll.setFullYear(oneYearAgoAll.getFullYear() - 1);
           const yesterdayAll = new Date(today);
           yesterdayAll.setDate(yesterdayAll.getDate() - 1);
-          startDate = twoYearsAgo.toISOString().split('T')[0];
+          startDate = oneYearAgoAll.toISOString().split('T')[0];
           endDate = yesterdayAll.toISOString().split('T')[0];
           break;
         case 'custom':
           startDate = syncConfig.startDate;
           endDate = syncConfig.endDate;
+
+          // 날짜 검증
+          const syncStart = new Date(startDate);
+          const syncEnd = new Date(endDate);
+          const twoYearsAgoSync = new Date(today);
+          twoYearsAgoSync.setFullYear(today.getFullYear() - 2);
+
+          // 최대 2년 전까지 제한
+          if (syncStart < twoYearsAgoSync) {
+            toast({
+              title: '날짜 범위 오류',
+              description: '최대 2년 전까지의 데이터만 연동할 수 있습니다.',
+              status: 'warning',
+              duration: 5000,
+              isClosable: true,
+            });
+            return;
+          }
+
+          // 최대 365일 간격 제한
+          const syncDaysDiff = Math.floor((syncEnd - syncStart) / (1000 * 60 * 60 * 24));
+          if (syncDaysDiff > 365) {
+            toast({
+              title: '날짜 범위 오류',
+              description: '시작일과 종료일 간격은 최대 365일까지 가능합니다.',
+              status: 'warning',
+              duration: 5000,
+              isClosable: true,
+            });
+            return;
+          }
           break;
         default:
           throw new Error('Invalid date range');
@@ -571,7 +602,9 @@ export default function APITokenTable(props) {
           endDate = yesterdayStr;
           break;
         case 'maxRange':
-          startDate = twoYearsAgo.toISOString().split('T')[0];
+          const oneYearAgo = new Date(today);
+          oneYearAgo.setFullYear(today.getFullYear() - 1);
+          startDate = oneYearAgo.toISOString().split('T')[0];
           endDate = yesterdayStr;
           break;
         case 'custom':
@@ -605,6 +638,19 @@ export default function APITokenTable(props) {
             toast({
               title: '날짜 범위 오류',
               description: '시작 날짜는 종료 날짜보다 빠를 수 없습니다.',
+              status: 'warning',
+              duration: 5000,
+              isClosable: true,
+            });
+            return false;
+          }
+
+          // 365일 간격 제한
+          const daysDiff = Math.floor((customEnd - customStart) / (1000 * 60 * 60 * 24));
+          if (daysDiff > 365) {
+            toast({
+              title: '날짜 범위 오류',
+              description: '시작일과 종료일 간격은 최대 365일까지 가능합니다.',
               status: 'warning',
               duration: 5000,
               isClosable: true,
@@ -1713,7 +1759,7 @@ export default function APITokenTable(props) {
                       <Text fontSize="sm" fontWeight="400">지난달 (최근 30일)</Text>
                     </Radio>
                     <Radio value="all" colorScheme="brand" size="sm">
-                      <Text fontSize="sm" fontWeight="400">전체 데이터</Text>
+                      <Text fontSize="sm" fontWeight="400">최근 1년</Text>
                     </Radio>
                     <Radio value="custom" colorScheme="brand" size="sm">
                       <Text fontSize="sm" fontWeight="400">사용자 지정</Text>
@@ -1734,6 +1780,16 @@ export default function APITokenTable(props) {
                       onChange={(e) => setSyncConfig({ ...syncConfig, startDate: e.target.value })}
                       fontSize="sm"
                       h="44px"
+                      max={(() => {
+                        const yesterday = new Date();
+                        yesterday.setDate(yesterday.getDate() - 1);
+                        return yesterday.toISOString().split('T')[0];
+                      })()}
+                      min={(() => {
+                        const twoYearsAgo = new Date();
+                        twoYearsAgo.setFullYear(twoYearsAgo.getFullYear() - 2);
+                        return twoYearsAgo.toISOString().split('T')[0];
+                      })()}
                     />
                   </FormControl>
                   <FormControl>
@@ -1746,6 +1802,16 @@ export default function APITokenTable(props) {
                       onChange={(e) => setSyncConfig({ ...syncConfig, endDate: e.target.value })}
                       fontSize="sm"
                       h="44px"
+                      max={(() => {
+                        const yesterday = new Date();
+                        yesterday.setDate(yesterday.getDate() - 1);
+                        return yesterday.toISOString().split('T')[0];
+                      })()}
+                      min={syncConfig.startDate || (() => {
+                        const twoYearsAgo = new Date();
+                        twoYearsAgo.setFullYear(twoYearsAgo.getFullYear() - 2);
+                        return twoYearsAgo.toISOString().split('T')[0];
+                      })()}
                     />
                   </FormControl>
                 </HStack>
@@ -1842,7 +1908,7 @@ export default function APITokenTable(props) {
                   syncConfig.dateRange === 'yesterday' ? '어제' :
                   syncConfig.dateRange === 'lastWeek' ? '지난주 (7일)' :
                   syncConfig.dateRange === 'lastMonth' ? '지난달 (30일)' :
-                  syncConfig.dateRange === 'all' ? '전체 데이터' :
+                  syncConfig.dateRange === 'all' ? '최근 1년' :
                   `${syncConfig.startDate} ~ ${syncConfig.endDate}`
                 }
               </Text>
@@ -1897,7 +1963,7 @@ export default function APITokenTable(props) {
                 수집 기간 선택
               </FormLabel>
               <Text fontSize="xs" color="gray.500" mb={3}>
-                최대 2년 전까지 데이터를 수집할 수 있습니다.
+                최대 2년 전부터 어제까지 선택 가능하며, 한 번에 최대 1년(365일)까지 수집할 수 있습니다.
               </Text>
               <Menu>
                 <MenuButton
@@ -1919,7 +1985,7 @@ export default function APITokenTable(props) {
                   {formData.initialCollectionRange === 'yesterday' ? '어제' :
                    formData.initialCollectionRange === 'lastWeek' ? '지난 주 (7일)' :
                    formData.initialCollectionRange === 'lastMonth' ? '지난 달 (30일)' :
-                   formData.initialCollectionRange === 'maxRange' ? '최대 (2년)' :
+                   formData.initialCollectionRange === 'maxRange' ? '최대 (1년)' :
                    formData.initialCollectionRange === 'custom' ? '직접 입력' :
                    formData.initialCollectionRange === 'skip' ? '나중에 하기' : '기간을 선택하세요'}
                 </MenuButton>
@@ -1928,7 +1994,7 @@ export default function APITokenTable(props) {
                     {value: 'yesterday', label: '어제'},
                     {value: 'lastWeek', label: '지난 주 (7일)'},
                     {value: 'lastMonth', label: '지난 달 (30일)'},
-                    {value: 'maxRange', label: '최대 (2년)'},
+                    {value: 'maxRange', label: '최대 (1년)'},
                     {value: 'custom', label: '직접 입력'},
                     {value: 'skip', label: '나중에 하기'},
                   ].map((option) => (
