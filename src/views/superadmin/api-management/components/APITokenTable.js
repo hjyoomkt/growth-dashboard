@@ -115,7 +115,7 @@ export default function APITokenTable(props) {
     status: 'active',
     // 초기 데이터 수집 설정
     initialCollectionEnabled: true, // 초기 수집 활성화 여부
-    initialCollectionRange: 'lastMonth', // yesterday, lastWeek, lastMonth, custom, skip
+    initialCollectionRange: '', // 기본값 없음: 사용자가 반드시 선택해야 함
     customStartDate: '',
     customEndDate: '',
   });
@@ -286,6 +286,9 @@ export default function APITokenTable(props) {
         ...item,
         advertiser_name: item.advertisers?.name || '알 수 없음',
       }));
+
+      console.log('[DEBUG] Integrations 데이터:', mappedData);
+      console.log('[DEBUG] 첫 번째 항목 상세:', mappedData[0]);
 
       setAllData(mappedData);
     } catch (error) {
@@ -733,6 +736,7 @@ export default function APITokenTable(props) {
         advertiserId: formData.advertiserId,
         platform: formData.platform,
         status: formData.status,
+        accountDescription: formData.accountDescription, // 계정 설명 추가
         // Google Ads
         ...(isGoogleAds && {
           customerId: formData.customerId,
@@ -856,29 +860,22 @@ export default function APITokenTable(props) {
           fontSize={{ sm: '10px', lg: '12px' }}
           color="gray.400"
         >
-          계정 정보
+          계정 ID
         </Text>
       ),
       cell: (info) => {
         const row = info.row.original;
-        // Google Ads: customer_id 표시
-        if (row.platform === 'Google Ads') {
-          return (
-            <Text color={textColor} fontSize="sm" fontWeight="500">
-              {row.customer_id || '-'}
-            </Text>
-          );
-        }
-        // 기타 플랫폼: account_id 표시
+        // 계정 ID 우선순위: legacy_account_id > account_id > legacy_customer_id
+        const accountId = row.legacy_account_id || row.account_id || row.legacy_customer_id || '-';
         return (
           <Text color={textColor} fontSize="sm" fontWeight="500">
-            {row.account_id || '-'}
+            {accountId}
           </Text>
         );
       },
     }),
-    columnHelper.accessor('apiToken', {
-      id: 'apiToken',
+    columnHelper.accessor('accountDescription', {
+      id: 'accountDescription',
       header: () => (
         <Text
           justifyContent="space-between"
@@ -886,23 +883,14 @@ export default function APITokenTable(props) {
           fontSize={{ sm: '10px', lg: '12px' }}
           color="gray.400"
         >
-          토큰 정보
+          설명
         </Text>
       ),
       cell: (info) => {
         const row = info.row.original;
-        // Google Ads: developer_token_vault_id 표시
-        if (row.platform === 'Google Ads') {
-          return (
-            <Text color="gray.400" fontSize="sm" fontWeight="500" fontFamily="monospace">
-              {row.developer_token_vault_id ? '••••••••' : '-'}
-            </Text>
-          );
-        }
-        // 기타 플랫폼: api_token_vault_id 표시
         return (
-          <Text color="gray.400" fontSize="sm" fontWeight="500" fontFamily="monospace">
-            {row.api_token_vault_id ? '••••••••' : '-'}
+          <Text color={textColor} fontSize="sm" fontWeight="500">
+            {row.account_description || '-'}
           </Text>
         );
       },
@@ -1208,7 +1196,8 @@ export default function APITokenTable(props) {
                 placeholder="예: 메인 계정, 리타게팅 전용, 신상품 캠페인용"
                 value={formData.accountDescription}
                 onChange={(e) => setFormData({ ...formData, accountDescription: e.target.value })}
-                
+                autoComplete="off"
+                data-form-type="other"
                 fontSize="sm"
               />
               <Text fontSize="xs" color="secondaryGray.600" mt={2}>
@@ -1932,7 +1921,7 @@ export default function APITokenTable(props) {
                    formData.initialCollectionRange === 'lastMonth' ? '지난 달 (30일)' :
                    formData.initialCollectionRange === 'maxRange' ? '최대 (2년)' :
                    formData.initialCollectionRange === 'custom' ? '직접 입력' :
-                   formData.initialCollectionRange === 'skip' ? '나중에 하기' : '지난 달 (30일)'}
+                   formData.initialCollectionRange === 'skip' ? '나중에 하기' : '기간을 선택하세요'}
                 </MenuButton>
                 <MenuList minW='auto' w='fit-content' px='8px' py='8px'>
                   {[
@@ -2051,6 +2040,11 @@ export default function APITokenTable(props) {
               colorScheme="brand"
               isLoading={isCollectionStarting}
               loadingText="시작 중..."
+              isDisabled={
+                !formData.initialCollectionRange ||
+                (formData.initialCollectionRange === 'custom' &&
+                  (!formData.customStartDate || !formData.customEndDate))
+              }
               onClick={async () => {
                 if (formData.initialCollectionRange === 'skip') {
                   onInitialCollectionModalClose();

@@ -1867,6 +1867,7 @@ export const createApiToken = async (tokenData) => {
     platform: tokenData.platform,
     integration_type: 'token', // Token 타입
     status: tokenData.status || 'active',
+    account_description: tokenData.accountDescription || null, // 계정 설명 추가
     legacy_customer_id: tokenData.customerId,
     legacy_manager_account_id: tokenData.managerAccountId,
     legacy_target_conversion_action_id: tokenData.targetConversionActionId ? [tokenData.targetConversionActionId] : null,
@@ -1938,6 +1939,7 @@ export const updateApiToken = async (tokenId, tokenData) => {
   const dbData = {
     advertiser_id: tokenData.advertiserId,
     platform: tokenData.platform,
+    account_description: tokenData.accountDescription || null, // 계정 설명 추가
     legacy_customer_id: tokenData.customerId,
     legacy_manager_account_id: tokenData.managerAccountId,
     legacy_target_conversion_action_id: tokenData.targetConversionActionId ? [tokenData.targetConversionActionId] : null,
