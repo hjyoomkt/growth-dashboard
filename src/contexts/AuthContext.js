@@ -81,6 +81,29 @@ export const AuthProvider = ({ children }) => {
     return () => subscription.unsubscribe();
   }, []);
 
+  // URL 변경 감지 (뒤로가기/앞으로가기 대응)
+  useEffect(() => {
+    const handlePopState = () => {
+      const urlParams = new URLSearchParams(window.location.search);
+      const brandFromUrl = urlParams.get('brand');
+
+      if (brandFromUrl) {
+        const hasAccess = availableAdvertisers.some(adv => adv.id === brandFromUrl);
+        if (hasAccess && brandFromUrl !== currentAdvertiserId) {
+          setCurrentAdvertiserId(brandFromUrl);
+          localStorage.setItem('selectedBrandId', brandFromUrl);
+          console.log('[AuthContext] 브라우저 히스토리 탐색:', brandFromUrl);
+        }
+      } else if (currentAdvertiserId !== null) {
+        setCurrentAdvertiserId(null);
+        localStorage.removeItem('selectedBrandId');
+      }
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, [availableAdvertisers, currentAdvertiserId]);
+
   // ✅ 사용자 메타데이터 조회 함수
   const fetchUserMetadata = async (userId) => {
     try {
@@ -110,11 +133,46 @@ export const AuthProvider = ({ children }) => {
       setAvailableAdvertisers(advertisers);
       console.log('✅ 접근 가능한 광고주:', advertisers);
 
-      // 첫 번째 광고주를 기본값으로 설정
-      if (advertisers && advertisers.length > 0) {
-        setCurrentAdvertiserId(advertisers[0].id);
-        console.log('✅ 현재 광고주 ID:', advertisers[0].id);
+      // 브랜드 선택 우선순위: URL > localStorage > 첫 번째 광고주
+      const urlParams = new URLSearchParams(window.location.search);
+      const brandFromUrl = urlParams.get('brand');
+      const savedBrandId = localStorage.getItem('selectedBrandId');
+
+      let initialAdvertiserId = null;
+
+      // 1순위: URL 파라미터
+      if (brandFromUrl) {
+        const hasAccess = advertisers.some(adv => adv.id === brandFromUrl);
+        if (hasAccess) {
+          initialAdvertiserId = brandFromUrl;
+          localStorage.setItem('selectedBrandId', brandFromUrl);
+          console.log('✅ URL에서 브랜드 복원:', brandFromUrl);
+        } else {
+          console.warn('[AuthContext] URL의 브랜드 접근 권한 없음:', brandFromUrl);
+        }
       }
+
+      // 2순위: localStorage
+      if (!initialAdvertiserId && savedBrandId) {
+        const hasAccess = advertisers.some(adv => adv.id === savedBrandId);
+        if (hasAccess) {
+          initialAdvertiserId = savedBrandId;
+          console.log('✅ localStorage에서 브랜드 복원:', savedBrandId);
+        } else {
+          localStorage.removeItem('selectedBrandId');
+          console.warn('[AuthContext] localStorage의 브랜드 접근 권한 없음:', savedBrandId);
+        }
+      }
+
+      // 3순위: 첫 번째 광고주
+      if (!initialAdvertiserId && advertisers && advertisers.length > 0) {
+        initialAdvertiserId = advertisers[0].id;
+        localStorage.setItem('selectedBrandId', initialAdvertiserId);
+        console.log('✅ 기본 브랜드로 설정:', initialAdvertiserId);
+      }
+
+      setCurrentAdvertiserId(initialAdvertiserId);
+      console.log('✅ 현재 광고주 ID:', initialAdvertiserId);
 
       setLoading(false);
     } catch (error) {
@@ -184,8 +242,15 @@ export const AuthProvider = ({ children }) => {
   // 브랜드 전환 함수
   const switchAdvertiser = (advertiserId) => {
     setCurrentAdvertiserId(advertiserId);
+
+    // localStorage에 저장
+    if (advertiserId) {
+      localStorage.setItem('selectedBrandId', advertiserId);
+    } else {
+      localStorage.removeItem('selectedBrandId');
+    }
+
     console.log('Switched to advertiser:', advertiserId || 'All');
-    // TODO: Supabase 연동 시 사용자 설정 저장
   };
 
   // API 알림 추가 함수

@@ -11,14 +11,15 @@ export const useDateRange = () => {
 };
 
 export const DateRangeProvider = ({ children }) => {
-  // 기본값: 최근 30일 (2025-12-31 임시 변경)
+  // 기본값: 최근 30일 (종료일 = 어제)
   const getDefaultRange = () => {
     const today = new Date();
-    const thirtyDaysAgo = new Date(today.getFullYear(), today.getMonth(), today.getDate() - 29);
+    const yesterday = new Date(today.getFullYear(), today.getMonth(), today.getDate() - 1);
+    const thirtyDaysAgo = new Date(today.getFullYear(), today.getMonth(), today.getDate() - 30);
 
     return {
       start: formatDate(thirtyDaysAgo),
-      end: formatDate(today),
+      end: formatDate(yesterday),
     };
   };
 
@@ -42,6 +43,7 @@ export const DateRangeProvider = ({ children }) => {
     const month = today.getMonth();
     const day = today.getDate();
     const dayOfWeek = today.getDay();
+    const yesterday = new Date(year, month, day - 1);
 
     let start, end;
 
@@ -52,25 +54,25 @@ export const DateRangeProvider = ({ children }) => {
         break;
 
       case '최근 7일':
-        start = new Date(year, month, day - 6);
-        end = today;
+        start = new Date(year, month, day - 7);
+        end = yesterday;
         break;
 
       case '최근 14일':
-        start = new Date(year, month, day - 13);
-        end = today;
+        start = new Date(year, month, day - 14);
+        end = yesterday;
         break;
 
       case '최근 30일':
-        start = new Date(year, month, day - 29);
-        end = today;
+        start = new Date(year, month, day - 30);
+        end = yesterday;
         break;
 
       case '이번 주':
         // 월요일 기준
         const mondayOffset = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
         start = new Date(year, month, day + mondayOffset);
-        end = today;
+        end = yesterday;
         break;
 
       case '지난주':
@@ -83,7 +85,7 @@ export const DateRangeProvider = ({ children }) => {
 
       case '이번 달':
         start = new Date(year, month, 1);
-        end = today;
+        end = yesterday;
         break;
 
       case '지난달':
@@ -121,6 +123,7 @@ export const DateRangeProvider = ({ children }) => {
     selectedPreset,
     setStartDate,
     setEndDate,
+    setSelectedPreset,
     updateDateRange,
   };
 

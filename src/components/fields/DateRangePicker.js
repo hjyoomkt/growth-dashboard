@@ -30,6 +30,7 @@ const DateRangePicker = () => {
     selectedPreset,
     setStartDate,
     setEndDate,
+    setSelectedPreset,
     updateDateRange,
   } = useDateRange();
 
@@ -78,6 +79,7 @@ const DateRangePicker = () => {
     const month = String(date.getMonth() + 1).padStart(2, '0');
     const day = String(date.getDate()).padStart(2, '0');
     setStartDate(`${year}-${month}-${day}`);
+    setSelectedPreset('직접설정');
     setIsStartOpen(false);
   };
 
@@ -86,6 +88,7 @@ const DateRangePicker = () => {
     const month = String(date.getMonth() + 1).padStart(2, '0');
     const day = String(date.getDate()).padStart(2, '0');
     setEndDate(`${year}-${month}-${day}`);
+    setSelectedPreset('직접설정');
     setIsEndOpen(false);
   };
 

@@ -120,15 +120,7 @@ export default function DailyAdCost(props) {
         },
       },
       dataLabels: {
-        enabled: data.length === 1,
-        offsetY: -10,
-        style: {
-          fontSize: '14px',
-          colors: ["#4318FF"]
-        },
-        formatter: function (val) {
-          return "₩" + val.toLocaleString();
-        },
+        enabled: false,
       },
       stroke: {
         curve: data.length === 1 ? "straight" : "smooth",
