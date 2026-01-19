@@ -415,6 +415,18 @@ export default function APITokenTable(props) {
 
   // Google OAuth 연결
   const handleGoogleOAuthConnect = async () => {
+    // 브랜드 선택 확인
+    if (!formData.advertiserId) {
+      toast({
+        title: '브랜드를 먼저 선택해주세요',
+        description: 'Google 계정 연결 전에 브랜드를 선택해야 합니다.',
+        status: 'warning',
+        duration: 4000,
+        isClosable: true,
+      });
+      return;
+    }
+
     // GCP 설정 확인
     let clientId, clientSecret;
     if (gcpSource === 'organization') {
@@ -441,14 +453,35 @@ export default function APITokenTable(props) {
       const { data: { user } } = await supabase.auth.getUser();
       const userEmail = user?.email;
 
+      const { data: sessionData } = await supabase.auth.getSession();
+      const accessToken = sessionData?.session?.access_token;
+
+      console.log('[OAuth Connect] 요청 정보:', {
+        hasUser: !!user,
+        hasToken: !!accessToken,
+        advertiserId: formData.advertiserId,
+        gcpSource,
+      });
+
+      if (!accessToken) {
+        toast({
+          title: '인증 오류',
+          description: '세션이 만료되었습니다. 다시 로그인해주세요.',
+          status: 'error',
+          duration: 4000,
+          isClosable: true,
+        });
+        return;
+      }
+
       const response = await fetch(`${process.env.REACT_APP_SUPABASE_URL}/functions/v1/oauth-initiate`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${(await supabase.auth.getSession()).data.session?.access_token}`,
+          'Authorization': `Bearer ${accessToken}`,
         },
         body: JSON.stringify({
-          advertiser_id: userEmail, // 임시로 이메일 사용
+          advertiser_id: formData.advertiserId, // ✅ 선택한 브랜드의 UUID 사용
           platform: 'Google Ads',
           use_organization_gcp: gcpSource === 'organization',
           client_id: clientId,
@@ -483,8 +516,22 @@ export default function APITokenTable(props) {
 
       // postMessage로 Refresh Token 수신
       const handleMessage = (event) => {
-        // 보안: origin 검증
-        if (event.origin !== process.env.REACT_APP_SUPABASE_URL.replace('/functions/v1', '')) {
+        // 보안: origin 검증 (현재 앱 도메인만 허용)
+        if (event.origin !== window.location.origin) {
+          console.warn('Rejected message from unauthorized origin:', event.origin);
+          return;
+        }
+
+        if (event.data && event.data.error) {
+          // 에러 처리
+          toast({
+            title: 'Google 계정 연결 실패',
+            description: event.data.message || '알 수 없는 오류가 발생했습니다.',
+            status: 'error',
+            duration: 5000,
+            isClosable: true,
+          });
+          window.removeEventListener('message', handleMessage);
           return;
         }
 
@@ -847,16 +894,31 @@ export default function APITokenTable(props) {
     let clientId = formData.clientId;
     let clientSecret = formData.clientSecret;
     let developerToken = formData.developerToken;
+    let managerAccountId = formData.managerAccountId;
 
     if (isGoogleAds && gcpSource === 'organization') {
       clientId = organizationGcp.clientId;
       clientSecret = organizationGcp.clientSecret;
       developerToken = organizationGcp.developerToken || formData.developerToken;
+      managerAccountId = organizationGcp.mccId || formData.managerAccountId;
     }
+
+    // 디버깅: 각 필드 검증 상태
+    console.log('[Save] 필드 검증:', {
+      advertiser: !!formData.advertiser,
+      platform: !!formData.platform,
+      customerId: !!formData.customerId,
+      managerAccountId: !!managerAccountId,
+      developerToken: !!developerToken,
+      targetConversionActionId: formData.targetConversionActionId.length,
+      refreshToken: !!formData.refreshToken,
+      clientId: !!clientId,
+      clientSecret: !!clientSecret,
+    });
 
     const hasRequiredFields = formData.advertiser && formData.platform &&
       (isGoogleAds
-        ? formData.customerId && formData.managerAccountId && developerToken &&
+        ? formData.customerId && managerAccountId && developerToken &&
           formData.targetConversionActionId.length > 0 && formData.refreshToken &&
           clientId && clientSecret
         : isNaverAds
@@ -883,7 +945,7 @@ export default function APITokenTable(props) {
         // Google Ads
         ...(isGoogleAds && {
           customerId: formData.customerId,
-          managerAccountId: formData.managerAccountId,
+          managerAccountId: managerAccountId,
           developerToken: developerToken,
           targetConversionActionId: formData.targetConversionActionId[0],
           refreshToken: formData.refreshToken,

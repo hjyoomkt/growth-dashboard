@@ -137,25 +137,12 @@ Deno.serve(async (req) => {
       throw new Error('Client ID not found in session');
     }
 
-    // Vault에서 Client Secret 조회
-    let clientSecret: string;
-    if (session.client_secret_vault_id) {
-      const { data: clientSecretVault, error: vaultError } = await supabaseServiceRole
-        .from('vault.secrets')
-        .select('secret')
-        .eq('id', session.client_secret_vault_id)
-        .single();
+    // 세션에서 Client Secret 조회
+    const clientSecret = session.client_secret ||
+      Deno.env.get(`${platform.toUpperCase().replace(' ', '_')}_CLIENT_SECRET`) || '';
 
-      if (vaultError || !clientSecretVault) {
-        throw new Error('Client Secret not found in vault');
-      }
-      clientSecret = clientSecretVault.secret;
-    } else {
-      // 기존 방식: 환경변수에서 조회 (하위 호환성)
-      clientSecret = Deno.env.get(`${platform.toUpperCase().replace(' ', '_')}_CLIENT_SECRET`) || '';
-      if (!clientSecret) {
-        throw new Error('OAuth client credentials not configured');
-      }
+    if (!clientSecret) {
+      throw new Error('OAuth client credentials not configured');
     }
 
     let accessToken: string;
@@ -185,53 +172,76 @@ Deno.serve(async (req) => {
       throw new Error(`Unsupported platform: ${platform}`);
     }
 
-    // Vault에 토큰 저장
-    const { data: accessTokenVault, error: accessVaultError } = await supabaseServiceRole
-      .from('vault.secrets')
-      .insert({
-        secret: accessToken,
-        description: `OAuth access token for ${platform}`,
-      })
-      .select('id')
-      .single();
+    // 토큰 저장 (플랫폼별 처리)
+    const tokenExpiresAt = new Date(Date.now() + expiresIn * 1000);
+    const encryptionKey = 'your-encryption-key-change-this-in-production';
 
-    if (accessVaultError || !accessTokenVault) {
-      throw new Error('Failed to store access token in vault');
-    }
+    let integrationData: any = {
+      advertiser_id: session.advertiser_id,
+      platform,
+      integration_type: 'oauth',
+      oauth_token_expires_at: tokenExpiresAt.toISOString(),
+      status: 'active',
+      data_collection_status: 'pending',
+    };
 
-    let refreshTokenVaultId: string | null = null;
-    if (refreshToken) {
-      const { data: refreshTokenVault, error: refreshVaultError } = await supabaseServiceRole
+    if (platform === 'Google Ads') {
+      // Google Ads: pgcrypto 암호화 저장
+      const { data: encryptedTokens, error: encryptError } = await supabaseServiceRole
+        .rpc('encrypt_oauth_tokens', {
+          p_access_token: accessToken,
+          p_refresh_token: refreshToken,
+          p_encryption_key: encryptionKey,
+        })
+        .single();
+
+      if (encryptError || !encryptedTokens) {
+        console.error('Failed to encrypt tokens:', encryptError);
+        throw new Error('Failed to encrypt OAuth tokens');
+      }
+
+      integrationData.oauth_access_token_encrypted = encryptedTokens.access_token_encrypted;
+      integrationData.oauth_refresh_token_encrypted = encryptedTokens.refresh_token_encrypted;
+
+    } else if (platform === 'Meta Ads') {
+      // Meta Ads: Vault 저장 (기존 방식 유지)
+      const { data: accessTokenVault, error: accessVaultError } = await supabaseServiceRole
         .from('vault.secrets')
         .insert({
-          secret: refreshToken,
-          description: `OAuth refresh token for ${platform}`,
+          secret: accessToken,
+          description: `OAuth access token for ${platform}`,
         })
         .select('id')
         .single();
 
-      if (refreshVaultError || !refreshTokenVault) {
-        throw new Error('Failed to store refresh token in vault');
+      if (accessVaultError || !accessTokenVault) {
+        throw new Error('Failed to store access token in vault');
       }
 
-      refreshTokenVaultId = refreshTokenVault.id;
+      integrationData.oauth_access_token_vault_id = accessTokenVault.id;
+
+      if (refreshToken) {
+        const { data: refreshTokenVault, error: refreshVaultError } = await supabaseServiceRole
+          .from('vault.secrets')
+          .insert({
+            secret: refreshToken,
+            description: `OAuth refresh token for ${platform}`,
+          })
+          .select('id')
+          .single();
+
+        if (refreshVaultError || !refreshTokenVault) {
+          throw new Error('Failed to store refresh token in vault');
+        }
+
+        integrationData.oauth_refresh_token_vault_id = refreshTokenVault.id;
+      }
     }
 
     // Integration 생성
-    const tokenExpiresAt = new Date(Date.now() + expiresIn * 1000);
-
     const { data: integration, error: integrationError } = await supabaseServiceRole
       .from('integrations')
-      .insert({
-        advertiser_id: session.advertiser_id,
-        platform,
-        integration_type: 'oauth',
-        oauth_access_token_vault_id: accessTokenVault.id,
-        oauth_refresh_token_vault_id: refreshTokenVaultId,
-        oauth_token_expires_at: tokenExpiresAt.toISOString(),
-        status: 'active',
-        data_collection_status: 'pending',
-      })
+      .insert(integrationData)
       .select('id')
       .single();
 
@@ -249,21 +259,13 @@ Deno.serve(async (req) => {
       })
       .eq('id', session.id);
 
-    // 임시 저장된 Client Secret 삭제 (보안)
-    if (session.client_secret_vault_id) {
-      await supabaseServiceRole
-        .from('vault.secrets')
-        .delete()
-        .eq('id', session.client_secret_vault_id);
-    }
-
-    // 성공 리다이렉트 (리프레쉬 토큰 포함)
+    // 성공 리다이렉트 (팝업 콜백 페이지로 이동)
     const encodedRefreshToken = refreshToken ? encodeURIComponent(refreshToken) : '';
 
     return new Response(null, {
       status: 302,
       headers: {
-        'Location': `${appUrl}/admin/api-management?oauth_success=true&integration_id=${integration.id}&refresh_token=${encodedRefreshToken}`,
+        'Location': `${appUrl}/oauth-callback.html?oauth_success=true&integration_id=${integration.id}&refresh_token=${encodedRefreshToken}`,
       },
     });
   } catch (error) {
@@ -272,7 +274,7 @@ Deno.serve(async (req) => {
     return new Response(null, {
       status: 302,
       headers: {
-        'Location': `${appUrl}/admin/api-management?oauth_error=callback_failed&error_message=${encodeURIComponent(error.message)}`,
+        'Location': `${appUrl}/oauth-callback.html?oauth_error=callback_failed&error_message=${encodeURIComponent(error.message)}`,
       },
     });
   }

@@ -193,7 +193,53 @@ $$;
 
 COMMENT ON FUNCTION get_organization_gcp_preview IS 'GCP 설정 미리보기 (부분 마스킹, MCC ID 포함)';
 
--- 3. 검증 쿼리
+-- 3. get_organization_gcp_credentials 함수 생성 (복호화된 실제 값 반환)
+CREATE OR REPLACE FUNCTION get_organization_gcp_credentials(org_id UUID)
+RETURNS TABLE(
+  client_id TEXT,
+  client_secret TEXT,
+  developer_token TEXT,
+  mcc_id TEXT
+)
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+DECLARE
+  encryption_key TEXT;
+BEGIN
+  encryption_key := 'your-encryption-key-change-this-in-production';
+
+  -- 복호화된 실제 값 반환
+  RETURN QUERY
+  SELECT
+    CASE
+      WHEN google_client_id_encrypted IS NOT NULL
+      THEN pgp_sym_decrypt(google_client_id_encrypted::bytea, encryption_key)
+      ELSE NULL
+    END as client_id,
+    CASE
+      WHEN google_client_secret_encrypted IS NOT NULL
+      THEN pgp_sym_decrypt(google_client_secret_encrypted::bytea, encryption_key)
+      ELSE NULL
+    END as client_secret,
+    CASE
+      WHEN google_developer_token_encrypted IS NOT NULL
+      THEN pgp_sym_decrypt(google_developer_token_encrypted::bytea, encryption_key)
+      ELSE NULL
+    END as developer_token,
+    CASE
+      WHEN google_mcc_id_encrypted IS NOT NULL
+      THEN pgp_sym_decrypt(google_mcc_id_encrypted::bytea, encryption_key)
+      ELSE NULL
+    END as mcc_id
+  FROM organizations
+  WHERE id = org_id;
+END;
+$$;
+
+COMMENT ON FUNCTION get_organization_gcp_credentials IS 'GCP 설정 조회 (복호화된 실제 값 반환, OAuth용)';
+
+-- 4. 검증 쿼리
 SELECT
   p.proname AS function_name,
   pg_catalog.pg_get_userbyid(p.proowner) AS owner,

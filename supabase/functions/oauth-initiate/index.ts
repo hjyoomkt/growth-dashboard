@@ -49,6 +49,8 @@ Deno.serve(async (req) => {
 
   try {
     const authHeader = req.headers.get('Authorization');
+    console.log('[OAuth] Authorization header:', authHeader ? 'Present' : 'Missing');
+
     if (!authHeader) {
       return new Response(
         JSON.stringify({ error: 'Missing authorization header' }),
@@ -56,9 +58,15 @@ Deno.serve(async (req) => {
       );
     }
 
+    const supabaseUrl = Deno.env.get('SUPABASE_URL');
+    const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY');
+
+    console.log('[OAuth] Supabase URL:', supabaseUrl);
+    console.log('[OAuth] Anon Key exists:', !!supabaseAnonKey);
+
     const supabaseClient = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_ANON_KEY') ?? '',
+      supabaseUrl ?? '',
+      supabaseAnonKey ?? '',
       {
         global: {
           headers: { Authorization: authHeader },
@@ -68,9 +76,20 @@ Deno.serve(async (req) => {
 
     const { data: { user }, error: authError } = await supabaseClient.auth.getUser();
 
+    console.log('[OAuth] Auth result:', {
+      hasUser: !!user,
+      userId: user?.id,
+      error: authError?.message
+    });
+
     if (authError || !user) {
+      console.error('[OAuth] Authentication failed:', authError);
       return new Response(
-        JSON.stringify({ error: 'Unauthorized' }),
+        JSON.stringify({
+          error: 'Unauthorized',
+          message: authError?.message || 'User not found',
+          code: authError?.status
+        }),
         { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
@@ -126,13 +145,17 @@ Deno.serve(async (req) => {
 
     if (use_organization_gcp) {
       // 조직 GCP 사용: advertiser → organization 연결하여 GCP 정보 조회
+      console.log('[OAuth] 광고주 조회 시작:', advertiser_id);
       const { data: advertiserData, error: advertiserError } = await supabaseServiceRole
         .from('advertisers')
         .select('organization_id')
         .eq('id', advertiser_id)
         .single();
 
+      console.log('[OAuth] 광고주 조회 결과:', { advertiserData, advertiserError });
+
       if (advertiserError || !advertiserData?.organization_id) {
+        console.error('[OAuth] 광고주 organization_id 없음');
         return new Response(
           JSON.stringify({ error: 'Advertiser organization not found' }),
           { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -140,16 +163,27 @@ Deno.serve(async (req) => {
       }
 
       // 조직의 GCP 자격증명 조회 (RPC 함수 사용)
+      console.log('[OAuth] 조직 GCP 조회 시작:', advertiserData.organization_id);
       const { data: gcpData, error: gcpError } = await supabaseServiceRole
         .rpc('get_organization_gcp_credentials', {
           org_id: advertiserData.organization_id,
         });
 
+      console.log('[OAuth] 조직 GCP 조회 결과:', { gcpData, gcpError });
+
       if (gcpError || !gcpData || gcpData.length === 0 || !gcpData[0].client_id || !gcpData[0].client_secret) {
+        console.error('[OAuth] 조직 GCP 설정 없음 또는 조회 실패');
         return new Response(
           JSON.stringify({
             error: 'Organization GCP credentials not configured',
-            message: '대행사 GCP 설정이 필요합니다. 관리자 대시보드에서 설정하거나 자체 GCP를 사용하세요.'
+            message: '대행사 GCP 설정이 필요합니다. 관리자 대시보드에서 설정하거나 자체 GCP를 사용하세요.',
+            debug: {
+              gcpError: gcpError?.message,
+              hasData: !!gcpData,
+              dataLength: gcpData?.length,
+              hasClientId: gcpData?.[0]?.client_id ? true : false,
+              hasClientSecret: gcpData?.[0]?.client_secret ? true : false
+            }
           }),
           { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
@@ -214,25 +248,8 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Client Secret을 Vault에 임시 저장 (callback에서 사용)
-    const { data: clientSecretVault, error: vaultError } = await supabaseServiceRole
-      .from('vault.secrets')
-      .insert({
-        secret: clientSecret,
-        description: `Temporary OAuth client secret for session ${stateToken}`,
-      })
-      .select('id')
-      .single();
-
-    if (vaultError || !clientSecretVault) {
-      console.error('Failed to store client secret in vault:', vaultError);
-      return new Response(
-        JSON.stringify({ error: 'Failed to store OAuth credentials' }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    // OAuth 세션 저장 (client_id와 client_secret_vault_id 포함)
+    // OAuth 세션 저장 (client_secret 직접 저장)
+    console.log('[OAuth] OAuth 세션 저장 시도...');
     const { error: sessionError } = await supabaseServiceRole
       .from('oauth_authorization_sessions')
       .insert({
@@ -244,21 +261,20 @@ Deno.serve(async (req) => {
         redirect_uri: redirectUri,
         status: 'pending',
         expires_at: expiresAt.toISOString(),
-        // 추가 필드: Client ID와 Client Secret Vault ID 저장
         client_id: clientId,
-        client_secret_vault_id: clientSecretVault.id,
+        client_secret: clientSecret,
       });
 
-    if (sessionError) {
-      console.error('Failed to create OAuth session:', sessionError);
-      // 실패 시 Vault에서 Client Secret 삭제
-      await supabaseServiceRole
-        .from('vault.secrets')
-        .delete()
-        .eq('id', clientSecretVault.id);
+    console.log('[OAuth] 세션 저장 결과:', { success: !sessionError, error: sessionError?.message });
 
+    if (sessionError) {
+      console.error('[OAuth] 세션 저장 실패:', sessionError);
       return new Response(
-        JSON.stringify({ error: 'Failed to create OAuth session' }),
+        JSON.stringify({
+          error: 'Failed to create OAuth session',
+          details: sessionError?.message || 'Unknown session error',
+          code: sessionError?.code
+        }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
