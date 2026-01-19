@@ -1,9 +1,10 @@
 import React from 'react';
-import { Box, Flex, HStack, Text, useColorMode } from '@chakra-ui/react';
+import { Box, Flex, HStack, Text, useColorMode, useColorModeValue } from '@chakra-ui/react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { landingDesignSystem } from '../../theme/landingTheme';
 import Button from './Button';
+import { HorizonLogo } from 'components/icons/Icons';
 
 const MotionBox = motion(Box);
 
@@ -55,21 +56,12 @@ export const Navbar = () => {
         justify="space-between"
       >
         {/* Logo */}
-        <Flex align="center" gap="8px">
-          <Box
-            w="32px"
-            h="32px"
-            borderRadius="8px"
-            bg={landingDesignSystem.colors.accent}
+        <Flex align="center">
+          <HorizonLogo
+            h='30px'
+            w='150px'
+            color={useColorModeValue('navy.700', 'white')}
           />
-          <Text
-            fontSize="20px"
-            fontWeight={landingDesignSystem.typography.fontWeights.bold}
-            color={colorMode === 'dark' ? landingDesignSystem.colors.white : landingDesignSystem.colors.textPrimary}
-            fontFamily={landingDesignSystem.typography.fontFamily.heading}
-          >
-            그로스메트릭스
-          </Text>
         </Flex>
 
         {/* Navigation Links */}

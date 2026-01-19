@@ -1,6 +1,7 @@
 import React from 'react';
-import { Box, Flex, Text, VStack, HStack, SimpleGrid, useColorMode } from '@chakra-ui/react';
+import { Box, Flex, Text, VStack, HStack, SimpleGrid, useColorMode, useColorModeValue } from '@chakra-ui/react';
 import { landingDesignSystem } from '../../theme/landingTheme';
+import { HorizonLogo } from 'components/icons/Icons';
 
 export const Footer = () => {
   const { colorMode } = useColorMode();
@@ -26,21 +27,12 @@ export const Footer = () => {
         >
           {/* Brand Section */}
           <VStack align={{ base: 'center', lg: 'flex-start' }} spacing="24px" flex={1}>
-            <Flex align="center" gap="8px">
-              <Box
-                w="32px"
-                h="32px"
-                borderRadius="8px"
-                bg={landingDesignSystem.colors.accent}
+            <Flex align="center">
+              <HorizonLogo
+                h='30px'
+                w='150px'
+                color='white'
               />
-              <Text
-                fontSize="20px"
-                fontWeight={landingDesignSystem.typography.fontWeights.bold}
-                color={landingDesignSystem.colors.white}
-                fontFamily={landingDesignSystem.typography.fontFamily.heading}
-              >
-                그로스메트릭스
-              </Text>
             </Flex>
 
             <Text
@@ -106,7 +98,7 @@ export const Footer = () => {
             color="rgba(255, 255, 255, 0.5)"
             textAlign={{ base: 'center', md: 'left' }}
           >
-            © 2024 그로스메트릭스. All rights reserved.
+            © 2026 ZEST DOT. All rights reserved.
           </Text>
 
           <HStack spacing="24px">

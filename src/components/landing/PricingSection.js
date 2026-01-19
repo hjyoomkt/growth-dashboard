@@ -136,7 +136,7 @@ export const PricingSection = () => {
                 p={{ base: '40px', md: '48px' }}
                 borderRadius={landingDesignSystem.borderRadius.large}
                 bg={plan.popular
-                  ? (colorMode === 'dark' ? landingDesignSystem.colors.cardBg : landingDesignSystem.colors.black)
+                  ? (colorMode === 'dark' ? landingDesignSystem.colors.cardBg : 'rgba(66, 42, 251, 0.15)')
                   : (colorMode === 'dark' ? landingDesignSystem.colors.cardBg : landingDesignSystem.colors.white)
                 }
                 border={plan.popular

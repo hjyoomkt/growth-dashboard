@@ -11,7 +11,7 @@ export async function collectGoogleAds(
 ) {
   const customerId = integration.legacy_customer_id
   const managerAccountId = integration.legacy_manager_account_id
-  const developerToken = await getVaultSecret(supabase, integration.legacy_developer_token_vault_id)
+  const developerToken = await getDecryptedToken(supabase, integration.id, 'developer_token')
   const conversionActionIds = integration.legacy_target_conversion_action_id || []
 
   if (!customerId || !developerToken) {
@@ -64,20 +64,36 @@ export async function collectGoogleAds(
     throw new Error(`Google Ads API error: ${response.status} ${errorText}`)
   }
 
-  // Google Ads searchStream은 newline-delimited JSON
+  // Google Ads searchStream 응답 파싱
   const responseText = await response.text()
-  const chunks = responseText.trim().split('\n').filter(line => line.trim())
-
   let allResults: any[] = []
 
-  for (const chunk of chunks) {
-    try {
-      const json = JSON.parse(chunk)
-      if (json.results && Array.isArray(json.results)) {
-        allResults = allResults.concat(json.results)
+  try {
+    // 전체 JSON 배열로 파싱 시도
+    const jsonArray = JSON.parse(responseText)
+    if (Array.isArray(jsonArray)) {
+      // 배열 형태: [{"results": [...]}, {"results": [...]}]
+      for (const item of jsonArray) {
+        if (item.results && Array.isArray(item.results)) {
+          allResults = allResults.concat(item.results)
+        }
       }
-    } catch (error) {
-      console.error('Failed to parse chunk:', error)
+    } else if (jsonArray.results && Array.isArray(jsonArray.results)) {
+      // 단일 객체: {"results": [...]}
+      allResults = jsonArray.results
+    }
+  } catch {
+    // 전체 파싱 실패 시 newline-delimited JSON으로 시도
+    const lines = responseText.trim().split('\n').filter(line => line.trim())
+    for (const line of lines) {
+      try {
+        const json = JSON.parse(line)
+        if (json.results && Array.isArray(json.results)) {
+          allResults = allResults.concat(json.results)
+        }
+      } catch {
+        // 개별 라인 파싱 실패는 무시
+      }
     }
   }
 
@@ -275,16 +291,19 @@ async function collectGoogleAssetGroups(
 // ============================================================================
 // Helper Functions
 // ============================================================================
-async function getVaultSecret(supabase: any, vaultId: string | null): Promise<string | null> {
-  if (!vaultId) return null
+async function getDecryptedToken(supabase: any, integrationId: string, tokenType: string): Promise<string | null> {
+  if (!integrationId || !tokenType) return null
 
   const { data, error } = await supabase
-    .rpc('vault_get_secret', { secret_id: vaultId })
+    .rpc('get_decrypted_token', {
+      p_api_token_id: integrationId,
+      p_token_type: tokenType
+    })
 
   if (error) {
-    console.error('Failed to retrieve vault secret:', error)
+    console.error('Failed to retrieve decrypted token:', error)
     return null
   }
 
-  return data?.decrypted_secret || null
+  return data || null
 }

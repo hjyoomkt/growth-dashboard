@@ -32,7 +32,7 @@ Deno.serve(async (req) => {
     // 1. Integration 조회
     const { data: integration, error: intError } = await supabase
       .from('integrations')
-      .select('platform, legacy_client_id, legacy_refresh_token_vault_id, legacy_client_secret_vault_id, legacy_access_token_vault_id')
+      .select('platform, legacy_client_id')
       .eq('id', integration_id)
       .single();
 
@@ -45,14 +45,17 @@ Deno.serve(async (req) => {
 
     // 2. 플랫폼별 처리
     if (integration.platform === 'Google Ads') {
-      // Vault에서 Refresh Token 조회
+      // Refresh Token 조회
       const { data: refreshTokenData, error: vaultError } = await supabase.rpc(
         'get_decrypted_token',
-        { p_vault_id: integration.legacy_refresh_token_vault_id }
+        {
+          p_api_token_id: integration_id,
+          p_token_type: 'refresh_token'
+        }
       );
 
       if (vaultError || !refreshTokenData) {
-        console.error('Vault error:', vaultError);
+        console.error('Refresh token error:', vaultError);
         return new Response(
           JSON.stringify({ error: 'Failed to retrieve refresh token' }),
           { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -62,7 +65,10 @@ Deno.serve(async (req) => {
       // Client Secret 조회
       const { data: clientSecretData, error: secretError } = await supabase.rpc(
         'get_decrypted_token',
-        { p_vault_id: integration.legacy_client_secret_vault_id }
+        {
+          p_api_token_id: integration_id,
+          p_token_type: 'client_secret'
+        }
       );
 
       if (secretError || !clientSecretData) {
@@ -109,7 +115,10 @@ Deno.serve(async (req) => {
       // Meta/Kakao는 Access Token이 바로 사용됨
       const { data: accessTokenData, error: vaultError } = await supabase.rpc(
         'get_decrypted_token',
-        { p_vault_id: integration.legacy_access_token_vault_id }
+        {
+          p_api_token_id: integration_id,
+          p_token_type: 'access_token'
+        }
       );
 
       if (vaultError || !accessTokenData) {
@@ -128,7 +137,10 @@ Deno.serve(async (req) => {
       // Naver도 Access Token 직접 사용
       const { data: accessTokenData, error: vaultError } = await supabase.rpc(
         'get_decrypted_token',
-        { p_vault_id: integration.legacy_access_token_vault_id }
+        {
+          p_api_token_id: integration_id,
+          p_token_type: 'access_token'
+        }
       );
 
       if (vaultError || !accessTokenData) {

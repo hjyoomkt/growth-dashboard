@@ -316,27 +316,10 @@ export const HeroSection = () => {
                     <path
                       d="M 0 120 Q 100 90, 200 60 T 400 20"
                       stroke={landingDesignSystem.colors.textPrimary}
-                      strokeWidth="3"
+                      strokeWidth="1.5"
                       fill="none"
                     />
                   </svg>
-                  <Box
-                    position="absolute"
-                    top="20px"
-                    right="40px"
-                    bg={landingDesignSystem.colors.accent}
-                    px="12px"
-                    py="6px"
-                    borderRadius={landingDesignSystem.borderRadius.small}
-                  >
-                    <Text
-                      fontSize="14px"
-                      fontWeight={landingDesignSystem.typography.fontWeights.bold}
-                      color={landingDesignSystem.colors.textPrimary}
-                    >
-                      +127%
-                    </Text>
-                  </Box>
                 </Box>
               </Box>
 
