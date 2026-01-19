@@ -309,7 +309,7 @@ export default function SuperAdminDashboard() {
       fetchStats();
       fetchGcpSettings();
     }
-  }, [user, role, organizationId, advertiserId, organizationType, fetchGcpSettings]);
+  }, [user?.id, role, organizationId, advertiserId, organizationType]);
 
   return (
     <Box pt={{ base: "130px", md: "80px", xl: "80px" }}>
