@@ -2,6 +2,22 @@
 -- Organization GCP Settings Migration
 -- 목적: 대행사(조직)별 Google API 설정 저장
 -- 작성일: 2026-01-16
+--
+-- ⚠️⚠️⚠️ DEPRECATED - 이 파일은 사용되지 않습니다 ⚠️⚠️⚠️
+--
+-- 이유:
+-- 1. Vault + pgsodium 방식으로 구현되었으나 권한 문제로 작동하지 않음
+-- 2. 실제 시스템은 pgcrypto 방식 사용 (restore_pgcrypto_with_mcc.sql)
+-- 3. 이 파일의 함수들은 postgres 소유로 생성되어 pgsodium 권한 없음
+--
+-- 실제 사용 중인 시스템:
+-- - 파일: /restore_pgcrypto_with_mcc.sql (프로젝트 루트)
+-- - 방식: PostgreSQL pgcrypto (pgp_sym_encrypt/decrypt)
+-- - 컬럼: organizations.google_*_encrypted (TEXT 타입)
+-- - 파라미터: 4개 (client_id, client_secret, developer_token, mcc_id)
+--
+-- 마이그레이션 히스토리 보존용으로만 유지됩니다.
+-- 새로운 작업 시 restore_pgcrypto_with_mcc.sql을 참조하세요.
 -- ============================================================================
 
 -- 0. Vault 접근용 래퍼 함수 (SECURITY DEFINER로 Vault 접근 권한 부여)
@@ -148,37 +164,31 @@ BEGIN
   IF p_client_id IS NOT NULL AND p_client_id != '' THEN
     IF v_existing_client_id_vault_id IS NOT NULL THEN
       -- 기존 Vault 엔트리 업데이트
-      UPDATE vault.secrets SET secret = p_client_id WHERE id = v_existing_client_id_vault_id;
+      PERFORM vault_update_secret(v_existing_client_id_vault_id, p_client_id);
       v_client_id_vault_id := v_existing_client_id_vault_id;
     ELSE
       -- 새 Vault 엔트리 생성
-      INSERT INTO vault.secrets (secret, description)
-      VALUES (p_client_id, 'Google OAuth Client ID for organization ' || org_id)
-      RETURNING id INTO v_client_id_vault_id;
+      v_client_id_vault_id := vault_create_secret(p_client_id, 'Google OAuth Client ID for organization ' || org_id);
     END IF;
   END IF;
 
   -- Client Secret 저장/업데이트
   IF p_client_secret IS NOT NULL AND p_client_secret != '' THEN
     IF v_existing_client_secret_vault_id IS NOT NULL THEN
-      UPDATE vault.secrets SET secret = p_client_secret WHERE id = v_existing_client_secret_vault_id;
+      PERFORM vault_update_secret(v_existing_client_secret_vault_id, p_client_secret);
       v_client_secret_vault_id := v_existing_client_secret_vault_id;
     ELSE
-      INSERT INTO vault.secrets (secret, description)
-      VALUES (p_client_secret, 'Google OAuth Client Secret for organization ' || org_id)
-      RETURNING id INTO v_client_secret_vault_id;
+      v_client_secret_vault_id := vault_create_secret(p_client_secret, 'Google OAuth Client Secret for organization ' || org_id);
     END IF;
   END IF;
 
   -- Developer Token 저장/업데이트
   IF p_developer_token IS NOT NULL AND p_developer_token != '' THEN
     IF v_existing_developer_token_vault_id IS NOT NULL THEN
-      UPDATE vault.secrets SET secret = p_developer_token WHERE id = v_existing_developer_token_vault_id;
+      PERFORM vault_update_secret(v_existing_developer_token_vault_id, p_developer_token);
       v_developer_token_vault_id := v_existing_developer_token_vault_id;
     ELSE
-      INSERT INTO vault.secrets (secret, description)
-      VALUES (p_developer_token, 'Google Ads Developer Token for organization ' || org_id)
-      RETURNING id INTO v_developer_token_vault_id;
+      v_developer_token_vault_id := vault_create_secret(p_developer_token, 'Google Ads Developer Token for organization ' || org_id);
     END IF;
   END IF;
 

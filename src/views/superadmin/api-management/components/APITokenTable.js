@@ -136,6 +136,7 @@ export default function APITokenTable(props) {
     clientId: '',
     clientSecret: '',
     developerToken: '',
+    mccId: '',
   });
   const [isLoadingOrgGcp, setIsLoadingOrgGcp] = React.useState(false);
 
@@ -233,28 +234,31 @@ export default function APITokenTable(props) {
     onOpen();
   };
 
-  // 조직 GCP 설정 조회
+  // 조직 GCP 설정 조회 (부분 마스킹된 미리보기)
   const fetchOrganizationGcp = React.useCallback(async () => {
     if (!organizationId) return;
 
     setIsLoadingOrgGcp(true);
     try {
+      // 부분 마스킹된 미리보기 조회
       const { data, error } = await supabase
-        .from('organizations')
-        .select('google_client_id_vault_id, google_client_secret_vault_id, google_developer_token_vault_id')
-        .eq('id', organizationId)
-        .single();
+        .rpc('get_organization_gcp_preview', { org_id: organizationId });
 
       if (error) {
         console.error('[Organization GCP] 조회 실패:', error);
         return;
       }
 
-      if (data?.google_client_id_vault_id && data?.google_client_secret_vault_id) {
+      // data가 배열이면 첫 요소, 객체면 그대로 사용
+      const preview = Array.isArray(data) ? data[0] : data;
+
+      if (preview && preview.client_id_preview && preview.client_secret_preview) {
+        // 마스킹된 값 설정 (네트워크에서 확인 가능)
         setOrganizationGcp({
-          clientId: data.google_client_id_vault_id,
-          clientSecret: data.google_client_secret_vault_id,
-          developerToken: data.google_developer_token_vault_id || '',
+          clientId: preview.client_id_preview,
+          clientSecret: preview.client_secret_preview,
+          developerToken: preview.developer_token_preview || '',
+          mccId: preview.mcc_id_preview || '',
         });
       }
     } catch (error) {
@@ -311,6 +315,16 @@ export default function APITokenTable(props) {
     }
     fetchTokens();
   }, [organizationId, fetchOrganizationGcp, fetchTokens]);
+
+  // GCP 소스 변경 시 MCC ID 자동 입력
+  React.useEffect(() => {
+    if (gcpSource === 'organization' && organizationGcp.mccId && !editMode) {
+      setFormData(prev => ({
+        ...prev,
+        managerAccountId: organizationGcp.mccId,
+      }));
+    }
+  }, [gcpSource, organizationGcp.mccId, editMode]);
 
   // 전환 액션 조회 모달 열기
   const handleOpenConversionModal = async () => {
@@ -399,28 +413,111 @@ export default function APITokenTable(props) {
     }));
   };
 
-  // Google OAuth 연결 (Mock)
-  const handleGoogleOAuthConnect = () => {
-    // TODO: Supabase Edge Function으로 실제 OAuth 플로우 구현
-    // 1. 팝업 윈도우로 Google OAuth URL 열기
-    // 2. Authorization code 받기
-    // 3. Edge Function에서 code → refresh_token 교환
-    // 4. refresh_token을 formData에 자동 입력
+  // Google OAuth 연결
+  const handleGoogleOAuthConnect = async () => {
+    // GCP 설정 확인
+    let clientId, clientSecret;
+    if (gcpSource === 'organization') {
+      clientId = organizationGcp.clientId;
+      clientSecret = organizationGcp.clientSecret;
+    } else {
+      clientId = formData.clientId;
+      clientSecret = formData.clientSecret;
+    }
 
-    // Mock 구현: 임시 토큰 문자열 생성
-    const mockRefreshToken = '1//0gxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx';
-    setFormData(prev => ({
-      ...prev,
-      refreshToken: mockRefreshToken,
-    }));
+    if (!clientId || !clientSecret) {
+      toast({
+        title: 'GCP 설정 필요',
+        description: 'Client ID와 Client Secret을 먼저 입력해주세요.',
+        status: 'error',
+        duration: 3000,
+        isClosable: true,
+      });
+      return;
+    }
 
-    toast({
-      title: 'Google 계정 연결 완료',
-      description: '리프레쉬 토큰이 자동으로 입력되었습니다.',
-      status: 'success',
-      duration: 3000,
-      isClosable: true,
-    });
+    try {
+      // oauth-initiate Edge Function 호출
+      const { data: { user } } = await supabase.auth.getUser();
+      const userEmail = user?.email;
+
+      const response = await fetch(`${process.env.REACT_APP_SUPABASE_URL}/functions/v1/oauth-initiate`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${(await supabase.auth.getSession()).data.session?.access_token}`,
+        },
+        body: JSON.stringify({
+          advertiser_id: userEmail, // 임시로 이메일 사용
+          platform: 'Google Ads',
+          use_organization_gcp: gcpSource === 'organization',
+          client_id: clientId,
+          client_secret: clientSecret,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'OAuth 초기화 실패');
+      }
+
+      const { authorization_url } = await response.json();
+
+      // 팝업 윈도우 열기
+      const popup = window.open(
+        authorization_url,
+        'GoogleOAuth',
+        'width=600,height=700,left=200,top=100'
+      );
+
+      if (!popup) {
+        toast({
+          title: '팝업 차단',
+          description: '팝업 차단을 해제하고 다시 시도해주세요.',
+          status: 'error',
+          duration: 3000,
+          isClosable: true,
+        });
+        return;
+      }
+
+      // postMessage로 Refresh Token 수신
+      const handleMessage = (event) => {
+        // 보안: origin 검증
+        if (event.origin !== process.env.REACT_APP_SUPABASE_URL.replace('/functions/v1', '')) {
+          return;
+        }
+
+        if (event.data && event.data.refreshToken) {
+          setFormData(prev => ({
+            ...prev,
+            refreshToken: event.data.refreshToken,
+          }));
+
+          toast({
+            title: 'Google 계정 연결 완료',
+            description: 'Refresh Token이 자동으로 입력되었습니다.',
+            status: 'success',
+            duration: 3000,
+            isClosable: true,
+          });
+
+          // 이벤트 리스너 제거
+          window.removeEventListener('message', handleMessage);
+        }
+      };
+
+      window.addEventListener('message', handleMessage);
+    } catch (error) {
+      console.error('OAuth 연결 오류:', error);
+      toast({
+        title: 'OAuth 연결 실패',
+        description: error.message,
+        status: 'error',
+        duration: 5000,
+        isClosable: true,
+      });
+    }
   };
 
   // 데이터 연동 시작
@@ -1352,9 +1449,14 @@ export default function APITokenTable(props) {
                     placeholder="Manager Account ID"
                     value={formData.managerAccountId}
                     onChange={(e) => setFormData({ ...formData, managerAccountId: e.target.value })}
-                    
+                    isDisabled={gcpSource === 'organization' && organizationGcp.mccId}
                     fontSize="sm"
                   />
+                  {gcpSource === 'organization' && organizationGcp.mccId && (
+                    <Text fontSize="xs" color="green.500" mt={1}>
+                      ✓ 대행사 기본 MCC 사용 중
+                    </Text>
+                  )}
                 </FormControl>
 
                 <FormControl mb={4} isRequired>

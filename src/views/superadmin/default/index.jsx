@@ -79,6 +79,7 @@ export default function SuperAdminDashboard() {
     clientId: '',
     clientSecret: '',
     developerToken: '',
+    mccId: '',
   });
   const [isGcpLoading, setIsGcpLoading] = useState(false);
   const [isSavingGcp, setIsSavingGcp] = useState(false);
@@ -91,32 +92,48 @@ export default function SuperAdminDashboard() {
 
   // GCP 설정 조회
   const fetchGcpSettings = useCallback(async () => {
-    if (!organizationId || !canManageGcp) return;
+    console.log('[GCP Settings] fetchGcpSettings 호출됨:', { organizationId, canManageGcp });
+    if (!organizationId || !canManageGcp) {
+      console.log('[GCP Settings] Early return:', { organizationId, canManageGcp });
+      return;
+    }
 
+    console.log('[GCP Settings] 미리보기 조회 시작...');
     setIsGcpLoading(true);
     try {
-      // 조직의 GCP 설정 존재 여부 확인
-      const { data: orgData, error: orgError } = await supabase
-        .from('organizations')
-        .select('google_client_id_vault_id, google_client_secret_vault_id, google_developer_token_vault_id')
-        .eq('id', organizationId)
-        .single();
+      // GCP 설정 미리보기 조회 (부분 마스킹)
+      const { data: previewData, error: previewError } = await supabase
+        .rpc('get_organization_gcp_preview', {
+          org_id: organizationId
+        });
 
-      if (orgError) {
-        console.error('[GCP Settings] 조직 조회 실패:', orgError);
+      console.log('[GCP Settings] RPC 응답:', { previewData, previewError });
+
+      if (previewError) {
+        console.error('[GCP Settings] 미리보기 조회 실패:', previewError);
         return;
       }
 
-      const hasCredentials = orgData?.google_client_id_vault_id && orgData?.google_client_secret_vault_id;
+      // previewData가 배열이면 첫 요소, 객체면 그대로 사용
+      const preview = Array.isArray(previewData) ? previewData[0] : previewData;
+      console.log('[GCP Settings] Preview 데이터:', preview);
+
+      const hasCredentials = preview?.client_id_preview && preview?.client_secret_preview;
+      console.log('[GCP Settings] hasCredentials:', hasCredentials);
       setHasExistingGcp(hasCredentials);
 
       if (hasCredentials) {
-        // 기존 설정이 있으면 마스킹된 값으로 표시
-        setGcpSettings({
-          clientId: '••••••••••••••••',
-          clientSecret: '••••••••••••••••',
-          developerToken: orgData?.google_developer_token_vault_id ? '••••••••••••••••' : '',
-        });
+        // 부분 마스킹된 값으로 표시
+        const newSettings = {
+          clientId: preview.client_id_preview || '',
+          clientSecret: preview.client_secret_preview || '',
+          developerToken: preview.developer_token_preview || '',
+          mccId: preview.mcc_id_preview || '',
+        };
+        console.log('[GCP Settings] Setting masked values:', newSettings);
+        setGcpSettings(newSettings);
+      } else {
+        console.log('[GCP Settings] No credentials to display');
       }
     } catch (error) {
       console.error('[GCP Settings] 조회 실패:', error);
@@ -138,10 +155,12 @@ export default function SuperAdminDashboard() {
       return;
     }
 
-    // 마스킹된 값이면 변경하지 않음
-    const isClientIdMasked = gcpSettings.clientId === '••••••••••••••••';
-    const isClientSecretMasked = gcpSettings.clientSecret === '••••••••••••••••';
-    const isDeveloperTokenMasked = gcpSettings.developerToken === '••••••••••••••••';
+    // 마스킹된 값인지 확인 (부분 마스킹 패턴: xxxx••••••••••)
+    const isMasked = (value) => value && value.includes('••••');
+    const isClientIdMasked = isMasked(gcpSettings.clientId);
+    const isClientSecretMasked = isMasked(gcpSettings.clientSecret);
+    const isDeveloperTokenMasked = isMasked(gcpSettings.developerToken);
+    const isMccIdMasked = isMasked(gcpSettings.mccId);
 
     if (!hasExistingGcp && (!gcpSettings.clientId || !gcpSettings.clientSecret)) {
       toast({
@@ -165,11 +184,31 @@ export default function SuperAdminDashboard() {
       }
 
       const apiKey = process.env.REACT_APP_SUPABASE_ANON_KEY;
-      console.log('[GCP Settings] Headers check:', {
-        hasAccessToken: !!accessToken,
-        hasApiKey: !!apiKey,
-        apiKeyLength: apiKey?.length,
-        url: process.env.REACT_APP_SUPABASE_URL,
+
+      const payload = {
+        organization_id: organizationId,
+      };
+
+      // 마스킹되지 않은 필드만 payload에 추가
+      if (!isClientIdMasked) {
+        payload.client_id = gcpSettings.clientId?.trim() || 'EMPTY_STRING';
+      }
+      if (!isClientSecretMasked) {
+        payload.client_secret = gcpSettings.clientSecret?.trim() || 'EMPTY_STRING';
+      }
+      if (!isDeveloperTokenMasked) {
+        payload.developer_token = gcpSettings.developerToken?.trim() || 'EMPTY_STRING';
+      }
+      if (!isMccIdMasked) {
+        payload.mcc_id = gcpSettings.mccId?.trim() || 'EMPTY_STRING';
+      }
+
+      console.log('[GCP Settings] Save payload:', {
+        ...payload,
+        client_id: payload.client_id ? (payload.client_id === 'EMPTY_STRING' ? 'EMPTY_STRING' : 'HAS_VALUE') : 'NOT_INCLUDED',
+        client_secret: payload.client_secret ? (payload.client_secret === 'EMPTY_STRING' ? 'EMPTY_STRING' : 'HAS_VALUE') : 'NOT_INCLUDED',
+        developer_token: payload.developer_token ? (payload.developer_token === 'EMPTY_STRING' ? 'EMPTY_STRING' : 'HAS_VALUE') : 'NOT_INCLUDED',
+        mcc_id: payload.mcc_id ? (payload.mcc_id === 'EMPTY_STRING' ? 'EMPTY_STRING' : 'HAS_VALUE') : 'NOT_INCLUDED',
       });
 
       const response = await fetch(
@@ -181,12 +220,7 @@ export default function SuperAdminDashboard() {
             'Authorization': `Bearer ${accessToken}`,
             'apikey': apiKey,
           },
-          body: JSON.stringify({
-            organization_id: organizationId,
-            client_id: isClientIdMasked ? null : gcpSettings.clientId,
-            client_secret: isClientSecretMasked ? null : gcpSettings.clientSecret,
-            developer_token: isDeveloperTokenMasked ? null : gcpSettings.developerToken,
-          }),
+          body: JSON.stringify(payload),
         }
       );
 
@@ -204,13 +238,8 @@ export default function SuperAdminDashboard() {
         isClosable: true,
       });
 
-      setHasExistingGcp(true);
-      // 저장 후 마스킹 처리
-      setGcpSettings({
-        clientId: '••••••••••••••••',
-        clientSecret: '••••••••••••••••',
-        developerToken: gcpSettings.developerToken ? '••••••••••••••••' : '',
-      });
+      // 저장 후 미리보기 다시 불러오기
+      await fetchGcpSettings();
     } catch (error) {
       console.error('[GCP Settings] 저장 실패:', error);
       toast({
@@ -227,7 +256,9 @@ export default function SuperAdminDashboard() {
 
   // 입력 필드 클릭 시 마스킹 해제
   const handleInputFocus = (field) => {
-    if (gcpSettings[field] === '••••••••••••••••') {
+    const value = gcpSettings[field];
+    // 마스킹된 값인지 확인 (부분 마스킹 패턴: xxxx••••••••••)
+    if (value && value.includes('••••')) {
       setGcpSettings(prev => ({ ...prev, [field]: '' }));
     }
   };
@@ -437,6 +468,23 @@ export default function SuperAdminDashboard() {
               </InputGroup>
               <Text fontSize="xs" color="gray.500" mt={1}>
                 Developer Token은 토큰 추가 시 개별 입력도 가능합니다.
+              </Text>
+            </FormControl>
+
+            <FormControl>
+              <FormLabel fontSize="sm" fontWeight="500">
+                기본 MCC ID (선택)
+              </FormLabel>
+              <Input
+                placeholder="123-456-7890"
+                value={gcpSettings.mccId}
+                onChange={(e) => setGcpSettings(prev => ({ ...prev, mccId: e.target.value }))}
+                onFocus={() => handleInputFocus('mccId')}
+                bg={inputBg}
+                fontSize="sm"
+              />
+              <Text fontSize="xs" color="gray.500" mt={1}>
+                여러 MCC를 사용하는 경우 주로 사용하는 MCC ID를 입력하세요. 수동 토큰 입력 시 자동으로 입력됩니다.
               </Text>
             </FormControl>
 
