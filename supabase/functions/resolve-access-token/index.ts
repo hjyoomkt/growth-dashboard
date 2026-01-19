@@ -105,7 +105,7 @@ Deno.serve(async (req) => {
         { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
 
-    } else if (integration.platform === 'Meta Ads' || integration.platform === 'Kakao Ads') {
+    } else if (integration.platform === 'Meta Ads' || integration.platform === 'Kakao Ads' || integration.platform === 'META_ADS') {
       // Meta/Kakao는 Access Token이 바로 사용됨
       const { data: accessTokenData, error: vaultError } = await supabase.rpc(
         'get_decrypted_token',

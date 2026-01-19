@@ -43,7 +43,7 @@ serve(async (req) => {
     console.log('[DEBUG] Fetching integration:', { integration_id })
     const { data: integration, error: intError } = await supabase
       .from('integrations')
-      .select('*, platform_configs!platform_config_id(*)')
+      .select('*')
       .eq('id', integration_id)
       .is('deleted_at', null)
       .single()
@@ -62,7 +62,7 @@ serve(async (req) => {
 
     // 2. 토큰 검증 (초기 연동 필수)
     if (mode === 'initial') {
-      const tokenValidation = await validateToken(integration)
+      const tokenValidation = await validateToken(supabase, integration)
       if (!tokenValidation.valid) {
         return jsonResponse({
           error: 'Token validation failed',
@@ -71,8 +71,8 @@ serve(async (req) => {
       }
     }
 
-    // 3. 토큰 해결 (resolve-access-token 호출)
-    const accessToken = await resolveAccessToken(integration_id)
+    // 3. 토큰 해결
+    const accessToken = await resolveAccessToken(supabase, integration)
     if (!accessToken) {
       return jsonResponse({ error: 'Failed to resolve access token' }, 500)
     }
@@ -295,14 +295,14 @@ serve(async (req) => {
 // Helper Functions
 // ============================================================================
 
-async function validateToken(integration: any): Promise<{ valid: boolean; error?: string }> {
+async function validateToken(supabase: any, integration: any): Promise<{ valid: boolean; error?: string }> {
   // 토큰 검증 API 호출 (플랫폼별)
   try {
     const platform = integration.platform
     console.log('[DEBUG] validateToken:', { platform, integration_id: integration.id })
 
-    // resolve-access-token 호출하여 토큰 가져오기
-    const token = await resolveAccessToken(integration.id)
+    // 토큰 가져오기
+    const token = await resolveAccessToken(supabase, integration)
     console.log('[DEBUG] Token resolved:', { has_token: !!token, token_length: token?.length })
 
     if (!token) {
@@ -360,10 +360,30 @@ async function validateToken(integration: any): Promise<{ valid: boolean; error?
   }
 }
 
-async function resolveAccessToken(integrationId: string): Promise<string | null> {
+async function resolveAccessToken(supabase: any, integration: any): Promise<string | null> {
   try {
-    console.log('[DEBUG] Resolving access token:', { integrationId })
+    console.log('[DEBUG] Resolving access token:', { integration_id: integration.id, platform: integration.platform })
 
+    // Meta Ads는 Access Token 직접 사용 (HTTP 호출 없이 RPC로 바로 가져옴)
+    if (integration.platform === 'Meta Ads') {
+      const { data: accessToken, error } = await supabase.rpc(
+        'get_decrypted_token',
+        {
+          p_api_token_id: integration.id,
+          p_token_type: 'access_token'
+        }
+      )
+
+      if (error || !accessToken) {
+        console.error('[ERROR] Failed to get Meta access token:', error)
+        return null
+      }
+
+      console.log('[DEBUG] Meta access token resolved directly:', { token_length: accessToken?.length })
+      return accessToken
+    }
+
+    // Google Ads 등 다른 플랫폼은 기존 HTTP 호출 방식 유지 (토큰 교환 필요)
     const response = await fetch(
       `${SUPABASE_URL}/functions/v1/resolve-access-token`,
       {
@@ -372,7 +392,7 @@ async function resolveAccessToken(integrationId: string): Promise<string | null>
           'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify({ integration_id: integrationId })
+        body: JSON.stringify({ integration_id: integration.id })
       }
     )
 
