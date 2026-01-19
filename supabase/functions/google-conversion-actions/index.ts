@@ -73,7 +73,7 @@ serve(async (req) => {
 
     const accessToken = tokenData.access_token
 
-    // 2. 전환 액션 목록 조회
+    // 2. 전환 액션 목록 조회 (모든 상태 포함)
     const gaqlQuery = `
       SELECT
         conversion_action.id,
@@ -82,7 +82,6 @@ serve(async (req) => {
         conversion_action.type,
         conversion_action.category
       FROM conversion_action
-      WHERE conversion_action.status = 'ENABLED'
     `
 
     const url = `https://googleads.googleapis.com/v22/customers/${customer_id}/googleAds:searchStream`
@@ -112,35 +111,34 @@ serve(async (req) => {
       )
     }
 
-    // 응답 파싱 (newline-delimited JSON)
-    const responseText = await response.text()
-    const chunks = responseText.trim().split('\n').filter(line => line.trim())
+    // 응답 파싱 (배열로 감싸진 JSON)
+    const responseData = await response.json()
+    console.log('Google Ads API Response:', JSON.stringify(responseData, null, 2))
 
     const conversionActions: ConversionAction[] = []
 
-    for (const chunk of chunks) {
-      try {
-        const json = JSON.parse(chunk)
-        if (json.results && Array.isArray(json.results)) {
-          for (const row of json.results) {
-            const ca = row.conversionAction
-            if (ca) {
-              // ID에서 숫자만 추출 (customers/123/conversionActions/456 → 456)
-              const idParts = ca.id ? ca.id.split('/') : []
-              const id = idParts.length > 0 ? idParts[idParts.length - 1] : ca.id
+    // Google Ads API는 응답을 배열로 감쌉니다
+    const dataArray = Array.isArray(responseData) ? responseData : [responseData]
 
-              conversionActions.push({
-                id,
-                name: ca.name || '',
-                status: ca.status || '',
-                type: ca.type || '',
-                category: ca.category || ''
-              })
-            }
+    for (const data of dataArray) {
+      if (data.results && Array.isArray(data.results)) {
+        console.log('Results count:', data.results.length)
+        for (const row of data.results) {
+          const ca = row.conversionAction
+          if (ca) {
+            // ID에서 숫자만 추출
+            const idParts = ca.resourceName ? ca.resourceName.split('/') : []
+            const id = idParts.length > 0 ? idParts[idParts.length - 1] : (ca.id || '')
+
+            conversionActions.push({
+              id,
+              name: ca.name || '',
+              status: ca.status || '',
+              type: ca.type || '',
+              category: ca.category || ''
+            })
           }
         }
-      } catch (parseError) {
-        console.error('JSON 파싱 에러:', parseError)
       }
     }
 

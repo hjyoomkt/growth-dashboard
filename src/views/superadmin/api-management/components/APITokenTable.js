@@ -46,6 +46,7 @@ import {
   MenuItem,
   MenuList,
   Divider,
+  Spinner,
 } from '@chakra-ui/react';
 import {
   createColumnHelper,
@@ -72,6 +73,7 @@ export default function APITokenTable(props) {
   const inputBg = useColorModeValue('white', 'navy.700');
   const bgHover = useColorModeValue('secondaryGray.100', 'whiteAlpha.100');
   const brandColor = useColorModeValue('brand.500', 'white');
+  const vStackBg = useColorModeValue('gray.50', 'whiteAlpha.50');
   const toast = useToast();
 
   const { isOpen, onOpen, onClose } = useDisclosure();
@@ -120,15 +122,12 @@ export default function APITokenTable(props) {
     customEndDate: '',
   });
 
-  // Mock conversion actions (향후 Supabase Edge Function으로 교체)
-  const mockConversionActions = [
-    { id: '7360669402', name: '차맵_DB수집', type: 'WEBPAGE', category: 'PURCHASE', status: 'ENABLED' },
-    { id: '7360669403', name: '차맵_구매완료', type: 'WEBPAGE', category: 'PURCHASE', status: 'ENABLED' },
-    { id: '7360669404', name: '차맵_장바구니', type: 'WEBPAGE', category: 'ADD_TO_CART', status: 'ENABLED' },
-    { id: '7360669405', name: '차맵_회원가입', type: 'WEBPAGE', category: 'SIGN_UP', status: 'ENABLED' },
-  ];
-
+  // 전환 액션 관리
+  const [conversionActions, setConversionActions] = React.useState([]);
+  const [isLoadingConversions, setIsLoadingConversions] = React.useState(false);
   const [selectedConversionActions, setSelectedConversionActions] = React.useState([]);
+  const [currentPage, setCurrentPage] = React.useState(1);
+  const itemsPerPage = 10;
 
   // GCP 소스 설정 (organization: 대행사 GCP 사용, custom: 직접 입력)
   const [gcpSource, setGcpSource] = React.useState('organization');
@@ -240,9 +239,9 @@ export default function APITokenTable(props) {
 
     setIsLoadingOrgGcp(true);
     try {
-      // 부분 마스킹된 미리보기 조회
+      // 전체 값 조회 (OAuth 및 API 호출용)
       const { data, error } = await supabase
-        .rpc('get_organization_gcp_preview', { org_id: organizationId });
+        .rpc('get_organization_gcp_credentials', { org_id: organizationId });
 
       if (error) {
         console.error('[Organization GCP] 조회 실패:', error);
@@ -250,15 +249,15 @@ export default function APITokenTable(props) {
       }
 
       // data가 배열이면 첫 요소, 객체면 그대로 사용
-      const preview = Array.isArray(data) ? data[0] : data;
+      const credentials = Array.isArray(data) ? data[0] : data;
 
-      if (preview && preview.client_id_preview && preview.client_secret_preview) {
-        // 마스킹된 값 설정 (네트워크에서 확인 가능)
+      if (credentials && credentials.client_id && credentials.client_secret) {
+        // 전체 값 설정 (OAuth 및 전환액션 조회에 사용)
         setOrganizationGcp({
-          clientId: preview.client_id_preview,
-          clientSecret: preview.client_secret_preview,
-          developerToken: preview.developer_token_preview || '',
-          mccId: preview.mcc_id_preview || '',
+          clientId: credentials.client_id,
+          clientSecret: credentials.client_secret,
+          developerToken: credentials.developer_token || '',
+          mccId: credentials.mcc_id || '',
         });
       }
     } catch (error) {
@@ -369,10 +368,50 @@ export default function APITokenTable(props) {
     }
 
     try {
-      // TODO: Edge Function 호출하여 실제 전환 액션 조회
-      // 현재는 mock 데이터 사용
+      // Edge Function 호출하여 실제 전환 액션 조회
+      setIsLoadingConversions(true);
+      setConversionActions([]);
       setSelectedConversionActions([]);
+      setCurrentPage(1);
       onConversionModalOpen();
+
+      console.log('[Conversion Action] Edge Function 호출 시작');
+
+      const response = await fetch(
+        `${process.env.REACT_APP_SUPABASE_URL}/functions/v1/google-conversion-actions`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${process.env.REACT_APP_SUPABASE_ANON_KEY}`,
+          },
+          body: JSON.stringify({
+            customer_id: formData.customerId,
+            developer_token: developerToken,
+            manager_account_id: formData.managerAccountId || organizationGcp.mccId,
+            refresh_token: formData.refreshToken,
+            client_id: clientId,
+            client_secret: clientSecret,
+          }),
+        }
+      );
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || data.details || '전환 액션 조회 실패');
+      }
+
+      console.log('[Conversion Action] 조회 성공:', data);
+      setConversionActions(data.conversionActions || []);
+
+      toast({
+        title: '조회 완료',
+        description: `${data.count || 0}개의 전환 액션을 불러왔습니다.`,
+        status: 'success',
+        duration: 3000,
+        isClosable: true,
+      });
     } catch (error) {
       console.error('[Conversion Action] 조회 실패:', error);
       toast({
@@ -382,6 +421,8 @@ export default function APITokenTable(props) {
         duration: 4000,
         isClosable: true,
       });
+    } finally {
+      setIsLoadingConversions(false);
     }
   };
 
@@ -1549,7 +1590,7 @@ export default function APITokenTable(props) {
                     {formData.targetConversionActionId.length > 0 && (
                       <Flex flexWrap="wrap" gap={2} mb={2}>
                         {formData.targetConversionActionId.map((actionId) => {
-                          const action = mockConversionActions.find(a => a.id === actionId);
+                          const action = conversionActions.find(a => a.id === actionId);
                           return (
                             <Tag
                               key={actionId}
@@ -1784,55 +1825,123 @@ export default function APITokenTable(props) {
       </Modal>
 
       {/* Conversion Action Lookup Modal */}
-      <Modal isOpen={isConversionModalOpen} onClose={onConversionModalClose} size="xl">
+      <Modal isOpen={isConversionModalOpen} onClose={onConversionModalClose} size="6xl">
         <ModalOverlay />
         <ModalContent>
           <ModalHeader>전환 액션 조회</ModalHeader>
           <ModalCloseButton />
           <ModalBody pb={6}>
             <Text fontSize="sm" color="gray.500" mb={4}>
-              추적할 전환 액션을 선택하세요. 여러 개 선택 가능합니다.
+              추적할 전환 액션을 선택하세요. 여러 개 선택 가능합니다. (총 {conversionActions.length}개)
             </Text>
-            <Table variant="simple" size="sm">
-              <Thead>
-                <Tr>
-                  <Th w="40px"></Th>
-                  <Th>이름</Th>
-                  <Th>ID</Th>
-                  <Th>유형</Th>
-                  <Th>카테고리</Th>
-                </Tr>
-              </Thead>
-              <Tbody>
-                {mockConversionActions.map((action) => (
-                  <Tr
-                    key={action.id}
-                    _hover={{ bg: useColorModeValue('gray.50', 'whiteAlpha.50') }}
-                    cursor="pointer"
-                    onClick={() => handleToggleConversionAction(action.id)}
-                  >
-                    <Td>
-                      <Checkbox
-                        isChecked={selectedConversionActions.includes(action.id)}
-                        onChange={() => handleToggleConversionAction(action.id)}
-                      />
-                    </Td>
-                    <Td fontWeight="500">{action.name}</Td>
-                    <Td fontSize="xs" color="gray.500">{action.id}</Td>
-                    <Td>
-                      <Badge colorScheme="purple" fontSize="xs">
-                        {action.type}
-                      </Badge>
-                    </Td>
-                    <Td>
-                      <Badge colorScheme="green" fontSize="xs">
-                        {action.category}
-                      </Badge>
-                    </Td>
-                  </Tr>
-                ))}
-              </Tbody>
-            </Table>
+
+            {isLoadingConversions ? (
+                <Box textAlign="center" py={10}>
+                  <Spinner size="xl" color="brand.500" />
+                  <Text mt={4} color="gray.500">전환액션 조회 중...</Text>
+                </Box>
+              ) : conversionActions.length === 0 ? (
+                <Box textAlign="center" py={10}>
+                  <Text color="gray.500">조회된 전환액션이 없습니다.</Text>
+                </Box>
+              ) : (
+                <>
+                  <Table variant="simple" size="sm">
+                    <Thead>
+                      <Tr>
+                        <Th w="50px"></Th>
+                        <Th>이름</Th>
+                        <Th w="120px">ID</Th>
+                        <Th w="100px">상태</Th>
+                        <Th w="200px">유형</Th>
+                        <Th w="180px">카테고리</Th>
+                      </Tr>
+                    </Thead>
+                    <Tbody>
+                      {conversionActions
+                        .slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage)
+                        .map((action) => (
+                        <Tr
+                          key={action.id}
+                          _hover={{ bg: bgHover }}
+                          cursor="pointer"
+                          onClick={() => handleToggleConversionAction(action.id)}
+                        >
+                          <Td>
+                            <Checkbox
+                              isChecked={selectedConversionActions.includes(action.id)}
+                              onChange={() => handleToggleConversionAction(action.id)}
+                            />
+                          </Td>
+                          <Td fontWeight="500">{action.name}</Td>
+                          <Td fontSize="xs" color="gray.500">{action.id}</Td>
+                          <Td>
+                            <Badge
+                              colorScheme={
+                                action.status === 'ENABLED' ? 'green' :
+                                action.status === 'REMOVED' ? 'red' :
+                                'gray'
+                              }
+                              fontSize="xs"
+                            >
+                              {action.status}
+                            </Badge>
+                          </Td>
+                          <Td>
+                            <Badge colorScheme="purple" fontSize="xs">
+                              {action.type}
+                            </Badge>
+                          </Td>
+                          <Td>
+                            <Badge colorScheme="blue" fontSize="xs">
+                              {action.category}
+                            </Badge>
+                          </Td>
+                        </Tr>
+                      ))}
+                    </Tbody>
+                  </Table>
+
+                  <Flex justify="space-between" align="center" mt={4}>
+                    <Text fontSize="sm" color="gray.600">
+                      {(currentPage - 1) * itemsPerPage + 1} - {Math.min(currentPage * itemsPerPage, conversionActions.length)} / {conversionActions.length}
+                    </Text>
+                    <HStack spacing={2}>
+                      <Button
+                        size="sm"
+                        onClick={() => setCurrentPage(1)}
+                        isDisabled={currentPage === 1}
+                      >
+                        처음
+                      </Button>
+                      <Button
+                        size="sm"
+                        onClick={() => setCurrentPage(currentPage - 1)}
+                        isDisabled={currentPage === 1}
+                      >
+                        이전
+                      </Button>
+                      <Text fontSize="sm" px={3}>
+                        {currentPage} / {Math.ceil(conversionActions.length / itemsPerPage)}
+                      </Text>
+                      <Button
+                        size="sm"
+                        onClick={() => setCurrentPage(currentPage + 1)}
+                        isDisabled={currentPage === Math.ceil(conversionActions.length / itemsPerPage)}
+                      >
+                        다음
+                      </Button>
+                      <Button
+                        size="sm"
+                        onClick={() => setCurrentPage(Math.ceil(conversionActions.length / itemsPerPage))}
+                        isDisabled={currentPage === Math.ceil(conversionActions.length / itemsPerPage)}
+                      >
+                        마지막
+                      </Button>
+                    </HStack>
+                  </Flex>
+                </>
+              )}
           </ModalBody>
 
           <ModalFooter>
@@ -2064,7 +2173,7 @@ export default function APITokenTable(props) {
               </Box>
             </Alert>
 
-            <VStack align="start" spacing={1.5} p={3} bg={useColorModeValue('gray.50', 'whiteAlpha.50')} borderRadius="12px">
+            <VStack align="start" spacing={1.5} p={3} bg={vStackBg} borderRadius="12px">
               <Text fontSize="xs" fontWeight="600" mb={0.5}>연동 설정 확인:</Text>
               <Text fontSize="xs" fontWeight="400">• 매체: {syncConfig.selectedPlatform}</Text>
               <Text fontSize="xs" fontWeight="400">
