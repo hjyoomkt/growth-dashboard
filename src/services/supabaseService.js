@@ -1870,7 +1870,7 @@ export const createApiToken = async (tokenData) => {
     account_description: tokenData.accountDescription || null, // 계정 설명 추가
     legacy_customer_id: tokenData.customerId,
     legacy_manager_account_id: tokenData.managerAccountId,
-    legacy_target_conversion_action_id: tokenData.targetConversionActionId ? [tokenData.targetConversionActionId] : null,
+    legacy_target_conversion_action_id: tokenData.targetConversionActionId || null,
     legacy_client_id: tokenData.clientId,
     legacy_account_id: tokenData.accountId,
   };
@@ -1942,7 +1942,7 @@ export const updateApiToken = async (tokenId, tokenData) => {
     account_description: tokenData.accountDescription || null, // 계정 설명 추가
     legacy_customer_id: tokenData.customerId,
     legacy_manager_account_id: tokenData.managerAccountId,
-    legacy_target_conversion_action_id: tokenData.targetConversionActionId ? [tokenData.targetConversionActionId] : null,
+    legacy_target_conversion_action_id: tokenData.targetConversionActionId || null,
     legacy_client_id: tokenData.clientId,
     legacy_account_id: tokenData.accountId,
     status: tokenData.status,

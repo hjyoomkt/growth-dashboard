@@ -149,6 +149,8 @@ Deno.serve(async (req) => {
     let refreshToken: string | null = null;
     let expiresIn: number;
 
+    let googleAccountEmail: string | null = null;
+
     if (platform === 'Google Ads') {
       // Google OAuth: Authorization code → tokens
       const tokenData = await exchangeGoogleAuthorizationCode(
@@ -162,6 +164,18 @@ Deno.serve(async (req) => {
       accessToken = tokenData.access_token;
       refreshToken = tokenData.refresh_token;
       expiresIn = tokenData.expires_in || 3600;
+
+      // ID Token에서 Google 계정 이메일 추출
+      if (tokenData.id_token) {
+        try {
+          const idTokenPayload = JSON.parse(
+            atob(tokenData.id_token.split('.')[1])
+          );
+          googleAccountEmail = idTokenPayload.email || null;
+        } catch (e) {
+          console.warn('Failed to decode ID token:', e);
+        }
+      }
     } else if (platform === 'Meta Ads') {
       // Meta OAuth: Short-lived → Long-lived token
       const tokenData = await exchangeMetaToken(code, clientId, clientSecret);
@@ -176,6 +190,23 @@ Deno.serve(async (req) => {
     const tokenExpiresAt = new Date(Date.now() + expiresIn * 1000);
     const encryptionKey = 'your-encryption-key-change-this-in-production';
 
+    // 사용자 ID 조회 (토큰 생성자 저장용)
+    const authHeader = req.headers.get('Authorization');
+    let createdByUserId: string | null = null;
+
+    if (authHeader) {
+      const token = authHeader.replace('Bearer ', '');
+      const { data: { user } } = await supabaseServiceRole.auth.getUser(token);
+      if (user) {
+        const { data: userData } = await supabaseServiceRole
+          .from('users')
+          .select('id')
+          .eq('email', user.email)
+          .single();
+        createdByUserId = userData?.id || null;
+      }
+    }
+
     let integrationData: any = {
       advertiser_id: session.advertiser_id,
       platform,
@@ -183,6 +214,8 @@ Deno.serve(async (req) => {
       oauth_token_expires_at: tokenExpiresAt.toISOString(),
       status: 'active',
       data_collection_status: 'pending',
+      created_by_user_id: createdByUserId,
+      is_organization_shared: true,
     };
 
     if (platform === 'Google Ads') {
@@ -202,6 +235,7 @@ Deno.serve(async (req) => {
 
       integrationData.oauth_access_token_encrypted = encryptedTokens.access_token_encrypted;
       integrationData.oauth_refresh_token_encrypted = encryptedTokens.refresh_token_encrypted;
+      integrationData.google_account_email = googleAccountEmail;
 
     } else if (platform === 'Meta Ads') {
       // Meta Ads: Vault 저장 (기존 방식 유지)

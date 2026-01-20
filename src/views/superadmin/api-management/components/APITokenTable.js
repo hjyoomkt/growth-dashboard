@@ -142,6 +142,15 @@ export default function APITokenTable(props) {
   const [allData, setAllData] = React.useState([]);
   const [isLoadingTokens, setIsLoadingTokens] = React.useState(false);
 
+  // 조직 Google Ads 토큰 목록 관리
+  const [organizationTokens, setOrganizationTokens] = React.useState([]);
+  const [selectedIntegrationId, setSelectedIntegrationId] = React.useState(null);
+  const { isOpen: isTokenSelectModalOpen, onOpen: onTokenSelectModalOpen, onClose: onTokenSelectModalClose } = useDisclosure();
+
+  // Google Customer 목록 관리
+  const [googleCustomers, setGoogleCustomers] = React.useState([]);
+  const [isLoadingCustomers, setIsLoadingCustomers] = React.useState(false);
+
   // 권한에 따라 데이터 필터링
   const data = React.useMemo(() => {
     // 대행사는 모든 데이터 접근
@@ -454,7 +463,36 @@ export default function APITokenTable(props) {
     }));
   };
 
-  // Google OAuth 연결
+  // 조직의 기존 Google Ads 토큰 목록 조회
+  const fetchOrganizationTokens = async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        console.log('[토큰 조회] 사용자 없음');
+        return [];
+      }
+
+      console.log('[토큰 조회] 사용자 이메일:', user.email);
+
+      const { data, error } = await supabase.rpc('get_organization_google_tokens', {
+        p_user_email: user.email,
+      });
+
+      if (error) {
+        console.error('[토큰 조회] RPC 오류:', error);
+        throw error;
+      }
+
+      console.log('[토큰 조회] 결과:', data);
+      setOrganizationTokens(data || []);
+      return data || [];
+    } catch (error) {
+      console.error('[토큰 조회] 실패:', error);
+      return [];
+    }
+  };
+
+  // Google OAuth 연결 (토큰 선택 또는 신규 발급)
   const handleGoogleOAuthConnect = async () => {
     // 브랜드 선택 확인
     if (!formData.advertiserId) {
@@ -468,6 +506,24 @@ export default function APITokenTable(props) {
       return;
     }
 
+    // 조직의 기존 토큰 목록 조회
+    const tokens = await fetchOrganizationTokens();
+
+    console.log('[OAuth Connect] 조회된 토큰 개수:', tokens?.length || 0);
+
+    if (tokens && tokens.length > 0) {
+      // 기존 토큰 있음 → 선택 모달 표시
+      console.log('[OAuth Connect] 토큰 선택 모달 표시');
+      onTokenSelectModalOpen();
+    } else {
+      // 기존 토큰 없음 → 바로 OAuth 인증
+      console.log('[OAuth Connect] 새 OAuth 진행');
+      proceedWithNewOAuth();
+    }
+  };
+
+  // 새 토큰 발급 진행
+  const proceedWithNewOAuth = async () => {
     // GCP 설정 확인
     let clientId, clientSecret;
     if (gcpSource === 'organization') {
@@ -490,19 +546,8 @@ export default function APITokenTable(props) {
     }
 
     try {
-      // oauth-initiate Edge Function 호출
-      const { data: { user } } = await supabase.auth.getUser();
-      const userEmail = user?.email;
-
       const { data: sessionData } = await supabase.auth.getSession();
       const accessToken = sessionData?.session?.access_token;
-
-      console.log('[OAuth Connect] 요청 정보:', {
-        hasUser: !!user,
-        hasToken: !!accessToken,
-        advertiserId: formData.advertiserId,
-        gcpSource,
-      });
 
       if (!accessToken) {
         toast({
@@ -522,7 +567,7 @@ export default function APITokenTable(props) {
           'Authorization': `Bearer ${accessToken}`,
         },
         body: JSON.stringify({
-          advertiser_id: formData.advertiserId, // ✅ 선택한 브랜드의 UUID 사용
+          advertiser_id: formData.advertiserId,
           platform: 'Google Ads',
           use_organization_gcp: gcpSource === 'organization',
           client_id: clientId,
@@ -537,7 +582,6 @@ export default function APITokenTable(props) {
 
       const { authorization_url } = await response.json();
 
-      // 팝업 윈도우 열기
       const popup = window.open(
         authorization_url,
         'GoogleOAuth',
@@ -555,16 +599,13 @@ export default function APITokenTable(props) {
         return;
       }
 
-      // postMessage로 Refresh Token 수신
       const handleMessage = (event) => {
-        // 보안: origin 검증 (현재 앱 도메인만 허용)
         if (event.origin !== window.location.origin) {
           console.warn('Rejected message from unauthorized origin:', event.origin);
           return;
         }
 
         if (event.data && event.data.error) {
-          // 에러 처리
           toast({
             title: 'Google 계정 연결 실패',
             description: event.data.message || '알 수 없는 오류가 발생했습니다.',
@@ -582,15 +623,19 @@ export default function APITokenTable(props) {
             refreshToken: event.data.refreshToken,
           }));
 
+          // Integration ID 저장 (Customer 조회용)
+          if (event.data.integrationId) {
+            setSelectedIntegrationId(event.data.integrationId);
+          }
+
           toast({
             title: 'Google 계정 연결 완료',
-            description: 'Refresh Token이 자동으로 입력되었습니다.',
+            description: 'Refresh Token이 자동으로 입력되었습니다. 이제 Google 브랜드 목록을 조회할 수 있습니다.',
             status: 'success',
-            duration: 3000,
+            duration: 4000,
             isClosable: true,
           });
 
-          // 이벤트 리스너 제거
           window.removeEventListener('message', handleMessage);
         }
       };
@@ -605,6 +650,110 @@ export default function APITokenTable(props) {
         duration: 5000,
         isClosable: true,
       });
+    }
+  };
+
+  // 기존 토큰 선택
+  const handleSelectToken = async (integrationId) => {
+    try {
+      setSelectedIntegrationId(integrationId);
+
+      // Refresh Token 복호화 및 자동입력
+      const { data: decryptedToken, error } = await supabase.rpc('get_decrypted_token', {
+        p_api_token_id: integrationId,
+        p_token_type: 'refresh_token',
+      });
+
+      if (error) {
+        console.error('[토큰 복호화] 오류:', error);
+        throw new Error('토큰 복호화 실패');
+      }
+
+      if (decryptedToken) {
+        setFormData(prev => ({
+          ...prev,
+          refreshToken: decryptedToken,
+        }));
+      }
+
+      onTokenSelectModalClose();
+
+      toast({
+        title: '토큰 선택 완료',
+        description: 'Refresh Token이 자동으로 입력되었습니다. 이제 Google 브랜드 목록을 조회할 수 있습니다.',
+        status: 'success',
+        duration: 3000,
+        isClosable: true,
+      });
+    } catch (error) {
+      console.error('[토큰 선택] 실패:', error);
+      toast({
+        title: '토큰 선택 실패',
+        description: error.message,
+        status: 'error',
+        duration: 4000,
+        isClosable: true,
+      });
+    }
+  };
+
+  // Google Customer 목록 조회
+  const handleFetchGoogleCustomers = async () => {
+    if (!selectedIntegrationId) {
+      toast({
+        title: '토큰을 먼저 선택해주세요',
+        description: 'Google 계정 연결 후 토큰을 선택해야 브랜드 목록을 조회할 수 있습니다.',
+        status: 'warning',
+        duration: 4000,
+        isClosable: true,
+      });
+      return;
+    }
+
+    setIsLoadingCustomers(true);
+
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const accessToken = sessionData?.session?.access_token;
+
+      const response = await fetch(`${process.env.REACT_APP_SUPABASE_URL}/functions/v1/list-google-customers`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${accessToken}`,
+        },
+        body: JSON.stringify({
+          integration_id: selectedIntegrationId,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Customer 목록 조회 실패');
+      }
+
+      const { customers } = await response.json();
+
+      setGoogleCustomers(customers || []);
+
+      toast({
+        title: 'Google 브랜드 목록 조회 완료',
+        description: `${customers?.length || 0}개의 브랜드를 찾았습니다.`,
+        status: 'success',
+        duration: 3000,
+        isClosable: true,
+      });
+    } catch (error) {
+      console.error('Customer 목록 조회 실패:', error);
+      toast({
+        title: 'Google 브랜드 조회 실패',
+        description: error.message,
+        status: 'error',
+        duration: 4000,
+        isClosable: true,
+      });
+    } finally {
+      setIsLoadingCustomers(false);
     }
   };
 
@@ -988,7 +1137,7 @@ export default function APITokenTable(props) {
           customerId: formData.customerId,
           managerAccountId: managerAccountId,
           developerToken: developerToken,
-          targetConversionActionId: formData.targetConversionActionId[0],
+          targetConversionActionId: formData.targetConversionActionId,
           refreshToken: formData.refreshToken,
           clientId: clientId,
           clientSecret: clientSecret,
@@ -1535,13 +1684,52 @@ export default function APITokenTable(props) {
                   <FormLabel fontSize="sm" fontWeight="500" mb={2}>
                     광고 계정 ID *
                   </FormLabel>
+
+                  {/* 옵션 1: Google 브랜드 목록 조회 */}
+                  {selectedIntegrationId && (
+                    <Button
+                      size="sm"
+                      colorScheme="blue"
+                      variant="outline"
+                      onClick={handleFetchGoogleCustomers}
+                      isLoading={isLoadingCustomers}
+                      leftIcon={<MdSearch />}
+                      mb={2}
+                      width="full"
+                    >
+                      Google 브랜드 목록 조회
+                    </Button>
+                  )}
+
+                  {/* 조회된 브랜드 드롭다운 */}
+                  {googleCustomers.length > 0 && (
+                    <Select
+                      placeholder="조회된 브랜드 선택"
+                      onChange={(e) => setFormData({ ...formData, customerId: e.target.value })}
+                      mb={2}
+                      fontSize="sm"
+                    >
+                      {googleCustomers.map((customer) => (
+                        <option key={customer.id} value={customer.id}>
+                          {customer.name} ({customer.id})
+                        </option>
+                      ))}
+                    </Select>
+                  )}
+
+                  {/* 옵션 2: 수동 입력 (기존 방식 유지) */}
                   <Input
-                    placeholder="Customer ID (예: 1234567890)"
+                    placeholder="또는 Customer ID 직접 입력 (예: 1234567890)"
                     value={formData.customerId}
                     onChange={(e) => setFormData({ ...formData, customerId: e.target.value })}
-
                     fontSize="sm"
                   />
+
+                  {googleCustomers.length > 0 && (
+                    <Text fontSize="xs" color="gray.500" mt={1}>
+                      위 드롭다운에서 선택하거나 직접 입력할 수 있습니다.
+                    </Text>
+                  )}
                 </FormControl>
 
                 <FormControl mb={4} isRequired>
@@ -1949,6 +2137,91 @@ export default function APITokenTable(props) {
               선택 완료 ({selectedConversionActions.length})
             </Button>
             <Button onClick={onConversionModalClose}>취소</Button>
+          </ModalFooter>
+        </ModalContent>
+      </Modal>
+
+      {/* 조직 Google Ads 토큰 선택 모달 */}
+      <Modal isOpen={isTokenSelectModalOpen} onClose={onTokenSelectModalClose} size="xl">
+        <ModalOverlay />
+        <ModalContent>
+          <ModalHeader fontSize="md" fontWeight="600">
+            조직의 기존 Google Ads 토큰 선택
+          </ModalHeader>
+          <ModalCloseButton />
+          <ModalBody pb={6}>
+            <Alert status="info" mb={4} borderRadius="md">
+              <AlertIcon />
+              <Box>
+                <AlertTitle fontSize="sm">기존 토큰 재사용 권장</AlertTitle>
+                <AlertDescription fontSize="xs">
+                  같은 조직의 Google 계정으로 생성된 토큰을 재사용하면 재인증이 불필요합니다.
+                </AlertDescription>
+              </Box>
+            </Alert>
+
+            <VStack spacing={3} align="stretch">
+              {organizationTokens.map((token) => (
+                <Box
+                  key={token.integration_id}
+                  p={4}
+                  borderWidth="1px"
+                  borderRadius="md"
+                  borderColor={borderColor}
+                  _hover={{ bg: bgHover, cursor: 'pointer' }}
+                  onClick={() => handleSelectToken(token.integration_id)}
+                >
+                  <HStack justify="space-between">
+                    <VStack align="start" spacing={1}>
+                      <Text fontSize="sm" fontWeight="600">
+                        {token.google_account_email || '(이메일 정보 없음)'}
+                      </Text>
+                      <Text fontSize="xs" color="gray.500">
+                        브랜드: {token.advertiser_name}
+                      </Text>
+                      <Text fontSize="xs" color="gray.500">
+                        생성자: {token.created_by_user_email || '(정보 없음)'}
+                      </Text>
+                      <Text fontSize="xs" color="gray.400">
+                        생성일: {new Date(token.created_at).toLocaleDateString('ko-KR')}
+                      </Text>
+                    </VStack>
+                    <Button size="sm" colorScheme="blue">
+                      선택
+                    </Button>
+                  </HStack>
+                </Box>
+              ))}
+            </VStack>
+
+            <Divider my={4} />
+
+            <Button
+              width="full"
+              variant="outline"
+              colorScheme="green"
+              onClick={() => {
+                onTokenSelectModalClose();
+
+                // 경고 메시지 표시
+                const confirmNewToken = window.confirm(
+                  '기존 토큰으로 브랜드가 보이지 않나요?\n\n' +
+                  '새 Google 계정으로 OAuth 인증을 진행하시겠습니까?\n\n' +
+                  '"취소"를 누르면 토큰 목록으로 돌아갑니다.'
+                );
+
+                if (confirmNewToken) {
+                  proceedWithNewOAuth();
+                } else {
+                  onTokenSelectModalOpen();
+                }
+              }}
+            >
+              새 Google 계정으로 토큰 발급
+            </Button>
+          </ModalBody>
+          <ModalFooter>
+            <Button onClick={onTokenSelectModalClose}>닫기</Button>
           </ModalFooter>
         </ModalContent>
       </Modal>
