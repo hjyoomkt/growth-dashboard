@@ -223,18 +223,34 @@ async function collectGoogleAssetGroups(
   }
 
   const responseText = await response.text()
-  const chunks = responseText.trim().split('\n').filter(line => line.trim())
-
   let allResults: any[] = []
 
-  for (const chunk of chunks) {
-    try {
-      const json = JSON.parse(chunk)
-      if (json.results && Array.isArray(json.results)) {
-        allResults = allResults.concat(json.results)
+  try {
+    // 전체 JSON 배열로 파싱 시도
+    const jsonArray = JSON.parse(responseText)
+    if (Array.isArray(jsonArray)) {
+      // 배열 형태: [{"results": [...]}, {"results": [...]}]
+      for (const item of jsonArray) {
+        if (item.results && Array.isArray(item.results)) {
+          allResults = allResults.concat(item.results)
+        }
       }
-    } catch (error) {
-      console.error('Failed to parse chunk:', error)
+    } else if (jsonArray.results && Array.isArray(jsonArray.results)) {
+      // 단일 객체: {"results": [...]}
+      allResults = jsonArray.results
+    }
+  } catch {
+    // 전체 파싱 실패 시 newline-delimited JSON으로 시도
+    const lines = responseText.trim().split('\n').filter(line => line.trim())
+    for (const line of lines) {
+      try {
+        const json = JSON.parse(line)
+        if (json.results && Array.isArray(json.results)) {
+          allResults = allResults.concat(json.results)
+        }
+      } catch {
+        // 개별 라인 파싱 실패는 무시
+      }
     }
   }
 
