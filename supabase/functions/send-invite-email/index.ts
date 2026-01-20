@@ -59,7 +59,8 @@ Deno.serve(async (req) => {
     }
 
     // 회원가입 링크 생성
-    const signupUrl = `${Deno.env.get('APP_URL') || 'http://localhost:3000'}/auth/sign-up?code=${inviteCode}`;
+    const appUrl = Deno.env.get('APP_URL') || 'https://zestdot.com';
+    const signupUrl = `${appUrl}/auth/sign-up?code=${inviteCode}`;
 
     // Resend API를 통한 이메일 발송
     const resendApiKey = Deno.env.get('RESEND_API_KEY');
