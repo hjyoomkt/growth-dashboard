@@ -84,42 +84,58 @@ export const Footer = () => {
         </Flex>
 
         {/* Bottom Section */}
-        <Flex
+        <VStack
           mt={{ base: '48px', md: '64px' }}
           pt={{ base: '24px', md: '32px' }}
           borderTop="1px solid rgba(255, 255, 255, 0.1)"
-          direction={{ base: 'column', md: 'row' }}
-          justify="space-between"
-          align="center"
-          gap="16px"
+          align={{ base: 'center', md: 'flex-start' }}
+          spacing="12px"
         >
-          <Text
-            fontSize={landingDesignSystem.typography.fontSizes.caption}
-            color="rgba(255, 255, 255, 0.5)"
-            textAlign={{ base: 'center', md: 'left' }}
-          >
-            © 2026 ZEST DOT. All rights reserved.
+          {/* Company Info */}
+          <Text fontSize={landingDesignSystem.typography.fontSizes.caption} color="rgba(255, 255, 255, 0.4)">
+            상호: 제스트닷 | 주소: 서울 강남구 역삼동 하이츠빌딩 151, 03342
+          </Text>
+          <Text fontSize={landingDesignSystem.typography.fontSizes.caption} color="rgba(255, 255, 255, 0.4)">
+            전화: +82-10-6425-2654 | 이메일: hjyoomkt@gmail.com
           </Text>
 
-          <HStack spacing="24px">
-            {['Twitter', 'LinkedIn', 'GitHub'].map((social) => (
-              <Text
-                key={social}
-                as="a"
-                href="#"
-                fontSize={landingDesignSystem.typography.fontSizes.caption}
-                color="rgba(255, 255, 255, 0.5)"
-                _hover={{
-                  color: landingDesignSystem.colors.accent,
-                  cursor: 'pointer',
-                }}
-                transition="color 0.3s ease"
-              >
-                {social}
-              </Text>
-            ))}
-          </HStack>
-        </Flex>
+          {/* Copyright and Social Links */}
+          <Flex
+            width="100%"
+            direction={{ base: 'column', md: 'row' }}
+            justify="space-between"
+            align="center"
+            gap="16px"
+            mt="8px"
+          >
+            <Text
+              fontSize={landingDesignSystem.typography.fontSizes.caption}
+              color="rgba(255, 255, 255, 0.5)"
+              textAlign={{ base: 'center', md: 'left' }}
+            >
+              © 2026 ZEST DOT. All rights reserved.
+            </Text>
+
+            <HStack spacing="24px">
+              {['Twitter', 'LinkedIn', 'GitHub'].map((social) => (
+                <Text
+                  key={social}
+                  as="a"
+                  href="#"
+                  fontSize={landingDesignSystem.typography.fontSizes.caption}
+                  color="rgba(255, 255, 255, 0.5)"
+                  _hover={{
+                    color: landingDesignSystem.colors.accent,
+                    cursor: 'pointer',
+                  }}
+                  transition="color 0.3s ease"
+                >
+                  {social}
+                </Text>
+              ))}
+            </HStack>
+          </Flex>
+        </VStack>
       </Box>
     </Box>
   );
