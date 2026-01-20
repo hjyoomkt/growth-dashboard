@@ -23,8 +23,7 @@ export function SidebarLinks(props) {
     organizationType,
     isMaster,
     canAccessSuperAdmin,
-    canAccessBrandAdmin,
-    canAccessOrganization
+    canAccessBrandAdmin
   } = useAuth();
 
   // 디버그 로그
@@ -35,10 +34,7 @@ export function SidebarLinks(props) {
     canAccessSuperAdmin: canAccessSuperAdmin?.(),
     canAccessBrandAdmin: canAccessBrandAdmin?.()
   });
-
-  // ✅ 권한 체크 함수 (2026-01-03 수정)
-  const isAgency = organizationType === 'agency';
-  const isAdvertiser = organizationType === 'advertiser';
+  console.log('[Sidebar Links] brandadmin 라우트:', routes.filter(r => r.layout === '/brandadmin'));
 
   // verifies if routeName is the one active (in browser input)
   const activeRoute = (routeName, layout) => {
@@ -92,11 +88,15 @@ export function SidebarLinks(props) {
       }
 
       // ✅ 레거시 권한 체크 (하위 호환성)
-      if (route.agencyOnly && !isAgency && !isMaster()) {
+      // agencyOnly는 에이전시 관련 역할이면 접근 가능
+      const isAgencyRole = ['agency_admin', 'agency_manager', 'agency_staff'].includes(role);
+      if (route.agencyOnly && !isAgencyRole && !isMaster()) {
         return null;
       }
 
-      if (route.advertiserOnly && !isAdvertiser && !isMaster()) {
+      // advertiserOnly는 브랜드 관련 역할이면 접근 가능
+      const isAdvertiserRole = ['advertiser_admin', 'advertiser_staff'].includes(role);
+      if (route.advertiserOnly && !isAdvertiserRole && !isMaster()) {
         return null;
       }
 
