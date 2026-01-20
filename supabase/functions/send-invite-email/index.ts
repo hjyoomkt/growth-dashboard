@@ -124,7 +124,7 @@ Deno.serve(async (req) => {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        from: 'onboarding@resend.dev',
+        from: 'ZestDot <invite@zestdot.com>',
         to: invitedEmail,
         subject: 'Growth Dashboard 초대장',
         html: emailHtml,
