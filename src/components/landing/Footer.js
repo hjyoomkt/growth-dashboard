@@ -1,5 +1,6 @@
 import React from 'react';
 import { Box, Flex, Text, VStack, HStack, SimpleGrid, useColorMode, useColorModeValue } from '@chakra-ui/react';
+import { NavLink } from 'react-router-dom';
 import { landingDesignSystem } from '../../theme/landingTheme';
 import { HorizonLogo } from 'components/icons/Icons';
 
@@ -7,9 +8,23 @@ export const Footer = () => {
   const { colorMode } = useColorMode();
 
   const footerLinks = {
-    Product: ['기능', '통합', '요금제', 'API'],
-    Company: ['회사 소개', '채용', '문의', '블로그'],
-    Legal: ['개인정보 처리방침', '서비스 약관', '쿠키 정책'],
+    Product: [
+      { label: '기능', href: '#' },
+      { label: '통합', href: '#' },
+      { label: '요금제', href: '#' },
+      { label: 'API', href: '#' },
+    ],
+    Company: [
+      { label: '회사 소개', href: '#' },
+      { label: '채용', href: '#' },
+      { label: '문의', href: '#' },
+      { label: '블로그', href: '#' },
+    ],
+    Legal: [
+      { label: '개인정보 처리방침', href: '/auth/privacy-policy' },
+      { label: '서비스 약관', href: '/auth/terms-of-service' },
+      { label: '쿠키 정책', href: '#' },
+    ],
   };
 
   return (
@@ -64,9 +79,10 @@ export const Footer = () => {
                 </Text>
                 {links.map((link) => (
                   <Text
-                    key={link}
-                    as="a"
-                    href="#"
+                    key={link.label}
+                    as={link.href.startsWith('/') ? NavLink : 'a'}
+                    to={link.href.startsWith('/') ? link.href : undefined}
+                    href={link.href.startsWith('/') ? undefined : link.href}
                     fontSize={landingDesignSystem.typography.fontSizes.bodySmall}
                     color="rgba(255, 255, 255, 0.6)"
                     _hover={{
@@ -75,7 +91,7 @@ export const Footer = () => {
                     }}
                     transition="color 0.3s ease"
                   >
-                    {link}
+                    {link.label}
                   </Text>
                 ))}
               </VStack>

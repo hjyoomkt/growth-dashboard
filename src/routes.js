@@ -24,6 +24,8 @@ import SignInCentered from 'views/auth/signIn';
 import SignUp from 'views/auth/signUp';
 import ForgotPassword from 'views/auth/forgotPassword';
 import ResetPassword from 'views/auth/resetPassword';
+import PrivacyPolicy from 'views/auth/privacyPolicy';
+import TermsOfService from 'views/auth/termsOfService';
 
 // ROAS Analyzer - 독립 모듈
 import { ROASAnalyzer } from 'modules/roas-analyzer';
@@ -142,6 +144,20 @@ const routes = [
     layout: '/auth',
     path: '/reset-password',
     component: <ResetPassword />,
+    hidden: true, // 사이드바에서 숨김
+  },
+  {
+    name: 'Privacy Policy',
+    layout: '/auth',
+    path: '/privacy-policy',
+    component: <PrivacyPolicy />,
+    hidden: true, // 사이드바에서 숨김
+  },
+  {
+    name: 'Terms of Service',
+    layout: '/auth',
+    path: '/terms-of-service',
+    component: <TermsOfService />,
     hidden: true, // 사이드바에서 숨김
   },
   // {
