@@ -87,7 +87,7 @@ function InviteSignUpForm({ initialCode, onSuccess }) {
         return;
       }
 
-      if (data.used) {
+      if (data.used_by) {
         setCodeError('이미 사용된 초대 코드입니다.');
         setInviteData(null);
         setValidatingCode(false);
@@ -104,6 +104,7 @@ function InviteSignUpForm({ initialCode, onSuccess }) {
       // invite_type 필드로 초대 타입 구분
       const isNewAdvertiser = data.invite_type === 'new_organization';
       const isNewBrand = data.invite_type === 'new_brand';
+      const isNewAgency = data.invite_type === 'new_agency';
 
       // 조직/광고주 정보 추가 조회 (필요 시)
       let organizationName = null;
@@ -135,6 +136,7 @@ function InviteSignUpForm({ initialCode, onSuccess }) {
         invitedEmail: data.invited_email,
         isNewAdvertiser: isNewAdvertiser,
         isNewBrand: isNewBrand,
+        isNewAgency: isNewAgency,
         existingOrganizationName: isNewBrand ? organizationName : null,
         invitationId: data.id,
         organizationId: data.organization_id,
@@ -234,6 +236,24 @@ function InviteSignUpForm({ initialCode, onSuccess }) {
 
         if (advError) throw advError;
         finalAdvertiserId = newAdv.id;
+      }
+
+      // 2-1. 신규 대행사 조직 생성
+      if (inviteData.isNewAgency) {
+        const { data: newOrg, error: orgError } = await supabase
+          .from('organizations')
+          .insert({
+            name: formData.organizationName,
+            type: 'agency',
+          })
+          .select()
+          .single();
+
+        if (orgError) throw orgError;
+        finalOrganizationId = newOrg.id;
+
+        // 대행사는 advertiser_id 없음
+        finalAdvertiserId = null;
       }
 
       // 3. 기존 조직에 신규 브랜드 추가
@@ -393,7 +413,13 @@ function InviteSignUpForm({ initialCode, onSuccess }) {
           </HStack>
           <AlertDescription fontSize="xs" w="100%">
             <VStack align="flex-start" spacing="4px">
-              {inviteData.isNewAdvertiser ? (
+              {inviteData.isNewAgency ? (
+                <>
+                  <Text><strong>신규 광고대행사 조직 등록</strong></Text>
+                  <Text>새로운 광고대행사를 등록합니다</Text>
+                  <Text><strong>권한:</strong> 대행사 최고관리자 (agency_admin)</Text>
+                </>
+              ) : inviteData.isNewAdvertiser ? (
                 <>
                   <Text><strong>신규 클라이언트 조직 등록</strong></Text>
                   <Text>대행사에서 새로운 클라이언트로 초대되었습니다</Text>
@@ -528,17 +554,17 @@ function InviteSignUpForm({ initialCode, onSuccess }) {
       </FormControl>
 
       {/* 신규 조직/브랜드 정보 입력 섹션 */}
-      {(inviteData?.isNewAdvertiser || inviteData?.isNewBrand) && (
+      {(inviteData?.isNewAdvertiser || inviteData?.isNewBrand || inviteData?.isNewAgency) && (
         <>
           <Divider my="24px" />
 
           <Heading size="sm" color={textColor} mb="16px">
-            브랜드 정보
+            {inviteData?.isNewAgency ? '대행사 정보' : '브랜드 정보'}
           </Heading>
 
           <FormControl mb="20px">
             <FormLabel fontSize="sm" fontWeight="500" color={textColor}>
-              브랜드명 *
+              {inviteData?.isNewAgency ? '대행사명 *' : '브랜드명 *'}
             </FormLabel>
             <Input
               name="organizationName"
@@ -547,7 +573,7 @@ function InviteSignUpForm({ initialCode, onSuccess }) {
               isRequired
               variant="auth"
               fontSize="sm"
-              placeholder="예: 페퍼스"
+              placeholder={inviteData?.isNewAgency ? "예: 부밍 대행사" : "예: 페퍼스"}
               size="lg"
               borderRadius="10px"
             />
@@ -645,8 +671,8 @@ function InviteSignUpForm({ initialCode, onSuccess }) {
         회원가입
       </Button>
 
-      {/* OAuth 간편 로그인 (신규 조직/브랜드 추가가 아닐 때만 표시) */}
-      {inviteData && !inviteData.isNewAdvertiser && !inviteData.isNewBrand && (
+      {/* OAuth 간편 로그인 (신규 조직/브랜드/대행사 추가가 아닐 때만 표시) */}
+      {inviteData && !inviteData.isNewAdvertiser && !inviteData.isNewBrand && !inviteData.isNewAgency && (
         <>
           {/* 구분선 */}
           <Flex align="center" my="20px">

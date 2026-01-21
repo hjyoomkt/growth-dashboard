@@ -1,18 +1,21 @@
 import React, { useState, useEffect } from "react";
 import {
   Box,
-  Heading,
-  Text,
   useDisclosure,
   useToast,
   Spinner,
   Center,
+  Button,
+  Flex,
+  Icon,
 } from "@chakra-ui/react";
+import { MdAdd } from "react-icons/md";
 import Card from "components/card/Card.js";
 import AdvertisersTree from "./components/AdvertisersTree";
 import AddBrandModal from "./components/AddBrandModal";
 import EditBrandModal from "./components/EditBrandModal";
 import DeleteBrandModal from "./components/DeleteBrandModal";
+import InviteAgencyModal from "./components/InviteAgencyModal";
 import { supabase } from "config/supabase";
 import { useAuth } from "contexts/AuthContext";
 
@@ -20,13 +23,14 @@ export default function AdvertisersManagement() {
   const { isOpen, onOpen, onClose } = useDisclosure();
   const { isOpen: isEditOpen, onOpen: onEditOpen, onClose: onEditClose } = useDisclosure();
   const { isOpen: isDeleteOpen, onOpen: onDeleteOpen, onClose: onDeleteClose } = useDisclosure();
+  const { isOpen: isInviteAgencyOpen, onOpen: onInviteAgencyOpen, onClose: onInviteAgencyClose } = useDisclosure();
   const [selectedOrganization, setSelectedOrganization] = useState(null);
   const [selectedBrand, setSelectedBrand] = useState(null);
   const [organizations, setOrganizations] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isDeleting, setIsDeleting] = useState(false);
   const toast = useToast();
-  const { role, organizationId } = useAuth();
+  const { role, organizationId, isMaster } = useAuth();
 
   // 데이터 로드
   useEffect(() => {
@@ -141,14 +145,18 @@ export default function AdvertisersManagement() {
 
   return (
     <Box pt={{ base: "130px", md: "80px", xl: "80px" }}>
-      <Box mb="24px">
-        <Heading size="lg" mb="8px">
-          광고주 관리
-        </Heading>
-        <Text fontSize="md" color="gray.600">
-          조직별 광고주(브랜드) 목록을 확인하고 관리할 수 있습니다.
-        </Text>
-      </Box>
+      {isMaster() && (
+        <Flex justify="flex-end" mb="20px">
+          <Button
+            leftIcon={<Icon as={MdAdd} />}
+            colorScheme="brand"
+            size="md"
+            onClick={onInviteAgencyOpen}
+          >
+            조직 초대
+          </Button>
+        </Flex>
+      )}
 
       <Card
         direction="column"
@@ -198,6 +206,14 @@ export default function AdvertisersManagement() {
           />
         </>
       )}
+
+      <InviteAgencyModal
+        isOpen={isInviteAgencyOpen}
+        onClose={() => {
+          onInviteAgencyClose();
+          fetchOrganizations();
+        }}
+      />
     </Box>
   );
 }

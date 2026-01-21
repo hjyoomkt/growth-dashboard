@@ -671,6 +671,22 @@ export const updateUserRoleAndAdvertisers = async (userId, newRole, advertiserId
  * @returns {object} 생성된 초대 코드 정보
  */
 export const createInviteCode = async (inviteData) => {
+  // Master 권한 검증 (new_agency 타입 전용)
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error('인증되지 않은 사용자입니다.');
+
+  if (inviteData.inviteType === 'new_agency') {
+    const { data: userData } = await supabase
+      .from('users')
+      .select('role')
+      .eq('id', user.id)
+      .single();
+
+    if (userData?.role !== 'master') {
+      throw new Error('대행사 초대는 Master 권한만 가능합니다.');
+    }
+  }
+
   const code = `INVITE-${Math.random().toString(36).substring(2, 10).toUpperCase()}`;
   const expiresAt = new Date();
   expiresAt.setDate(expiresAt.getDate() + 7); // 7일 후 만료
