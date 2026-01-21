@@ -737,6 +737,7 @@ export default function APITokenTable(props) {
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${accessToken}`,
+          'apikey': process.env.REACT_APP_SUPABASE_ANON_KEY,
         },
         body: JSON.stringify({
           integration_id: selectedIntegrationId,

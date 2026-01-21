@@ -133,10 +133,10 @@
 
           console.log('[OAuth Callback HTML] postMessage sent successfully');
 
-          // 팝업 닫기 (디버깅을 위해 10초로 연장)
+          // 팝업 닫기 (1초 후 자동 닫힘)
           setTimeout(() => {
             window.close();
-          }, 10000);
+          }, 1000);
         } else {
           console.error('[OAuth Callback HTML] window.opener is null!');
           messageEl.textContent = '부모 창을 찾을 수 없습니다. 이 창을 닫아주세요.';

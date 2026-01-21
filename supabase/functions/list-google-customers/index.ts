@@ -48,7 +48,7 @@ Deno.serve(async (req) => {
     // 2. Integration 조회 (RLS 적용으로 권한 검증)
     const { data: integration, error: integrationError } = await supabaseClient
       .from('integrations')
-      .select('id, platform, advertiser_id, advertisers(organization_id)')
+      .select('id, platform, advertiser_id, legacy_manager_account_id, advertisers(organization_id)')
       .eq('id', integration_id)
       .single();
 
@@ -152,14 +152,23 @@ Deno.serve(async (req) => {
 
     const { access_token } = await tokenResponse.json();
 
+    // MCC ID 추출
+    const managerAccountId = integration.legacy_manager_account_id;
+
     // 8. Google Ads API: 접근 가능한 Customer 목록 조회
+    const listHeaders: any = {
+      'Authorization': `Bearer ${access_token}`,
+      'developer-token': developerToken,
+    };
+
+    if (managerAccountId) {
+      listHeaders['login-customer-id'] = managerAccountId;
+    }
+
     const listResponse = await fetch(
-      'https://googleads.googleapis.com/v18/customers:listAccessibleCustomers',
+      'https://googleads.googleapis.com/v22/customers:listAccessibleCustomers',
       {
-        headers: {
-          'Authorization': `Bearer ${access_token}`,
-          'developer-token': developerToken,
-        },
+        headers: listHeaders,
       }
     );
 
@@ -195,15 +204,21 @@ Deno.serve(async (req) => {
           WHERE customer.id = ${customerId}
         `;
 
+        const detailHeaders: any = {
+          'Authorization': `Bearer ${access_token}`,
+          'developer-token': developerToken,
+          'Content-Type': 'application/json',
+        };
+
+        if (managerAccountId) {
+          detailHeaders['login-customer-id'] = managerAccountId;
+        }
+
         const detailResponse = await fetch(
-          `https://googleads.googleapis.com/v18/customers/${customerId}/googleAds:search`,
+          `https://googleads.googleapis.com/v22/customers/${customerId}/googleAds:searchStream`,
           {
             method: 'POST',
-            headers: {
-              'Authorization': `Bearer ${access_token}`,
-              'developer-token': developerToken,
-              'Content-Type': 'application/json',
-            },
+            headers: detailHeaders,
             body: JSON.stringify({ query }),
           }
         );
@@ -217,8 +232,9 @@ Deno.serve(async (req) => {
           };
         }
 
-        const detailData = await detailResponse.json();
-        const result = detailData.results?.[0]?.customer;
+        const responseText = await detailResponse.text();
+        const allResults = parseGoogleAdsResponse(responseText);
+        const result = allResults[0]?.customer;
 
         return {
           id: customerId,
@@ -241,3 +257,44 @@ Deno.serve(async (req) => {
     );
   }
 });
+
+/**
+ * Parse Google Ads searchStream response
+ * Handles both standard JSON arrays and newline-delimited JSON
+ * @param responseText - Raw response text from searchStream API
+ * @returns Array of result objects
+ */
+function parseGoogleAdsResponse(responseText: string): any[] {
+  let allResults: any[] = [];
+
+  try {
+    // 완전한 JSON 배열로 파싱 시도
+    const jsonArray = JSON.parse(responseText);
+    if (Array.isArray(jsonArray)) {
+      // 배열 형식: [{"results": [...]}, {"results": [...]}]
+      for (const item of jsonArray) {
+        if (item.results && Array.isArray(item.results)) {
+          allResults = allResults.concat(item.results);
+        }
+      }
+    } else if (jsonArray.results && Array.isArray(jsonArray.results)) {
+      // 단일 객체 형식: {"results": [...]}
+      allResults = jsonArray.results;
+    }
+  } catch {
+    // Fallback: newline-delimited JSON 파싱
+    const lines = responseText.trim().split('\n').filter(line => line.trim());
+    for (const line of lines) {
+      try {
+        const json = JSON.parse(line);
+        if (json.results && Array.isArray(json.results)) {
+          allResults = allResults.concat(json.results);
+        }
+      } catch {
+        // 개별 라인 파싱 실패 무시
+      }
+    }
+  }
+
+  return allResults;
+}
