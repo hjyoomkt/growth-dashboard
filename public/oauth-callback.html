@@ -52,6 +52,9 @@
 
   <script>
     (function() {
+      console.log('[OAuth Callback HTML] Page loaded');
+      console.log('[OAuth Callback HTML] Full URL:', window.location.href);
+
       const urlParams = new URLSearchParams(window.location.search);
       const refreshToken = urlParams.get('refresh_token');
       const integrationId = urlParams.get('integration_id');
@@ -59,9 +62,23 @@
       const oauthError = urlParams.get('oauth_error');
       const errorMessage = urlParams.get('error_message');
 
+      // ===== 디버깅 로그 추가 =====
+      console.log('[OAuth Callback HTML] Parsed URL params:', {
+        refreshToken: refreshToken ? refreshToken.substring(0, 10) + '...' : 'null',
+        refreshTokenLength: refreshToken?.length || 0,
+        integrationId,
+        oauthSuccess,
+        oauthError,
+        errorMessage
+      });
+      console.log('[OAuth Callback HTML] window.opener exists:', !!window.opener);
+      console.log('[OAuth Callback HTML] window.location.origin:', window.location.origin);
+      // ===== 끝 =====
+
       const messageEl = document.getElementById('message');
 
       if (oauthError) {
+        console.error('[OAuth Callback HTML] Error detected:', oauthError);
         // 에러 처리
         messageEl.textContent = `인증 실패: ${decodeURIComponent(errorMessage || '알 수 없는 오류')}`;
         messageEl.classList.add('error');
@@ -79,26 +96,57 @@
         return;
       }
 
-      if (oauthSuccess === 'true' && refreshToken) {
-        // 성공: 부모 창에 Refresh Token과 Integration ID 전달
+      if (oauthSuccess === 'true') {
+        // refreshToken 체크 강화
+        if (!refreshToken || refreshToken.trim() === '') {
+          console.error('[OAuth Callback HTML] ❌ Refresh token is empty!');
+          messageEl.textContent = '⚠️ Refresh Token을 받지 못했습니다.';
+          messageEl.classList.add('error');
+
+          if (window.opener) {
+            window.opener.postMessage({
+              error: true,
+              message: 'Refresh Token을 받지 못했습니다. 다시 시도해주세요.'
+            }, window.location.origin);
+          }
+
+          setTimeout(() => { window.close(); }, 3000);
+          return;
+        }
+
+        // refreshToken 있음 - 정상 처리
+        console.log('[OAuth Callback HTML] ✅ Refresh token valid, processing...');
+        console.log('[OAuth Callback HTML] Success! Sending postMessage to parent');
         messageEl.textContent = '인증이 완료되었습니다!';
 
         if (window.opener) {
+          console.log('[OAuth Callback HTML] Posting message with data:', {
+            hasRefreshToken: true,
+            integrationId
+          });
+
           // 부모 창에 메시지 전달
           window.opener.postMessage({
             refreshToken: decodeURIComponent(refreshToken),
             integrationId: integrationId ? decodeURIComponent(integrationId) : null
           }, window.location.origin);
 
-          // 팝업 닫기
+          console.log('[OAuth Callback HTML] postMessage sent successfully');
+
+          // 팝업 닫기 (디버깅을 위해 10초로 연장)
           setTimeout(() => {
             window.close();
-          }, 1000);
+          }, 10000);
         } else {
+          console.error('[OAuth Callback HTML] window.opener is null!');
           messageEl.textContent = '부모 창을 찾을 수 없습니다. 이 창을 닫아주세요.';
         }
       } else {
-        // 파라미터 누락
+        // oauthSuccess가 'true'가 아닌 경우
+        console.error('[OAuth Callback HTML] Condition not met:', {
+          oauthSuccess,
+          hasRefreshToken: !!refreshToken
+        });
         messageEl.textContent = '인증 정보를 찾을 수 없습니다.';
         messageEl.classList.add('error');
 

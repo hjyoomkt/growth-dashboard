@@ -600,12 +600,20 @@ export default function APITokenTable(props) {
       }
 
       const handleMessage = (event) => {
+        // ===== 디버깅 로그 추가 =====
+        console.log('[APITokenTable] postMessage received');
+        console.log('[APITokenTable] Event origin:', event.origin);
+        console.log('[APITokenTable] Window origin:', window.location.origin);
+        console.log('[APITokenTable] Event data:', event.data);
+        // ===== 끝 =====
+
         if (event.origin !== window.location.origin) {
-          console.warn('Rejected message from unauthorized origin:', event.origin);
+          console.warn('[APITokenTable] Rejected message from unauthorized origin:', event.origin);
           return;
         }
 
         if (event.data && event.data.error) {
+          console.error('[APITokenTable] Error in OAuth:', event.data.message);
           toast({
             title: 'Google 계정 연결 실패',
             description: event.data.message || '알 수 없는 오류가 발생했습니다.',
@@ -618,10 +626,16 @@ export default function APITokenTable(props) {
         }
 
         if (event.data && event.data.refreshToken) {
+          console.log('[APITokenTable] ✅ Refresh token received!');
+          console.log('[APITokenTable] Token length:', event.data.refreshToken.length);
+          console.log('[APITokenTable] Integration ID:', event.data.integrationId);
+
           setFormData(prev => ({
             ...prev,
             refreshToken: event.data.refreshToken,
           }));
+
+          console.log('[APITokenTable] ✅ Form data updated with refresh token');
 
           // Integration ID 저장 (Customer 조회용)
           if (event.data.integrationId) {
@@ -637,6 +651,8 @@ export default function APITokenTable(props) {
           });
 
           window.removeEventListener('message', handleMessage);
+        } else {
+          console.error('[APITokenTable] ❌ postMessage received but no refreshToken in data');
         }
       };
 

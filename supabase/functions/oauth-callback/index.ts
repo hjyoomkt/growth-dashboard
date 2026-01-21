@@ -55,6 +55,31 @@ async function exchangeMetaToken(
   return await response.json();
 }
 
+// APP_URL 동적 감지 (로컬/프로덕션 자동 지원)
+function getAppUrl(req: Request): string {
+  const configuredUrl = Deno.env.get('APP_URL');
+
+  // Referer 헤더에서 origin 추출 (OAuth initiate 호출한 origin)
+  const referer = req.headers.get('referer');
+  if (referer) {
+    try {
+      const refererUrl = new URL(referer);
+      const refererOrigin = `${refererUrl.protocol}//${refererUrl.host}`;
+
+      // localhost인 경우 referer origin 사용 (로컬 개발 환경)
+      if (refererOrigin.includes('localhost') || refererOrigin.includes('127.0.0.1')) {
+        console.log('[OAuth] Local development detected, using referer origin:', refererOrigin);
+        return refererOrigin;
+      }
+    } catch (e) {
+      console.warn('[OAuth] Failed to parse referer:', e);
+    }
+  }
+
+  // 프로덕션 또는 Referer 없을 경우 환경 변수 사용
+  return configuredUrl || 'http://localhost:3000';
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
@@ -68,7 +93,7 @@ Deno.serve(async (req) => {
     const error = url.searchParams.get('error');
     const errorDescription = url.searchParams.get('error_description');
 
-    const appUrl = Deno.env.get('APP_URL') || 'http://localhost:3000';
+    const appUrl = getAppUrl(req);
 
     // OAuth 에러 처리
     if (error) {
@@ -164,6 +189,18 @@ Deno.serve(async (req) => {
       accessToken = tokenData.access_token;
       refreshToken = tokenData.refresh_token;
       expiresIn = tokenData.expires_in || 3600;
+
+      // ===== 디버깅 로그 추가 =====
+      console.log('[OAuth Callback] Google token exchange SUCCESS');
+      console.log('[OAuth Callback] Token data received:', {
+        hasAccessToken: !!accessToken,
+        accessTokenLength: accessToken?.length || 0,
+        hasRefreshToken: !!refreshToken,
+        refreshTokenLength: refreshToken?.length || 0,
+        refreshTokenPreview: refreshToken ? refreshToken.substring(0, 10) + '...' : 'null',
+        expiresIn
+      });
+      // ===== 끝 =====
 
       // ID Token에서 Google 계정 이메일 추출
       if (tokenData.id_token) {
@@ -296,10 +333,22 @@ Deno.serve(async (req) => {
     // 성공 리다이렉트 (팝업 콜백 페이지로 이동)
     const encodedRefreshToken = refreshToken ? encodeURIComponent(refreshToken) : '';
 
+    // ===== 디버깅 로그 추가 =====
+    const redirectUrl = `${appUrl}/oauth-callback.html?oauth_success=true&integration_id=${integration.id}&refresh_token=${encodedRefreshToken}`;
+    console.log('[OAuth Callback] Redirecting to oauth-callback.html');
+    console.log('[OAuth Callback] Redirect URL:', redirectUrl);
+    console.log('[OAuth Callback] URL params:', {
+      appUrl,
+      integrationId: integration.id,
+      hasRefreshToken: !!refreshToken,
+      encodedRefreshTokenLength: encodedRefreshToken.length
+    });
+    // ===== 끝 =====
+
     return new Response(null, {
       status: 302,
       headers: {
-        'Location': `${appUrl}/oauth-callback.html?oauth_success=true&integration_id=${integration.id}&refresh_token=${encodedRefreshToken}`,
+        'Location': redirectUrl,
       },
     });
   } catch (error) {
