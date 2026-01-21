@@ -180,8 +180,8 @@ function InviteSignUpForm({ initialCode, onSuccess }) {
     }
 
     // 신규 조직/브랜드 등록 시 광고주명 필수
-    if ((inviteData.isNewAdvertiser || inviteData.isNewBrand) && !formData.organizationName) {
-      setError(inviteData.isNewBrand ? "브랜드명을 입력해주세요." : "광고주명을 입력해주세요.");
+    if ((inviteData.isNewAdvertiser || inviteData.isNewBrand || inviteData.isNewAgency) && !formData.organizationName) {
+      setError(inviteData.isNewAgency ? "대행사명을 입력해주세요." : inviteData.isNewBrand ? "브랜드명을 입력해주세요." : "광고주명을 입력해주세요.");
       return;
     }
 
