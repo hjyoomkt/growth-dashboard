@@ -55,31 +55,6 @@ async function exchangeMetaToken(
   return await response.json();
 }
 
-// APP_URL 동적 감지 (로컬/프로덕션 자동 지원)
-function getAppUrl(req: Request): string {
-  const configuredUrl = Deno.env.get('APP_URL');
-
-  // Referer 헤더에서 origin 추출 (OAuth initiate 호출한 origin)
-  const referer = req.headers.get('referer');
-  if (referer) {
-    try {
-      const refererUrl = new URL(referer);
-      const refererOrigin = `${refererUrl.protocol}//${refererUrl.host}`;
-
-      // localhost인 경우 referer origin 사용 (로컬 개발 환경)
-      if (refererOrigin.includes('localhost') || refererOrigin.includes('127.0.0.1')) {
-        console.log('[OAuth] Local development detected, using referer origin:', refererOrigin);
-        return refererOrigin;
-      }
-    } catch (e) {
-      console.warn('[OAuth] Failed to parse referer:', e);
-    }
-  }
-
-  // 프로덕션 또는 Referer 없을 경우 환경 변수 사용
-  return configuredUrl || 'http://localhost:3000';
-}
-
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
@@ -93,15 +68,17 @@ Deno.serve(async (req) => {
     const error = url.searchParams.get('error');
     const errorDescription = url.searchParams.get('error_description');
 
-    const appUrl = getAppUrl(req);
+    // appUrl은 나중에 session에서 가져옴 (state token 검증 후)
 
-    // OAuth 에러 처리
+    // OAuth 에러 처리 (appUrl은 환경 변수 fallback 사용)
+    const fallbackAppUrl = Deno.env.get('APP_URL') || 'http://localhost:3000';
+
     if (error) {
       console.error('OAuth error:', error, errorDescription);
       return new Response(null, {
         status: 302,
         headers: {
-          'Location': `${appUrl}/admin/api-management?oauth_error=${encodeURIComponent(error)}&error_description=${encodeURIComponent(errorDescription || '')}`,
+          'Location': `${fallbackAppUrl}/admin/api-management?oauth_error=${encodeURIComponent(error)}&error_description=${encodeURIComponent(errorDescription || '')}`,
         },
       });
     }
@@ -110,7 +87,7 @@ Deno.serve(async (req) => {
       return new Response(null, {
         status: 302,
         headers: {
-          'Location': `${appUrl}/admin/api-management?oauth_error=missing_parameters`,
+          'Location': `${fallbackAppUrl}/admin/api-management?oauth_error=missing_parameters`,
         },
       });
     }
@@ -133,10 +110,14 @@ Deno.serve(async (req) => {
       return new Response(null, {
         status: 302,
         headers: {
-          'Location': `${appUrl}/admin/api-management?oauth_error=invalid_state`,
+          'Location': `${fallbackAppUrl}/admin/api-management?oauth_error=invalid_state`,
         },
       });
     }
+
+    // session에서 app_origin 복원 (로컬/프로덕션 자동 지원)
+    const appUrl = session.app_origin || fallbackAppUrl;
+    console.log('[OAuth Callback] Using app_origin from session:', appUrl);
 
     // 15분 만료 체크
     const expiresAt = new Date(session.expires_at);
@@ -353,11 +334,12 @@ Deno.serve(async (req) => {
     });
   } catch (error) {
     console.error('Error in OAuth callback:', error);
-    const appUrl = Deno.env.get('APP_URL') || 'http://localhost:3000';
+    // catch 블록에서는 session을 가져올 수 없으므로 환경 변수 fallback 사용
+    const fallbackAppUrl = Deno.env.get('APP_URL') || 'http://localhost:3000';
     return new Response(null, {
       status: 302,
       headers: {
-        'Location': `${appUrl}/oauth-callback.html?oauth_error=callback_failed&error_message=${encodeURIComponent(error.message)}`,
+        'Location': `${fallbackAppUrl}/oauth-callback.html?oauth_error=callback_failed&error_message=${encodeURIComponent(error.message)}`,
       },
     });
   }

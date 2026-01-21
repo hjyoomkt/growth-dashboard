@@ -42,6 +42,26 @@ async function generateCodeChallenge(verifier: string): Promise<string> {
     .replace(/=/g, '');
 }
 
+// Origin 추출 (로컬/프로덕션 자동 감지)
+function extractOriginFromRequest(req: Request): string {
+  const referer = req.headers.get('referer');
+  const configuredUrl = Deno.env.get('APP_URL') || 'http://localhost:3000';
+
+  if (referer) {
+    try {
+      const refererUrl = new URL(referer);
+      const origin = `${refererUrl.protocol}//${refererUrl.host}`;
+      console.log('[OAuth Initiate] Origin detected from Referer:', origin);
+      return origin;
+    } catch (e) {
+      console.warn('[OAuth Initiate] Failed to parse referer, using configured URL:', e);
+    }
+  }
+
+  console.log('[OAuth Initiate] No referer, using configured APP_URL:', configuredUrl);
+  return configuredUrl;
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
@@ -248,6 +268,9 @@ Deno.serve(async (req) => {
       );
     }
 
+    // Origin 추출 (로컬/프로덕션 자동 감지)
+    const appOrigin = extractOriginFromRequest(req);
+
     // OAuth 세션 저장 (client_secret 직접 저장)
     console.log('[OAuth] OAuth 세션 저장 시도...');
     const { error: sessionError } = await supabaseServiceRole
@@ -263,6 +286,7 @@ Deno.serve(async (req) => {
         expires_at: expiresAt.toISOString(),
         client_id: clientId,
         client_secret: clientSecret,
+        app_origin: appOrigin,
       });
 
     console.log('[OAuth] 세션 저장 결과:', { success: !sessionError, error: sessionError?.message });
