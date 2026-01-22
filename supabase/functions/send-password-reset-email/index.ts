@@ -11,7 +11,10 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-Deno.serve(async (req) => {
+Deno.serve({
+  // JWT 검증 비활성화 (비로그인 사용자도 접근 가능)
+  onListen: () => console.log('Password reset email function started'),
+}, async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
   }
