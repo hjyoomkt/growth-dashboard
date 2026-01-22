@@ -132,7 +132,7 @@ function SignIn() {
             mb="10px"
             fontWeight="700"
           >
-            Welcome Back 👋
+            안녕하세요👋
           </Heading>
           <Text
             mb="36px"
@@ -140,9 +140,9 @@ function SignIn() {
             fontWeight="400"
             fontSize={{ base: "sm", md: "md" }}
           >
-            Today is a new day. It's your day. You shape it.
+            오늘은 새로운 날입니다. 당신의 하루를 시작하세요.
             <br />
-            Sign in to start managing your projects.
+            로그인하여 프로젝트 관리를 시작하세요.
           </Text>
 
           {/* 이메일 입력 */}
@@ -153,14 +153,14 @@ function SignIn() {
               color={textColor}
               mb="8px"
             >
-              Email
+              이메일
             </FormLabel>
             <Input
               isRequired={true}
               variant="auth"
               fontSize="sm"
               type="email"
-              placeholder="Example@email.com"
+              placeholder="example@email.com"
               fontWeight="500"
               size="lg"
               borderRadius="10px"
@@ -178,13 +178,13 @@ function SignIn() {
               color={textColor}
               mb="8px"
             >
-              Password
+              비밀번호
             </FormLabel>
             <InputGroup size="md">
               <Input
                 isRequired={true}
                 fontSize="sm"
-                placeholder="At least 8 characters"
+                placeholder="최소 8자 이상"
                 size="lg"
                 type={show ? "text" : "password"}
                 variant="auth"
@@ -213,7 +213,7 @@ function SignIn() {
                 fontWeight="500"
                 _hover={{ textDecoration: "underline" }}
               >
-                Forgot Password?
+                비밀번호를 잊으셨나요?
               </Text>
             </NavLink>
           </Flex>
@@ -230,14 +230,14 @@ function SignIn() {
             onClick={handleSignIn}
             isLoading={loading}
           >
-            Sign in
+            로그인
           </Button>
 
           {/* Or sign in with */}
           <Flex align="center" mb="20px">
             <Box flex="1" h="1px" bg="gray.200" />
             <Text color="gray.400" mx="14px" fontSize="sm">
-              Or sign in with
+              또는 소셜 로그인
             </Text>
             <Box flex="1" h="1px" bg="gray.200" />
           </Flex>
@@ -281,7 +281,7 @@ function SignIn() {
             fontSize="14px"
             textAlign="center"
           >
-            Don't you have an account?{" "}
+            아직 계정이 없으신가요?{" "}
             <NavLink to="/auth/sign-up">
               <Text
                 color={textColorBrand}
@@ -289,7 +289,7 @@ function SignIn() {
                 fontWeight="600"
                 _hover={{ textDecoration: "underline" }}
               >
-                Sign up
+                회원가입
               </Text>
             </NavLink>
           </Text>
@@ -301,7 +301,7 @@ function SignIn() {
             textAlign="center"
             mt="40px"
           >
-            © 2023 ALL RIGHTS RESERVED
+            © 2026 ZEST DOT. All rights reserved.
           </Text>
         </Box>
       </Flex>

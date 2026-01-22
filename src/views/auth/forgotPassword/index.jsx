@@ -16,6 +16,7 @@ import {
   AlertDescription,
 } from "@chakra-ui/react";
 import illustration from "assets/img/auth/auth.png";
+import { supabase } from "config/supabase";
 
 function ForgotPassword() {
   const textColor = useColorModeValue("navy.700", "white");
@@ -41,13 +42,33 @@ function ForgotPassword() {
       return;
     }
 
-    // TODO: Supabase 비밀번호 재설정 이메일 전송
-    // const { error } = await supabase.auth.resetPasswordForEmail(email, {
-    //   redirectTo: `${window.location.origin}/auth/reset-password`,
-    // });
+    try {
+      // Supabase Edge Function을 통해 비밀번호 재설정 이메일 발송
+      const { error } = await supabase.functions.invoke('send-password-reset-email', {
+        body: {
+          email: email,
+          redirectTo: `${window.location.origin}/auth/reset-password`,
+        },
+      });
 
-    // Mock: 성공 처리
-    setIsSubmitted(true);
+      if (error) {
+        console.error('Password reset email error:', error);
+        // Supabase 에러 메시지 한글화
+        const errorMessages = {
+          'User not found': '등록되지 않은 이메일입니다.',
+          'Email not confirmed': '이메일 인증이 완료되지 않았습니다.',
+          'Invalid email': '올바른 이메일 형식이 아닙니다.',
+        };
+        setError(errorMessages[error.message] || error.message || '이메일 발송에 실패했습니다.');
+        return;
+      }
+
+      // 성공 처리
+      setIsSubmitted(true);
+    } catch (err) {
+      console.error('Unexpected error:', err);
+      setError('비밀번호 재설정 요청 중 오류가 발생했습니다.');
+    }
   };
 
   return (

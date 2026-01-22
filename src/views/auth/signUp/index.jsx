@@ -56,7 +56,7 @@ function SignUp() {
             fontWeight="700"
           >
             {mode === 'invite'
-              ? 'Welcome to Growth Dashboard'
+              ? 'Welcome to ZESTDOT'
               : 'Start Your Growth Journey'}
           </Heading>
           <Text
@@ -126,7 +126,7 @@ function SignUp() {
                 fontWeight="400"
                 fontSize="14px"
               >
-                Already have an account?{" "}
+                이미 계정이 있으신가요?{" "}
                 <NavLink to="/auth/sign-in">
                   <Text
                     color={textColorBrand}
@@ -134,7 +134,7 @@ function SignUp() {
                     fontWeight="600"
                     _hover={{ textDecoration: "underline" }}
                   >
-                    Sign in
+                    로그인
                   </Text>
                 </NavLink>
               </Text>
@@ -176,7 +176,7 @@ function SignUp() {
                 fontSize="14px"
                 textAlign="center"
               >
-                Already have an account?{" "}
+                이미 계정이 있으신가요?{" "}
                 <NavLink to="/auth/sign-in">
                   <Text
                     color={textColorBrand}
@@ -184,7 +184,7 @@ function SignUp() {
                     fontWeight="600"
                     _hover={{ textDecoration: "underline" }}
                   >
-                    Sign in
+                    로그인
                   </Text>
                 </NavLink>
               </Text>

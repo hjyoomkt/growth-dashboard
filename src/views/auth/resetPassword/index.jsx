@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Box,
@@ -17,16 +17,21 @@ import {
   Alert,
   AlertIcon,
   AlertDescription,
+  Spinner,
 } from "@chakra-ui/react";
 import illustration from "assets/img/auth/auth.png";
 import { MdOutlineRemoveRedEye } from "react-icons/md";
 import { RiEyeCloseLine } from "react-icons/ri";
+import { supabase } from "config/supabase";
 
 function ResetPassword() {
   const navigate = useNavigate();
+
+  // 모든 Hooks는 최상단에서 호출
   const textColor = useColorModeValue("navy.700", "white");
   const textColorSecondary = "gray.400";
   const textColorBrand = useColorModeValue("brand.500", "white");
+  const bgColor = useColorModeValue("white", "navy.900");
 
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
@@ -34,6 +39,32 @@ function ResetPassword() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState("");
   const [isSuccess, setIsSuccess] = useState(false);
+  const [isValidToken, setIsValidToken] = useState(false);
+  const [loading, setLoading] = useState(true);
+
+  // 토큰 검증 및 세션 확인
+  useEffect(() => {
+    const checkToken = async () => {
+      try {
+        // URL hash에서 access_token 확인 (Supabase는 자동으로 처리)
+        const { data: { session }, error } = await supabase.auth.getSession();
+
+        if (error || !session) {
+          setError("유효하지 않거나 만료된 링크입니다. 비밀번호 찾기를 다시 시도해주세요.");
+          setIsValidToken(false);
+        } else {
+          setIsValidToken(true);
+        }
+      } catch (err) {
+        setError("링크 검증 중 오류가 발생했습니다. 다시 시도해주세요.");
+        setIsValidToken(false);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    checkToken();
+  }, []);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -55,30 +86,96 @@ function ResetPassword() {
       return;
     }
 
-    // TODO: Supabase 비밀번호 업데이트
-    // const { error } = await supabase.auth.updateUser({
-    //   password: password
-    // });
+    try {
+      // Supabase 비밀번호 업데이트
+      const { error } = await supabase.auth.updateUser({
+        password: password
+      });
 
-    // if (error) {
-    //   setError(error.message);
-    //   return;
-    // }
+      if (error) {
+        // Supabase 에러 메시지 한글화
+        const errorMessages = {
+          'New password should be different from the old password': '이전 비밀번호와 다른 비밀번호를 사용해주세요.',
+          'Password should be at least 6 characters': '비밀번호는 최소 8자 이상이어야 합니다.',
+          'Invalid token': '유효하지 않은 링크입니다.',
+          'Token expired': '만료된 링크입니다. 비밀번호 찾기를 다시 시도해주세요.',
+        };
+        setError(errorMessages[error.message] || error.message);
+        return;
+      }
 
-    // Mock: 성공 처리
-    setIsSuccess(true);
+      // 성공 처리
+      setIsSuccess(true);
 
-    // 3초 후 로그인 페이지로 이동
-    setTimeout(() => {
-      navigate("/auth/sign-in");
-    }, 3000);
+      // 3초 후 로그인 페이지로 이동
+      setTimeout(() => {
+        navigate("/auth/sign-in");
+      }, 3000);
+    } catch (err) {
+      setError("비밀번호 재설정 중 오류가 발생했습니다. 다시 시도해주세요.");
+    }
   };
+
+  // 로딩 중
+  if (loading) {
+    return (
+      <Flex
+        w="100vw"
+        h="100vh"
+        bg={bgColor}
+        justify="center"
+        align="center"
+      >
+        <Flex direction="column" align="center" gap="20px">
+          <Spinner size="xl" color="brand.500" thickness="4px" />
+          <Text color={textColor} fontSize="lg" fontWeight="500">
+            링크 검증 중...
+          </Text>
+        </Flex>
+      </Flex>
+    );
+  }
+
+  // 유효하지 않은 토큰
+  if (!isValidToken) {
+    return (
+      <Flex
+        w="100vw"
+        h="100vh"
+        bg={bgColor}
+        justify="center"
+        align="center"
+        px="20px"
+      >
+        <Box textAlign="center" maxW="440px">
+          <Heading color={textColor} fontSize="28px" mb="20px" fontWeight="700">
+            Invalid or Expired Link
+          </Heading>
+          <Alert status="error" mb="20px" borderRadius="10px">
+            <AlertIcon />
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
+          <Button
+            variant="brand"
+            fontSize="sm"
+            fontWeight="500"
+            w="100%"
+            h="50px"
+            borderRadius="10px"
+            onClick={() => navigate("/auth/forgot-password")}
+          >
+            Request New Link
+          </Button>
+        </Box>
+      </Flex>
+    );
+  }
 
   return (
     <Flex
       w="100vw"
       h="100vh"
-      bg={useColorModeValue("white", "navy.900")}
+      bg={bgColor}
       overflow="hidden"
     >
       {/* 왼쪽: 비밀번호 재설정 폼 */}
