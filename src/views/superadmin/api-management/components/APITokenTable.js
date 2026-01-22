@@ -755,7 +755,7 @@ export default function APITokenTable(props) {
       // Refresh Token 복호화 및 자동입력
       const { data: decryptedToken, error } = await supabase.rpc('get_decrypted_token', {
         p_api_token_id: integrationId,
-        p_token_type: 'refresh_token',
+        p_token_type: 'oauth_refresh_token',
       });
 
       // ===== 디버깅 로그 추가 =====
