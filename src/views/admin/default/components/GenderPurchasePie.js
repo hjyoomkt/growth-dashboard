@@ -68,29 +68,27 @@ export default function GenderPurchasePie(props) {
   };
 
   const totalPurchases = genderData.male + genderData.female + genderData.unknown;
-  const malePurchases = genderData.male;
-  const femalePurchases = genderData.female;
-  const unknownPurchases = genderData.unknown;
-
-  const malePercentage = totalPurchases > 0 ? ((malePurchases / totalPurchases) * 100).toFixed(0) : 0;
-  const femalePercentage = totalPurchases > 0 ? ((femalePurchases / totalPurchases) * 100).toFixed(0) : 0;
-  const unknownPercentage = totalPurchases > 0 ? ((unknownPurchases / totalPurchases) * 100).toFixed(0) : 0;
+  const malePercentage = totalPurchases > 0 ? ((genderData.male / totalPurchases) * 100).toFixed(0) : 0;
+  const femalePercentage = totalPurchases > 0 ? ((genderData.female / totalPurchases) * 100).toFixed(0) : 0;
+  const unknownPercentage = totalPurchases > 0 ? ((genderData.unknown / totalPurchases) * 100).toFixed(0) : 0;
 
   // 차트 데이터
-  const chartData = [malePurchases, femalePurchases, unknownPurchases];
+  const chartData = [genderData.male, genderData.female, genderData.unknown];
 
-  // 차트 옵션
+  // 차트 옵션 수정 (여백 제거 핵심)
   const chartOptions = {
     labels: ["남성", "여성", "알 수 없음"],
     colors: ["#422AFB", "#C084FC", "#CBD5E0"],
     chart: {
       width: "100%",
+      // sparkline을 켜면 하단 범례용 공백이 사라집니다.
+      sparkline: {
+        enabled: true,
+      },
     },
     states: {
       hover: {
-        filter: {
-          type: "none",
-        },
+        filter: { type: "none" },
       },
     },
     legend: {
@@ -99,27 +97,19 @@ export default function GenderPurchasePie(props) {
     dataLabels: {
       enabled: false,
     },
-    hover: { mode: null },
     plotOptions: {
-      donut: {
+      pie: {
         expandOnClick: false,
-        donut: {
-          labels: {
-            show: false,
-          },
-        },
+        // 차트가 작아보인다면 1.15 정도로 키우세요
+        customScale: 1, 
+        offsetY: 0,
       },
-    },
-    fill: {
-      colors: ["#422AFB", "#C084FC", "#CBD5E0"],
     },
     tooltip: {
       enabled: true,
       theme: "dark",
       y: {
-        formatter: function (val) {
-          return val + "건";
-        },
+        formatter: (val) => val + "건",
       },
     },
   };
@@ -137,18 +127,16 @@ export default function GenderPurchasePie(props) {
         </Text>
       </Flex>
 
+      {/* 차트 영역: 높이를 줄이고 마진을 제거하여 하단 카드와 밀착시킴 */}
       <Box
-        h='240px'
-        mt='20px'
+        h='200px' 
+        mt='15px'
         w='100%'
         px='15px'
         sx={{
           '& .apexcharts-canvas': {
             background: 'transparent !important',
           },
-          '& .apexcharts-canvas svg': {
-            background: 'transparent !important',
-          }
         }}>
         <ReactApexChart
           options={chartOptions}
@@ -159,6 +147,7 @@ export default function GenderPurchasePie(props) {
         />
       </Box>
 
+      {/* 하단 요약 카드: mt를 20px에서 8px로 줄여 절반 이하로 간격 축소 */}
       <Card
         bg={cardColor}
         flexDirection='row'
@@ -166,16 +155,12 @@ export default function GenderPurchasePie(props) {
         w='100%'
         p='15px'
         px='20px'
-        mt='20px'
+        mt='20px' 
         mx='auto'>
-        <Flex direction='column' py='5px' me='10px'>
+        <Flex direction='column' py='5px' me='10px' flex='1' align='center'>
           <Flex align='center'>
             <Box h='8px' w='8px' bg='#422AFB' borderRadius='50%' me='4px' />
-            <Text
-              fontSize='xs'
-              color='secondaryGray.600'
-              fontWeight='700'
-              mb='5px'>
+            <Text fontSize='xs' color='secondaryGray.600' fontWeight='700' mb='5px'>
               남성
             </Text>
           </Flex>
@@ -183,15 +168,13 @@ export default function GenderPurchasePie(props) {
             {malePercentage}%
           </Text>
         </Flex>
-        <VSeparator mx={{ base: "30px", xl: "30px", "2xl": "40px" }} />
-        <Flex direction='column' py='5px' me='10px'>
+        
+        <VSeparator mx={{ base: "10px", xl: "20px" }} />
+        
+        <Flex direction='column' py='5px' me='10px' flex='1' align='center'>
           <Flex align='center'>
             <Box h='8px' w='8px' bg='#C084FC' borderRadius='50%' me='4px' />
-            <Text
-              fontSize='xs'
-              color='secondaryGray.600'
-              fontWeight='700'
-              mb='5px'>
+            <Text fontSize='xs' color='secondaryGray.600' fontWeight='700' mb='5px'>
               여성
             </Text>
           </Flex>
@@ -199,15 +182,13 @@ export default function GenderPurchasePie(props) {
             {femalePercentage}%
           </Text>
         </Flex>
-        <VSeparator mx={{ base: "30px", xl: "30px", "2xl": "40px" }} />
-        <Flex direction='column' py='5px'>
+        
+        <VSeparator mx={{ base: "10px", xl: "20px" }} />
+        
+        <Flex direction='column' py='5px' flex='1' align='center'>
           <Flex align='center'>
             <Box h='8px' w='8px' bg='#CBD5E0' borderRadius='50%' me='4px' />
-            <Text
-              fontSize='xs'
-              color='secondaryGray.600'
-              fontWeight='700'
-              mb='5px'>
+            <Text fontSize='xs' color='secondaryGray.600' fontWeight='700' mb='5px'>
               알 수 없음
             </Text>
           </Flex>

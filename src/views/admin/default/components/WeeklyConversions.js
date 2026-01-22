@@ -44,7 +44,7 @@ export default function WeeklyConversions(props) {
   const bgHover = useColorModeValue("secondaryGray.100", "whiteAlpha.100");
 
   // 요일별 전환수 데이터 생성
-  const { chartData, chartOptions, maxConversion } = useMemo(() => {
+  const { chartData, chartOptions, avgConversion, totalConversion } = useMemo(() => {
     /* ❌ Mock 랜덤 데이터 (원복용 보존)
     const start = new Date(startDate);
     const end = new Date(endDate);
@@ -77,7 +77,10 @@ export default function WeeklyConversions(props) {
     const safeData = weeklyData && Array.isArray(weeklyData) && weeklyData.length === 7
       ? weeklyData
       : [0, 0, 0, 0, 0, 0, 0];
-    const maxValue = Math.max(...safeData);
+
+    // 조회기간 평균 계산 (총 전환수 / 요일 수)
+    const totalConv = safeData.reduce((sum, val) => sum + val, 0);
+    const avgConv = Math.round(totalConv / 7);
 
     const barChartData = [{
       name: "전환수",
@@ -163,7 +166,8 @@ export default function WeeklyConversions(props) {
     return {
       chartData: barChartData,
       chartOptions: barChartOptions,
-      maxConversion: maxValue,
+      avgConversion: avgConv,
+      totalConversion: totalConv,
     };
   }, [weeklyData]);
 
@@ -183,11 +187,18 @@ export default function WeeklyConversions(props) {
       <Flex w='100%' flexDirection='column' px='15px'>
         <Flex align='center' mb='10px'>
           <Text
+            color='secondaryGray.600'
+            fontSize='sm'
+            fontWeight='500'
+            mr='5px'>
+            평균
+          </Text>
+          <Text
             color={textColor}
             fontSize='28px'
             fontWeight='700'
             lineHeight='100%'>
-            {maxConversion}
+            {avgConversion}
           </Text>
           <Text
             color='secondaryGray.600'
@@ -197,22 +208,16 @@ export default function WeeklyConversions(props) {
             건
           </Text>
         </Flex>
-        <Text
-          color='green.500'
-          fontSize='sm'
-          fontWeight='500'>
-          최대 전환 요일
-        </Text>
       </Flex>
 
       <Box h='240px' mt='20px' w='100%' px='15px'>
-        {maxConversion === 0 ? (
+        {totalConversion === 0 ? (
           <Flex h='100%' align='center' justify='center'>
             <Text color='secondaryGray.600'>데이터가 없습니다</Text>
           </Flex>
         ) : (
           <BarChart
-            
+
             chartData={chartData}
             chartOptions={chartOptions}
           />

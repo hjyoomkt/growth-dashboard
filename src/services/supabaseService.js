@@ -1692,8 +1692,8 @@ export const getBestCreatives = async ({ advertiserId, availableAdvertiserIds, s
     };
   });
 
-  // 5. 광고비 순으로 정렬 (내림차순) 및 상위 N개 선택
-  const sorted = joinedData.sort((a, b) => b.cost - a.cost);
+  // 5. 전환수 순으로 정렬 (내림차순) 및 상위 N개 선택
+  const sorted = joinedData.sort((a, b) => b.conversions - a.conversions);
   return sorted.slice(0, limit);
 };
 
