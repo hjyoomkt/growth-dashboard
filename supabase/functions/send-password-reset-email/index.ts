@@ -58,9 +58,6 @@ Deno.serve(async (req) => {
     const { data: linkData, error: linkError } = await supabaseAdmin.auth.admin.generateLink({
       type: 'recovery',
       email: email,
-      options: {
-        redirectTo: redirectTo,
-      },
     });
 
     if (linkError) {
@@ -77,7 +74,14 @@ Deno.serve(async (req) => {
       throw new Error('RESEND_API_KEY is not configured');
     }
 
-    const resetUrl = linkData.properties.action_link;
+    // URL 파싱: action_link에서 토큰 추출 후 redirectTo와 결합
+    const actionLink = linkData.properties.action_link;
+    const url = new URL(actionLink);
+    const token = url.searchParams.get('token');
+    const type = url.searchParams.get('type');
+
+    // redirectTo URL에 토큰과 타입을 hash로 추가
+    const resetUrl = `${redirectTo}#access_token=${token}&type=${type}`;
 
     const emailHtml = `
 <!DOCTYPE html>
