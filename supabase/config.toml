@@ -17,3 +17,9 @@ verify_jwt = false
 
 [functions.collect-ad-data]
 verify_jwt = false
+
+[functions.list-google-customers]
+verify_jwt = false
+
+[functions.resolve-access-token]
+verify_jwt = false
