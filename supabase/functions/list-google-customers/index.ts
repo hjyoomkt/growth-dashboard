@@ -71,7 +71,7 @@ Deno.serve(async (req) => {
       'get_decrypted_token',
       {
         p_api_token_id: integration_id,
-        p_token_type: 'refresh_token',
+        p_token_type: 'oauth_refresh_token',
       }
     );
 
@@ -82,21 +82,6 @@ Deno.serve(async (req) => {
       );
     }
 
-    // 4. Developer Token 복호화
-    const { data: developerToken, error: devTokenError } = await supabaseServiceRole.rpc(
-      'get_decrypted_token',
-      {
-        p_api_token_id: integration_id,
-        p_token_type: 'developer_token',
-      }
-    );
-
-    if (devTokenError || !developerToken) {
-      return new Response(
-        JSON.stringify({ error: 'Failed to retrieve developer token' }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
 
     // 5. 조직 GCP Credentials 조회 (OAuth 인증 시 사용한 Client ID/Secret)
     const organizationId = integration.advertisers?.organization_id;
@@ -120,7 +105,7 @@ Deno.serve(async (req) => {
       );
     }
 
-    const { client_id: clientId, client_secret: clientSecret } = gcpCredentials[0];
+    const { client_id: clientId, client_secret: clientSecret, developer_token: developerToken } = gcpCredentials[0];
 
     if (!clientId || !clientSecret) {
       return new Response(
