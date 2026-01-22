@@ -4,18 +4,20 @@ import { supabase } from 'services/supabaseService';
 import PlatformLoginModal from './PlatformLoginModal';
 import BrandSelectModal from './BrandSelectModal';
 import CustomerAccountModal from './CustomerAccountModal';
+import ExistingTokenSelectModal from './ExistingTokenSelectModal';
 
 export default function PlatformLoginFlow({
   isOpen,
   onClose,
   onComplete,
 }) {
-  const [currentStep, setCurrentStep] = useState('platform'); // platform, brand, oauth, customer
+  const [currentStep, setCurrentStep] = useState('platform'); // platform, brand, tokenCheck, oauth, customer
   const [selectedPlatform, setSelectedPlatform] = useState(null);
   const [selectedBrandId, setSelectedBrandId] = useState(null);
   const [refreshToken, setRefreshToken] = useState(null);
   const [integrationId, setIntegrationId] = useState(null);
   const [selectedCustomerId, setSelectedCustomerId] = useState(null);
+  const [organizationTokens, setOrganizationTokens] = useState([]);
 
   const toast = useToast();
 
@@ -33,6 +35,7 @@ export default function PlatformLoginFlow({
     setRefreshToken(null);
     setIntegrationId(null);
     setSelectedCustomerId(null);
+    setOrganizationTokens([]);
   };
 
   // Step 1: 매체 선택
@@ -41,13 +44,45 @@ export default function PlatformLoginFlow({
     setCurrentStep('brand');
   };
 
-  // Step 2: 브랜드 선택 후 OAuth 로그인 시작
+  // Step 2: 브랜드 선택 후 기존 토큰 확인
   const handleBrandSelect = async (brandId) => {
     setSelectedBrandId(brandId);
-    setCurrentStep('oauth');
 
-    // OAuth 로그인 시작
-    await initiateGoogleOAuth(brandId);
+    // 기존 토큰 확인
+    await checkExistingTokens(brandId);
+  };
+
+  // 기존 토큰 확인
+  const checkExistingTokens = async (brandId) => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        throw new Error('사용자 정보를 가져올 수 없습니다.');
+      }
+
+      const { data, error } = await supabase.rpc('get_organization_google_tokens', {
+        p_user_email: user.email,
+      });
+
+      if (error) throw error;
+
+      const tokens = data || [];
+
+      if (tokens.length > 0) {
+        // 기존 토큰 있음 → 토큰 선택 모달 표시
+        setOrganizationTokens(tokens);
+        setCurrentStep('tokenCheck');
+      } else {
+        // 기존 토큰 없음 → 바로 OAuth 진행
+        setCurrentStep('oauth');
+        await initiateGoogleOAuth(brandId);
+      }
+    } catch (error) {
+      console.error('토큰 조회 실패:', error);
+      // 에러 시 OAuth로 진행
+      setCurrentStep('oauth');
+      await initiateGoogleOAuth(brandId);
+    }
   };
 
   // Google OAuth 로그인 실행
@@ -150,6 +185,48 @@ export default function PlatformLoginFlow({
     }
   };
 
+  // 기존 토큰 선택
+  const handleSelectExistingToken = async (integrationId) => {
+    try {
+      // 토큰 복호화
+      const { data: decryptedToken, error } = await supabase.rpc('get_decrypted_token', {
+        p_api_token_id: integrationId,
+        p_token_type: 'oauth_refresh_token',
+      });
+
+      if (error || !decryptedToken) {
+        throw new Error('토큰 복호화 실패');
+      }
+
+      setRefreshToken(decryptedToken);
+      setIntegrationId(integrationId);
+      setCurrentStep('customer');
+
+      toast({
+        title: '토큰 선택 완료',
+        description: '고객 계정을 선택해주세요.',
+        status: 'success',
+        duration: 3000,
+        isClosable: true,
+      });
+    } catch (error) {
+      console.error('토큰 선택 실패:', error);
+      toast({
+        title: '토큰 선택 실패',
+        description: error.message,
+        status: 'error',
+        duration: 4000,
+        isClosable: true,
+      });
+    }
+  };
+
+  // 새 로그인 진행
+  const handleNewLogin = async () => {
+    setCurrentStep('oauth');
+    await initiateGoogleOAuth(selectedBrandId);
+  };
+
   // Step 3: 고객 계정 선택 후 전환 액션 선택으로 이동
   const handleCustomerSelect = (customerId) => {
     setSelectedCustomerId(customerId);
@@ -188,6 +265,15 @@ export default function PlatformLoginFlow({
         isOpen={isOpen && currentStep === 'brand'}
         onClose={handleClose}
         onNext={handleBrandSelect}
+      />
+
+      {/* Step 2.5: 기존 토큰 선택 */}
+      <ExistingTokenSelectModal
+        isOpen={isOpen && currentStep === 'tokenCheck'}
+        onClose={handleClose}
+        onSelectToken={handleSelectExistingToken}
+        onNewLogin={handleNewLogin}
+        tokens={organizationTokens}
       />
 
       {/* Step 3: 고객 계정 선택 */}
