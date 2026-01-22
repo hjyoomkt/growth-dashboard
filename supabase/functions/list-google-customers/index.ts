@@ -48,7 +48,7 @@ Deno.serve(async (req) => {
     // 2. Integration 조회 (RLS 적용으로 권한 검증)
     const { data: integration, error: integrationError } = await supabaseClient
       .from('integrations')
-      .select('id, platform, advertiser_id, legacy_manager_account_id, advertisers(organization_id)')
+      .select('id, platform, advertiser_id, legacy_client_id, legacy_manager_account_id, advertisers(organization_id)')
       .eq('id', integration_id)
       .single();
 
@@ -83,33 +83,50 @@ Deno.serve(async (req) => {
     }
 
 
-    // 5. 조직 GCP Credentials 조회 (OAuth 인증 시 사용한 Client ID/Secret)
-    const organizationId = integration.advertisers?.organization_id;
+    // 5. Integration에서 Client ID 및 Client Secret 복호화
+    const clientId = integration.legacy_client_id;
 
-    if (!organizationId) {
+    if (!clientId) {
       return new Response(
-        JSON.stringify({ error: 'Organization not found for this integration' }),
-        { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    const { data: gcpCredentials, error: gcpError } = await supabaseServiceRole.rpc(
-      'get_organization_gcp_credentials',
-      { org_id: organizationId }
-    );
-
-    if (gcpError || !gcpCredentials || gcpCredentials.length === 0) {
-      return new Response(
-        JSON.stringify({ error: 'Organization GCP credentials not found' }),
+        JSON.stringify({ error: 'Client ID not found in integration' }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    const { client_id: clientId, client_secret: clientSecret, developer_token: developerToken } = gcpCredentials[0];
+    // Client Secret 복호화
+    const { data: clientSecret, error: clientSecretError } = await supabaseServiceRole.rpc(
+      'get_decrypted_token',
+      {
+        p_api_token_id: integration_id,
+        p_token_type: 'client_secret'
+      }
+    );
 
-    if (!clientId || !clientSecret) {
+    if (clientSecretError || !clientSecret) {
       return new Response(
-        JSON.stringify({ error: 'Client credentials not found in organization settings' }),
+        JSON.stringify({ error: 'Failed to retrieve client secret' }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Developer Token 조회 (organization에서)
+    const organizationId = integration.advertisers?.organization_id;
+    let developerToken = null;
+
+    if (organizationId) {
+      const { data: gcpCredentials } = await supabaseServiceRole.rpc(
+        'get_organization_gcp_credentials',
+        { org_id: organizationId }
+      );
+
+      if (gcpCredentials && gcpCredentials.length > 0) {
+        developerToken = gcpCredentials[0].developer_token;
+      }
+    }
+
+    if (!developerToken) {
+      return new Response(
+        JSON.stringify({ error: 'Developer token not found' }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }

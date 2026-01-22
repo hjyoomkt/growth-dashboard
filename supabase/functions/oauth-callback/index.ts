@@ -242,6 +242,7 @@ Deno.serve(async (req) => {
         .rpc('encrypt_oauth_tokens', {
           p_access_token: accessToken,
           p_refresh_token: refreshToken,
+          p_client_secret: clientSecret,
           p_encryption_key: encryptionKey,
         })
         .single();
@@ -253,6 +254,8 @@ Deno.serve(async (req) => {
 
       integrationData.oauth_access_token_encrypted = encryptedTokens.access_token_encrypted;
       integrationData.oauth_refresh_token_encrypted = encryptedTokens.refresh_token_encrypted;
+      integrationData.client_secret_encrypted = encryptedTokens.client_secret_encrypted;
+      integrationData.legacy_client_id = clientId;
       integrationData.google_account_email = googleAccountEmail;
 
     } else if (platform === 'Meta Ads') {

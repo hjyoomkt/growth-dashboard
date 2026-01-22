@@ -334,7 +334,7 @@ async function validateToken(supabase: any, integration: any): Promise<{ valid: 
       console.log('[DEBUG] Meta API validation success:', successData)
     } else if (platform === 'Google Ads') {
       // Google Ads는 refresh_token이 있으면 유효하다고 판단
-      if (!integration.legacy_refresh_token_vault_id) {
+      if (!integration.oauth_refresh_token_encrypted) {
         return { valid: false, error: 'Missing refresh token' }
       }
     } else if (platform === 'Naver Ads') {

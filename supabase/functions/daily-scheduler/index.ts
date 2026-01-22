@@ -26,13 +26,14 @@ serve(async (req) => {
     yesterday.setDate(yesterday.getDate() - 1)
     const yesterdayStr = yesterday.toISOString().split('T')[0]
 
-    // active integrations 조회
+    // active integrations 조회 (토큰이 있는 것만)
     const { data: integrations, error: fetchError } = await supabase
       .from('integrations')
-      .select('id')
+      .select('id, oauth_refresh_token_encrypted')
       .eq('status', 'active')
       .eq('platform', platform)
       .is('deleted_at', null)
+      .not('oauth_refresh_token_encrypted', 'is', null)
 
     if (fetchError) {
       throw fetchError

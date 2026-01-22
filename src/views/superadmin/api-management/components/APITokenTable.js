@@ -61,6 +61,7 @@ import { MdEdit, MdDelete, MdAdd, MdSearch, MdLink, MdCheckCircle, MdOutlineErro
 import { useAuth } from 'contexts/AuthContext';
 import { checkYesterdayData, getYesterdayDate, isAfter10AM } from 'utils/dataCollectionChecker';
 import { supabase, createApiToken, updateApiToken } from 'services/supabaseService';
+import PlatformLoginFlow from './PlatformLoginFlow';
 
 const columnHelper = createColumnHelper();
 
@@ -81,10 +82,14 @@ export default function APITokenTable(props) {
   const { isOpen: isSyncModalOpen, onOpen: onSyncModalOpen, onClose: onSyncModalClose } = useDisclosure();
   const { isOpen: isSyncWarningOpen, onOpen: onSyncWarningOpen, onClose: onSyncWarningClose } = useDisclosure();
   const { isOpen: isInitialCollectionModalOpen, onOpen: onInitialCollectionModalOpen, onClose: onInitialCollectionModalClose } = useDisclosure();
+  const { isOpen: isPlatformLoginOpen, onOpen: onPlatformLoginOpen, onClose: onPlatformLoginClose } = useDisclosure();
   const [editMode, setEditMode] = React.useState(false);
   const [selectedToken, setSelectedToken] = React.useState(null);
   const [savedIntegrationId, setSavedIntegrationId] = React.useState(null);
   const [isCollectionStarting, setIsCollectionStarting] = React.useState(false);
+
+  // 매체 로그인 플로우 상태
+  const [platformLoginData, setPlatformLoginData] = React.useState(null);
 
   // 데이터 연동 상태
   const [syncConfig, setSyncConfig] = React.useState({
@@ -447,12 +452,78 @@ export default function APITokenTable(props) {
   };
 
   // 전환 액션 선택 완료
-  const handleConfirmConversionActions = () => {
+  const handleConfirmConversionActions = async () => {
+    console.log('[전환 액션 선택] 시작', {
+      selectedIntegrationId,
+      platformLoginData: !!platformLoginData,
+      selectedConversionActions,
+      editMode
+    });
+
+    // OAuth 플로우에서 온 경우: selectedIntegrationId 있고 editMode가 아니면 업데이트만
+    if (selectedIntegrationId && !editMode && formData.platform === 'Google Ads') {
+      console.log('[전환 액션 선택] OAuth 플로우 경로 - 업데이트만 실행');
+      await handleSaveConversionActionsOnly();
+      return;
+    }
+
+    // 기존 플로우: formData 업데이트만
+    console.log('[전환 액션 선택] 기존 플로우 - formData 업데이트만');
     setFormData(prev => ({
       ...prev,
       targetConversionActionId: selectedConversionActions,
     }));
     onConversionModalClose();
+  };
+
+  // 전환 액션만 업데이트 (PlatformLoginFlow용)
+  const handleSaveConversionActionsOnly = async () => {
+    try {
+      const { error } = await supabase
+        .from('integrations')
+        .update({
+          legacy_customer_id: formData.customerId,
+          legacy_target_conversion_action_id: selectedConversionActions,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', selectedIntegrationId);
+
+      if (error) throw error;
+
+      toast({
+        title: 'API 토큰 추가 완료',
+        description: '초기 데이터 수집을 설정합니다.',
+        status: 'success',
+        duration: 2000,
+        isClosable: true,
+      });
+
+      // 전환 액션 모달 닫기
+      onConversionModalClose();
+
+      // 토큰 목록 새로고침
+      fetchTokens();
+
+      // savedIntegrationId 설정 (초기 수집 모달에서 사용)
+      setSavedIntegrationId(selectedIntegrationId);
+
+      // 메인 모달 닫고 초기 수집 모달 열기
+      onClose();
+      onInitialCollectionModalOpen();
+
+      // platformLoginData 초기화
+      setPlatformLoginData(null);
+      setSelectedIntegrationId(null);
+    } catch (error) {
+      console.error('[전환 액션 저장] 실패:', error);
+      toast({
+        title: '저장 실패',
+        description: error.message,
+        status: 'error',
+        duration: 4000,
+        isClosable: true,
+      });
+    }
   };
 
   // 개별 전환 액션 제거
@@ -674,11 +745,27 @@ export default function APITokenTable(props) {
     try {
       setSelectedIntegrationId(integrationId);
 
+      // ===== 디버깅 로그 추가 =====
+      console.log('[토큰 복호화] 요청 파라미터:', {
+        p_api_token_id: integrationId,
+        p_token_type: 'refresh_token'
+      });
+      // ===== 끝 =====
+
       // Refresh Token 복호화 및 자동입력
       const { data: decryptedToken, error } = await supabase.rpc('get_decrypted_token', {
         p_api_token_id: integrationId,
         p_token_type: 'refresh_token',
       });
+
+      // ===== 디버깅 로그 추가 =====
+      console.log('[토큰 복호화] 응답:', {
+        data: decryptedToken,
+        dataType: typeof decryptedToken,
+        dataLength: decryptedToken?.length || 0,
+        error: error
+      });
+      // ===== 끝 =====
 
       if (error) {
         console.error('[토큰 복호화] 오류:', error);
@@ -686,10 +773,13 @@ export default function APITokenTable(props) {
       }
 
       if (decryptedToken) {
+        console.log('[토큰 복호화] Refresh Token 자동입력 완료');
         setFormData(prev => ({
           ...prev,
           refreshToken: decryptedToken,
         }));
+      } else {
+        console.warn('[토큰 복호화] Refresh Token이 NULL입니다');
       }
 
       onTokenSelectModalClose();
@@ -771,6 +861,87 @@ export default function APITokenTable(props) {
       });
     } finally {
       setIsLoadingCustomers(false);
+    }
+  };
+
+  // 매체 로그인 플로우 완료 처리
+  const handlePlatformLoginComplete = async (data) => {
+    setPlatformLoginData(data);
+
+    // formData 업데이트
+    setFormData(prev => ({
+      ...prev,
+      advertiser: availableAdvertisers.find(adv => adv.id === data.brandId)?.name || '',
+      advertiserId: data.brandId,
+      platform: data.platform,
+      refreshToken: data.refreshToken,
+      customerId: data.customerId,
+    }));
+
+    setSelectedIntegrationId(data.integrationId);
+    setGcpSource('organization');
+
+    // 조직 GCP 정보가 없으면 먼저 가져오기
+    if (!organizationGcp.clientId) {
+      await fetchOrganizationGcp();
+    }
+
+    // 직접 전환 액션 조회 실행
+    try {
+      setIsLoadingConversions(true);
+      setConversionActions([]);
+      setSelectedConversionActions([]);
+      setCurrentPage(1);
+      onConversionModalOpen();
+
+      console.log('[Platform Login] 전환 액션 조회 시작');
+
+      const response = await fetch(
+        `${process.env.REACT_APP_SUPABASE_URL}/functions/v1/google-conversion-actions`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${process.env.REACT_APP_SUPABASE_ANON_KEY}`,
+          },
+          body: JSON.stringify({
+            customer_id: data.customerId,
+            developer_token: organizationGcp.developerToken,
+            manager_account_id: organizationGcp.mccId,
+            refresh_token: data.refreshToken,
+            client_id: organizationGcp.clientId,
+            client_secret: organizationGcp.clientSecret,
+          }),
+        }
+      );
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.error || result.details || '전환 액션 조회 실패');
+      }
+
+      console.log('[Platform Login] 조회 성공:', result);
+      setConversionActions(result.conversionActions || []);
+
+      toast({
+        title: '조회 완료',
+        description: `${result.count || 0}개의 전환 액션을 불러왔습니다.`,
+        status: 'success',
+        duration: 3000,
+        isClosable: true,
+      });
+    } catch (error) {
+      console.error('[Platform Login] 조회 실패:', error);
+      toast({
+        title: '전환 액션 조회 실패',
+        description: error.message,
+        status: 'error',
+        duration: 4000,
+        isClosable: true,
+      });
+    } finally {
+      setIsLoadingConversions(false);
     }
   };
 
@@ -1454,6 +1625,15 @@ export default function APITokenTable(props) {
             API 토큰 관리
           </Text>
           <HStack spacing={2}>
+            <Button
+              leftIcon={<Icon as={MdLink} />}
+              colorScheme="purple"
+              variant="solid"
+              size="sm"
+              onClick={onPlatformLoginOpen}
+            >
+              매체 로그인
+            </Button>
             <Button
               leftIcon={<Icon as={MdSync} />}
               colorScheme="blue"
@@ -2699,6 +2879,13 @@ export default function APITokenTable(props) {
           </ModalFooter>
         </ModalContent>
       </Modal>
+
+      {/* 매체 로그인 플로우 */}
+      <PlatformLoginFlow
+        isOpen={isPlatformLoginOpen}
+        onClose={onPlatformLoginClose}
+        onComplete={handlePlatformLoginComplete}
+      />
     </>
   );
 }

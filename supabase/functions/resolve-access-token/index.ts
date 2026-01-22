@@ -50,7 +50,7 @@ Deno.serve(async (req) => {
         'get_decrypted_token',
         {
           p_api_token_id: integration_id,
-          p_token_type: 'refresh_token'
+          p_token_type: 'oauth_refresh_token'
         }
       );
 
