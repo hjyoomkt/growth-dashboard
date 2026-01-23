@@ -57,7 +57,7 @@ export default function MediaAdSummary() {
   }, [currentAdvertiserId, availableAdvertisers, startDate, endDate]);
 
   const formatNumber = (num) => {
-    return num.toLocaleString();
+    return Math.round(num).toLocaleString();
   };
 
   const calculateMetric = (value1, value2, isPercentage = true) => {

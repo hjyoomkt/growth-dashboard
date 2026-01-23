@@ -201,7 +201,7 @@ export default function ROASAdCost(props) {
         y: {
           formatter: function (val, { seriesIndex }) {
             if (seriesIndex === 0) {
-              return "₩" + val.toLocaleString();
+              return "₩" + Math.round(val).toLocaleString();
             }
             return val.toFixed(0) + '%';
           },

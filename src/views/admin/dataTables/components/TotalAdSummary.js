@@ -103,7 +103,7 @@ export default function TotalAdSummary() {
   }, [currentAdvertiserId, availableAdvertisers, startDate, endDate, activeTab]);
 
   const formatNumber = (num) => {
-    return num.toLocaleString();
+    return Math.round(num).toLocaleString();
   };
 
   const calculateMetric = (value1, value2, isPercentage = true) => {

@@ -66,7 +66,7 @@ export default function MediaAdCost(props) {
       theme: "dark",
       y: {
         formatter: function (val) {
-          return '₩' + val.toLocaleString();
+          return '₩' + Math.round(val).toLocaleString();
         },
       },
     },
