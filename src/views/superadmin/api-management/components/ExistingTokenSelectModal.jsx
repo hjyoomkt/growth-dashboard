@@ -38,7 +38,7 @@ export default function ExistingTokenSelectModal({
     );
 
     if (confirmNewToken) {
-      onClose();
+      // onClose() 제거 - 모달을 열린 상태로 유지하여 OAuth 완료 후 고객 계정 선택 모달이 열리도록 함
       onNewLogin();
     }
   };

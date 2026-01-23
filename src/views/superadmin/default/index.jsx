@@ -55,7 +55,7 @@ import {
   MdSave,
   MdCloud,
 } from "react-icons/md";
-import { SiMeta } from "react-icons/si";
+import { SiMeta, SiNaver } from "react-icons/si";
 import { getUserStats, getUsers, supabase } from "services/supabaseService";
 import { useAuth } from "contexts/AuthContext";
 
@@ -99,6 +99,17 @@ export default function SuperAdminDashboard() {
   const [hasExistingMeta, setHasExistingMeta] = useState(false);
   const [showAppSecret, setShowAppSecret] = useState(false);
   const [showAccessToken, setShowAccessToken] = useState(false);
+
+  // Naver 설정 상태
+  const [naverSettings, setNaverSettings] = useState({
+    apiKey: '',
+    secretKey: '',
+  });
+  const [isNaverLoading, setIsNaverLoading] = useState(false);
+  const [isSavingNaver, setIsSavingNaver] = useState(false);
+  const [hasExistingNaver, setHasExistingNaver] = useState(false);
+  const [showNaverApiKey, setShowNaverApiKey] = useState(false);
+  const [showNaverSecretKey, setShowNaverSecretKey] = useState(false);
 
   // 권한 체크: master 또는 agency_admin만 GCP 설정 가능
   const canManageGcp = role === 'master' || role === 'agency_admin';
@@ -310,6 +321,39 @@ export default function SuperAdminDashboard() {
     }
   }, [organizationId, canManageGcp]);
 
+  // Naver 설정 조회
+  const fetchNaverSettings = useCallback(async () => {
+    if (!organizationId || !canManageGcp) return;
+
+    setIsNaverLoading(true);
+    try {
+      const { data: previewData, error: previewError } = await supabase
+        .rpc('get_organization_naver_preview', {
+          org_id: organizationId
+        });
+
+      if (previewError) {
+        console.error('[Naver Settings] 미리보기 조회 실패:', previewError);
+        return;
+      }
+
+      const preview = Array.isArray(previewData) ? previewData[0] : previewData;
+      const hasCredentials = preview?.api_key_preview;
+      setHasExistingNaver(hasCredentials);
+
+      if (hasCredentials) {
+        setNaverSettings({
+          apiKey: preview.api_key_preview || '',
+          secretKey: preview.secret_key_preview || '',
+        });
+      }
+    } catch (error) {
+      console.error('[Naver Settings] 조회 실패:', error);
+    } finally {
+      setIsNaverLoading(false);
+    }
+  }, [organizationId, canManageGcp]);
+
   // Meta 설정 저장
   const handleSaveMetaSettings = async () => {
     if (!organizationId) {
@@ -404,11 +448,111 @@ export default function SuperAdminDashboard() {
     }
   };
 
+  // Naver 설정 저장
+  const handleSaveNaverSettings = async () => {
+    if (!organizationId) {
+      toast({
+        title: '오류',
+        description: '조직 정보를 찾을 수 없습니다.',
+        status: 'error',
+        duration: 3000,
+        isClosable: true,
+      });
+      return;
+    }
+
+    const isMasked = (value) => value && value.includes('••••');
+    const isApiKeyMasked = isMasked(naverSettings.apiKey);
+    const isSecretKeyMasked = isMasked(naverSettings.secretKey);
+
+    if (!hasExistingNaver && (!naverSettings.apiKey || !naverSettings.secretKey)) {
+      toast({
+        title: '필수 항목 누락',
+        description: 'API Key와 Secret Key는 모두 필수입니다.',
+        status: 'warning',
+        duration: 3000,
+        isClosable: true,
+      });
+      return;
+    }
+
+    setIsSavingNaver(true);
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const accessToken = sessionData?.session?.access_token;
+
+      if (!accessToken) {
+        throw new Error('인증 세션이 없습니다. 다시 로그인해주세요.');
+      }
+
+      const apiKey = process.env.REACT_APP_SUPABASE_ANON_KEY;
+
+      const payload = {
+        organization_id: organizationId,
+      };
+
+      if (!isApiKeyMasked) {
+        payload.api_key = naverSettings.apiKey?.trim() || 'EMPTY_STRING';
+      }
+      if (!isSecretKeyMasked) {
+        payload.secret_key = naverSettings.secretKey?.trim() || 'EMPTY_STRING';
+      }
+
+      const response = await fetch(
+        `${process.env.REACT_APP_SUPABASE_URL}/functions/v1/save-organization-naver`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${accessToken}`,
+            'apikey': apiKey,
+          },
+          body: JSON.stringify(payload),
+        }
+      );
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to save Naver credentials');
+      }
+
+      toast({
+        title: '저장 완료',
+        description: '네이버 API 설정이 저장되었습니다.',
+        status: 'success',
+        duration: 3000,
+        isClosable: true,
+      });
+
+      await fetchNaverSettings();
+    } catch (error) {
+      console.error('[Naver Settings] 저장 실패:', error);
+      toast({
+        title: '저장 실패',
+        description: error.message || '설정 저장에 실패했습니다.',
+        status: 'error',
+        duration: 4000,
+        isClosable: true,
+      });
+    } finally {
+      setIsSavingNaver(false);
+    }
+  };
+
   // Meta 입력 필드 클릭 시 마스킹 해제
   const handleMetaInputFocus = (field) => {
     const value = metaSettings[field];
     if (value && value.includes('••••')) {
       setMetaSettings(prev => ({ ...prev, [field]: '' }));
+    }
+  };
+
+  // Naver 입력 필드 클릭 시 마스킹 해제
+  const handleNaverInputFocus = (field) => {
+    const value = naverSettings[field];
+    if (value && value.includes('••••')) {
+      setNaverSettings(prev => ({ ...prev, [field]: '' }));
     }
   };
 
@@ -458,8 +602,9 @@ export default function SuperAdminDashboard() {
       fetchStats();
       fetchGcpSettings();
       fetchMetaSettings();
+      fetchNaverSettings();
     }
-  }, [user?.id, role, organizationId, advertiserId, organizationType, fetchGcpSettings, fetchMetaSettings]);
+  }, [user?.id, role, organizationId, advertiserId, organizationType, fetchGcpSettings, fetchMetaSettings, fetchNaverSettings]);
 
   return (
     <Box pt={{ base: "130px", md: "80px", xl: "80px" }}>
@@ -772,6 +917,111 @@ export default function SuperAdminDashboard() {
               alignSelf="flex-start"
             >
               {hasExistingMeta ? '설정 업데이트' : '설정 저장'}
+            </Button>
+          </VStack>
+        </Box>
+      )}
+
+      {/* Naver API 설정 섹션 - master 또는 agency_admin만 표시 */}
+      {canManageGcp && (
+        <Box
+          bg={cardBg}
+          p="24px"
+          borderRadius="20px"
+          mt="20px"
+          mx="25px"
+          border="1px solid"
+          borderColor={borderColor}
+        >
+          <HStack mb="16px" spacing={3}>
+            <Icon as={SiNaver} w="24px" h="24px" color="green.500" />
+            <Text color={textColor} fontSize="lg" fontWeight="700">
+              네이버 광고 API 설정
+            </Text>
+            {hasExistingNaver && (
+              <Badge colorScheme="green" fontSize="xs">설정됨</Badge>
+            )}
+          </HStack>
+
+          <Alert status="info" borderRadius="md" mb="16px" fontSize="sm">
+            <AlertIcon />
+            <AlertDescription>
+              이 설정은 조직 내 모든 브랜드에서 네이버 광고 연동 시 공유됩니다.
+              각 브랜드별로 Customer ID는 별도로 입력해야 합니다.
+            </AlertDescription>
+          </Alert>
+
+          <VStack spacing={4} align="stretch">
+            <FormControl isRequired>
+              <FormLabel fontSize="sm" fontWeight="500">
+                API Key *
+              </FormLabel>
+              <InputGroup>
+                <Input
+                  type={showNaverApiKey ? "text" : "password"}
+                  placeholder="API Key 입력"
+                  value={naverSettings.apiKey}
+                  onChange={(e) => setNaverSettings(prev => ({ ...prev, apiKey: e.target.value }))}
+                  onFocus={() => handleNaverInputFocus('apiKey')}
+                  bg={inputBg}
+                  fontSize="sm"
+                />
+                <InputRightElement>
+                  <IconButton
+                    size="sm"
+                    variant="ghost"
+                    icon={showNaverApiKey ? <MdVisibilityOff /> : <MdVisibility />}
+                    onClick={() => setShowNaverApiKey(!showNaverApiKey)}
+                    aria-label={showNaverApiKey ? "숨기기" : "보기"}
+                  />
+                </InputRightElement>
+              </InputGroup>
+              <Text fontSize="xs" color="gray.500" mt={1}>
+                네이버 광고 시스템에서 발급받은 API Key를 입력하세요.
+              </Text>
+            </FormControl>
+
+            <FormControl isRequired>
+              <FormLabel fontSize="sm" fontWeight="500">
+                Secret Key *
+              </FormLabel>
+              <InputGroup>
+                <Input
+                  type={showNaverSecretKey ? "text" : "password"}
+                  placeholder="Secret Key 입력"
+                  value={naverSettings.secretKey}
+                  onChange={(e) => setNaverSettings(prev => ({ ...prev, secretKey: e.target.value }))}
+                  onFocus={() => handleNaverInputFocus('secretKey')}
+                  bg={inputBg}
+                  fontSize="sm"
+                />
+                <InputRightElement>
+                  <IconButton
+                    size="sm"
+                    variant="ghost"
+                    icon={showNaverSecretKey ? <MdVisibilityOff /> : <MdVisibility />}
+                    onClick={() => setShowNaverSecretKey(!showNaverSecretKey)}
+                    aria-label={showNaverSecretKey ? "숨기기" : "보기"}
+                  />
+                </InputRightElement>
+              </InputGroup>
+              <Text fontSize="xs" color="gray.500" mt={1}>
+                네이버 광고 시스템에서 발급받은 Secret Key를 입력하세요.
+              </Text>
+            </FormControl>
+
+            <Divider />
+
+            <Button
+              colorScheme="brand"
+              leftIcon={<MdSave />}
+              onClick={handleSaveNaverSettings}
+              isLoading={isSavingNaver}
+              loadingText="저장 중..."
+              size="md"
+              alignSelf="flex-start"
+            >
+              {hasExistingNaver ? '설정 업데이트' : '설정 저장'}
             </Button>
           </VStack>
         </Box>

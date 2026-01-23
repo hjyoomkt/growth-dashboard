@@ -7,6 +7,7 @@ import BrandSelectModal from './BrandSelectModal';
 import CustomerAccountModal from './CustomerAccountModal';
 import ExistingTokenSelectModal from './ExistingTokenSelectModal';
 import MetaAccountModal from './MetaAccountModal';
+import NaverAccountModal from './NaverAccountModal';
 
 export default function PlatformLoginFlow({
   isOpen,
@@ -23,6 +24,9 @@ export default function PlatformLoginFlow({
 
   // Meta 관련 state
   const [metaAccountInfo, setMetaAccountInfo] = useState(null);
+
+  // Naver 관련 state
+  const [naverAccountInfo, setNaverAccountInfo] = useState(null);
 
   const { organizationId } = useAuth();
   const toast = useToast();
@@ -57,6 +61,9 @@ export default function PlatformLoginFlow({
     // Meta Ads는 바로 광고주 조회 단계로 이동
     if (selectedPlatform === 'Meta Ads') {
       setCurrentStep('metaAccount');
+    } else if (selectedPlatform === 'Naver Ads') {
+      // Naver Ads는 바로 Customer ID 입력 단계로 이동
+      setCurrentStep('naverAccount');
     } else {
       // Google Ads는 기존 토큰 확인
       await checkExistingTokens(brandId);
@@ -274,6 +281,22 @@ export default function PlatformLoginFlow({
     onClose();
   };
 
+  // Naver 계정 정보 입력 핸들러
+  const handleNaverAccountSelect = ({ customerId }) => {
+    setNaverAccountInfo({ customerId });
+
+    // 부모 컴포넌트로 데이터 전달
+    onComplete({
+      platform: selectedPlatform,
+      brandId: selectedBrandId,
+      customerId: customerId,
+    });
+
+    // 플로우 초기화 및 닫기
+    resetFlow();
+    onClose();
+  };
+
   // 모달 닫기 핸들러
   const handleClose = () => {
     resetFlow();
@@ -319,6 +342,15 @@ export default function PlatformLoginFlow({
         isOpen={isOpen && currentStep === 'metaAccount'}
         onClose={handleClose}
         onNext={handleMetaAccountSelect}
+        brandId={selectedBrandId}
+        organizationId={organizationId}
+      />
+
+      {/* Step 3: Naver 계정 정보 입력 (Naver Ads) */}
+      <NaverAccountModal
+        isOpen={isOpen && currentStep === 'naverAccount'}
+        onClose={handleClose}
+        onNext={handleNaverAccountSelect}
         brandId={selectedBrandId}
         organizationId={organizationId}
       />

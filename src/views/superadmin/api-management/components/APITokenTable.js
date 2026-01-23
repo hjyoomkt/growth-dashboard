@@ -943,6 +943,62 @@ export default function APITokenTable(props) {
       return;
     }
 
+    // Naver Ads 처리
+    if (data.platform === 'Naver Ads') {
+      try {
+        // 1. 조직 네이버 자격증명 확인 (존재 여부만 체크)
+        const { data: naverCredentials, error: naverError } = await supabase
+          .rpc('get_organization_naver_credentials', { org_id: organizationId });
+
+        if (naverError || !naverCredentials || naverCredentials.length === 0 || !naverCredentials[0].api_key || !naverCredentials[0].secret_key) {
+          throw new Error('조직 설정에서 네이버 API Key와 Secret Key를 먼저 설정해주세요.');
+        }
+
+        // 2. Integration 생성 (조직 설정에서 조회하므로 Vault 불필요)
+        const { data: newIntegration, error: integrationError } = await supabase
+          .from('integrations')
+          .insert({
+            advertiser_id: data.brandId,
+            platform: 'Naver Ads',
+            integration_type: 'token',
+            legacy_account_id: data.customerId,
+            account_description: `Customer ID: ${data.customerId}`,
+          })
+          .select()
+          .single();
+
+        if (integrationError) throw integrationError;
+
+        // 3. 토큰 목록 새로고침
+        fetchTokens();
+
+        toast({
+          title: 'API 토큰 추가 완료',
+          description: '초기 데이터 수집을 설정합니다.',
+          status: 'success',
+          duration: 2000,
+          isClosable: true,
+        });
+
+        // 4. savedIntegrationId 설정 후 초기 수집 모달 열기
+        setSavedIntegrationId(newIntegration.id);
+        onInitialCollectionModalOpen();
+
+        // 5. platformLoginData 초기화
+        setPlatformLoginData(null);
+      } catch (error) {
+        console.error('[Naver 토큰 저장] 실패:', error);
+        toast({
+          title: 'Naver 토큰 저장 실패',
+          description: error.message,
+          status: 'error',
+          duration: 4000,
+          isClosable: true,
+        });
+      }
+      return;
+    }
+
     // Google Ads 처리
     setFormData(prev => ({
       ...prev,

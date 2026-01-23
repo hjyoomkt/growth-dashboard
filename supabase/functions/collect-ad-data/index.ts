@@ -338,19 +338,11 @@ async function validateToken(supabase: any, integration: any): Promise<{ valid: 
         return { valid: false, error: 'Missing refresh token' }
       }
     } else if (platform === 'Naver Ads') {
-      const response = await fetch(
-        'https://api.naver.com/ncc/customers',
-        {
-          method: 'GET',
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json'
-          }
-        }
-      )
-
-      if (!response.ok) {
-        return { valid: false, error: 'Naver API validation failed' }
+      // Naver는 OAuth가 아니므로 조직 자격증명 존재 여부만 확인
+      // 실제 API 검증은 데이터 수집 시 수행
+      const customerId = integration.legacy_account_id
+      if (!customerId) {
+        return { valid: false, error: 'Missing Naver Customer ID' }
       }
     }
 
@@ -381,6 +373,33 @@ async function resolveAccessToken(supabase: any, integration: any): Promise<stri
 
       console.log('[DEBUG] Meta access token resolved directly:', { token_length: accessToken?.length })
       return accessToken
+    }
+
+    // Naver Ads는 조직 설정에서 API Key/Secret Key 조회 (collector에서 조회하므로 더미 값 반환)
+    if (integration.platform === 'Naver Ads') {
+      // Naver는 OAuth가 아니므로 조직 자격증명 존재 여부만 확인
+      const { data: advertiser } = await supabase
+        .from('advertisers')
+        .select('organization_id')
+        .eq('id', integration.advertiser_id)
+        .single()
+
+      if (!advertiser) {
+        console.error('[ERROR] Advertiser not found for Naver integration')
+        return null
+      }
+
+      const { data: orgCreds } = await supabase.rpc('get_organization_naver_credentials', {
+        org_id: advertiser.organization_id
+      })
+
+      if (!orgCreds || orgCreds.length === 0 || !orgCreds[0].api_key || !orgCreds[0].secret_key) {
+        console.error('[ERROR] Naver credentials not found in organization settings')
+        return null
+      }
+
+      console.log('[DEBUG] Naver credentials verified in organization settings')
+      return 'naver-org-credentials' // 더미 값 (실제로는 collector에서 조회)
     }
 
     // Google Ads 등 다른 플랫폼은 기존 HTTP 호출 방식 유지 (토큰 교환 필요)
