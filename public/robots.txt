@@ -1,3 +1,10 @@
 User-Agent: *
-Disallow:
-Sitemap: https://horizon-ui.com
+Allow: /
+
+# Disallow admin and authentication pages from search engines
+Disallow: /admin/
+Disallow: /auth/
+Disallow: /superadmin/
+Disallow: /brandadmin/
+
+Sitemap: https://www.zestdot.com/sitemap.xml

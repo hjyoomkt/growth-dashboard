@@ -97,7 +97,7 @@ function ForgotPassword() {
                 mb="10px"
                 fontWeight="700"
               >
-                Forgot Password?
+                비밀번호를 잊으셨나요?
               </Heading>
               <Text
                 mb="36px"
@@ -105,7 +105,7 @@ function ForgotPassword() {
                 fontWeight="400"
                 fontSize={{ base: "sm", md: "md" }}
               >
-                Enter your email address and we'll send you instructions to reset your password.
+                이메일 주소를 입력하시면 비밀번호 재설정 안내를 보내드립니다.
               </Text>
 
               {error && (
@@ -124,14 +124,14 @@ function ForgotPassword() {
                     color={textColor}
                     mb="8px"
                   >
-                    Email
+                    이메일
                   </FormLabel>
                   <Input
                     isRequired={true}
                     variant="auth"
                     fontSize="sm"
                     type="email"
-                    placeholder="Example@email.com"
+                    placeholder="example@email.com"
                     fontWeight="500"
                     size="lg"
                     borderRadius="10px"
@@ -151,7 +151,7 @@ function ForgotPassword() {
                   borderRadius="10px"
                   type="submit"
                 >
-                  Send Reset Link
+                  재설정 링크 보내기
                 </Button>
               </form>
 
@@ -162,7 +162,7 @@ function ForgotPassword() {
                 fontSize="14px"
                 textAlign="center"
               >
-                Remember your password?{" "}
+                비밀번호가 기억나셨나요?{" "}
                 <NavLink to="/auth/sign-in">
                   <Text
                     color={textColorBrand}
@@ -170,7 +170,7 @@ function ForgotPassword() {
                     fontWeight="600"
                     _hover={{ textDecoration: "underline" }}
                   >
-                    Sign in
+                    로그인
                   </Text>
                 </NavLink>
               </Text>
@@ -184,7 +184,7 @@ function ForgotPassword() {
                 mb="10px"
                 fontWeight="700"
               >
-                Check Your Email
+                이메일을 확인하세요
               </Heading>
               <Alert
                 status="success"
@@ -199,11 +199,11 @@ function ForgotPassword() {
               >
                 <AlertIcon boxSize="40px" mr={0} mb="16px" />
                 <AlertDescription maxW="sm" fontSize="md">
-                  We've sent a password reset link to{" "}
+                  비밀번호 재설정 링크를{" "}
                   <Text as="span" fontWeight="600">
                     {email}
                   </Text>
-                  . Please check your inbox and follow the instructions.
+                  (으)로 보냈습니다. 받은 편지함을 확인하고 안내에 따라 진행해주세요.
                 </AlertDescription>
               </Alert>
 
@@ -214,7 +214,7 @@ function ForgotPassword() {
                 textAlign="center"
                 mb="20px"
               >
-                Didn't receive the email? Check your spam folder or{" "}
+                이메일을 받지 못하셨나요? 스팸 폴더를 확인하거나{" "}
                 <Text
                   as="span"
                   color={textColorBrand}
@@ -223,8 +223,9 @@ function ForgotPassword() {
                   _hover={{ textDecoration: "underline" }}
                   onClick={() => setIsSubmitted(false)}
                 >
-                  try again
+                  다시 시도
                 </Text>
+                해주세요
               </Text>
 
               <NavLink to="/auth/sign-in">
@@ -236,7 +237,7 @@ function ForgotPassword() {
                   h="50px"
                   borderRadius="10px"
                 >
-                  Back to Sign In
+                  로그인으로 돌아가기
                 </Button>
               </NavLink>
             </>
@@ -249,7 +250,7 @@ function ForgotPassword() {
             textAlign="center"
             mt="40px"
           >
-            © 2023 ALL RIGHTS RESERVED
+            © 2026 ALL RIGHTS RESERVED
           </Text>
         </Box>
       </Flex>
