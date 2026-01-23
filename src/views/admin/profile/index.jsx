@@ -36,6 +36,7 @@ import banner from "assets/img/auth/banner.png";
 import avatar from "assets/img/avatars/avatar4.png";
 import React from "react";
 import { useAuth } from "contexts/AuthContext";
+import { PageHelmet } from "components/HelmetProvider";
 
 export default function Overview() {
   const { user, role, availableAdvertisers } = useAuth();
@@ -54,6 +55,11 @@ export default function Overview() {
 
   return (
     <Box pt={{ base: "130px", md: "80px", xl: "80px" }}>
+      <PageHelmet
+        title="프로필 | 제스트닷"
+        description="내 프로필 및 설정을 관리하세요"
+        keywords="프로필, 설정, 사용자 정보"
+      />
       {/* Main Fields */}
       <Grid
         templateColumns={{

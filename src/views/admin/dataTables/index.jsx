@@ -40,11 +40,17 @@ import tableDataCheck from "views/admin/dataTables/variables/tableDataCheck.json
 import tableDataColumns from "views/admin/dataTables/variables/tableDataColumns.json";
 import tableDataComplex from "views/admin/dataTables/variables/tableDataComplex.json";
 import React from "react";
+import { PageHelmet } from "components/HelmetProvider";
 
 export default function Settings() {
   // Chakra Color Mode
   return (
     <Box pt={{ base: "130px", md: "80px", xl: "80px" }}>
+      <PageHelmet
+        title="데이터 테이블 | 제스트닷"
+        description="광고 성과 데이터를 상세하게 확인하세요"
+        keywords="데이터 테이블, 광고 데이터, 성과 분석"
+      />
       <DateRangePicker />
       <MediaAdSummary />
       <TotalAdSummary />

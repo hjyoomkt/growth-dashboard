@@ -1,17 +1,19 @@
 import React, { useState, useEffect } from 'react';
 import { useToast } from '@chakra-ui/react';
 import { supabase } from 'services/supabaseService';
+import { useAuth } from 'contexts/AuthContext';
 import PlatformLoginModal from './PlatformLoginModal';
 import BrandSelectModal from './BrandSelectModal';
 import CustomerAccountModal from './CustomerAccountModal';
 import ExistingTokenSelectModal from './ExistingTokenSelectModal';
+import MetaAccountModal from './MetaAccountModal';
 
 export default function PlatformLoginFlow({
   isOpen,
   onClose,
   onComplete,
 }) {
-  const [currentStep, setCurrentStep] = useState('platform'); // platform, brand, tokenCheck, oauth, customer
+  const [currentStep, setCurrentStep] = useState('platform'); // platform, brand, tokenCheck, oauth, customer, metaAccount
   const [selectedPlatform, setSelectedPlatform] = useState(null);
   const [selectedBrandId, setSelectedBrandId] = useState(null);
   const [refreshToken, setRefreshToken] = useState(null);
@@ -19,6 +21,10 @@ export default function PlatformLoginFlow({
   const [selectedCustomerId, setSelectedCustomerId] = useState(null);
   const [organizationTokens, setOrganizationTokens] = useState([]);
 
+  // Meta 관련 state
+  const [metaAccountInfo, setMetaAccountInfo] = useState(null);
+
+  const { organizationId } = useAuth();
   const toast = useToast();
 
   // 모달 닫힐 때 초기화
@@ -48,8 +54,13 @@ export default function PlatformLoginFlow({
   const handleBrandSelect = async (brandId) => {
     setSelectedBrandId(brandId);
 
-    // 기존 토큰 확인
-    await checkExistingTokens(brandId);
+    // Meta Ads는 바로 광고주 조회 단계로 이동
+    if (selectedPlatform === 'Meta Ads') {
+      setCurrentStep('metaAccount');
+    } else {
+      // Google Ads는 기존 토큰 확인
+      await checkExistingTokens(brandId);
+    }
   };
 
   // 기존 토큰 확인
@@ -245,6 +256,24 @@ export default function PlatformLoginFlow({
     onClose();
   };
 
+  // Meta 계정 선택 핸들러
+  const handleMetaAccountSelect = ({ accountId, accountName, accessToken }) => {
+    setMetaAccountInfo({ accountId, accountName, accessToken });
+
+    // 부모 컴포넌트로 데이터 전달
+    onComplete({
+      platform: selectedPlatform,
+      brandId: selectedBrandId,
+      metaAccountId: accountId,
+      metaAccountName: accountName,
+      metaAccessToken: accessToken,
+    });
+
+    // 플로우 초기화 및 닫기
+    resetFlow();
+    onClose();
+  };
+
   // 모달 닫기 핸들러
   const handleClose = () => {
     resetFlow();
@@ -276,13 +305,22 @@ export default function PlatformLoginFlow({
         tokens={organizationTokens}
       />
 
-      {/* Step 3: 고객 계정 선택 */}
+      {/* Step 3: 고객 계정 선택 (Google Ads) */}
       <CustomerAccountModal
         isOpen={isOpen && currentStep === 'customer'}
         onClose={handleClose}
         onNext={handleCustomerSelect}
         refreshToken={refreshToken}
         integrationId={integrationId}
+      />
+
+      {/* Step 3: Meta 광고 계정 선택 (Meta Ads) */}
+      <MetaAccountModal
+        isOpen={isOpen && currentStep === 'metaAccount'}
+        onClose={handleClose}
+        onNext={handleMetaAccountSelect}
+        brandId={selectedBrandId}
+        organizationId={organizationId}
       />
     </>
   );

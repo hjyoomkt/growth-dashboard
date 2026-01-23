@@ -15,6 +15,7 @@ import { MdLock } from "react-icons/md";
 import illustration from "assets/img/auth/auth.png";
 import InviteSignUpForm from "./components/InviteSignUpForm";
 import SelfSignUpForm from "./components/SelfSignUpForm";
+import { PageHelmet } from "components/HelmetProvider";
 
 function SignUp() {
   const [searchParams] = useSearchParams();
@@ -33,13 +34,19 @@ function SignUp() {
   const PHASE_1_INVITE_ONLY = true; // true: 초대 전용, false: 셀프 회원가입 허용
 
   return (
-    <Flex
-      w="100vw"
-      minH="100vh"
-      bg={useColorModeValue("white", "navy.900")}
-    >
-      {/* 왼쪽: 회원가입 폼 */}
+    <>
+      <PageHelmet
+        title="회원가입 | 제스트닷"
+        description="제스트닷 마케팅 대시보드에 가입하세요"
+        keywords="회원가입, 마케팅 대시보드, 광고 관리"
+      />
       <Flex
+        w="100vw"
+        minH="100vh"
+        bg={useColorModeValue("white", "navy.900")}
+      >
+        {/* 왼쪽: 회원가입 폼 */}
+        <Flex
         w={{ base: "100%", lg: "50%" }}
         direction="column"
         justify="center"
@@ -211,6 +218,7 @@ function SignUp() {
         />
       </Box>
     </Flex>
+    </>
   );
 }
 

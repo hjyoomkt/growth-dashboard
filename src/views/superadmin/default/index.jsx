@@ -55,6 +55,7 @@ import {
   MdSave,
   MdCloud,
 } from "react-icons/md";
+import { SiMeta } from "react-icons/si";
 import { getUserStats, getUsers, supabase } from "services/supabaseService";
 import { useAuth } from "contexts/AuthContext";
 
@@ -86,6 +87,18 @@ export default function SuperAdminDashboard() {
   const [hasExistingGcp, setHasExistingGcp] = useState(false);
   const [showClientSecret, setShowClientSecret] = useState(false);
   const [showDeveloperToken, setShowDeveloperToken] = useState(false);
+
+  // Meta 설정 상태
+  const [metaSettings, setMetaSettings] = useState({
+    appId: '',
+    appSecret: '',
+    accessToken: '',
+  });
+  const [isMetaLoading, setIsMetaLoading] = useState(false);
+  const [isSavingMeta, setIsSavingMeta] = useState(false);
+  const [hasExistingMeta, setHasExistingMeta] = useState(false);
+  const [showAppSecret, setShowAppSecret] = useState(false);
+  const [showAccessToken, setShowAccessToken] = useState(false);
 
   // 권한 체크: master 또는 agency_admin만 GCP 설정 가능
   const canManageGcp = role === 'master' || role === 'agency_admin';
@@ -263,6 +276,142 @@ export default function SuperAdminDashboard() {
     }
   };
 
+  // Meta 설정 조회
+  const fetchMetaSettings = useCallback(async () => {
+    if (!organizationId || !canManageGcp) return;
+
+    setIsMetaLoading(true);
+    try {
+      const { data: previewData, error: previewError } = await supabase
+        .rpc('get_organization_meta_preview', {
+          org_id: organizationId
+        });
+
+      if (previewError) {
+        console.error('[Meta Settings] 미리보기 조회 실패:', previewError);
+        return;
+      }
+
+      const preview = Array.isArray(previewData) ? previewData[0] : previewData;
+      const hasCredentials = preview?.access_token_preview;
+      setHasExistingMeta(hasCredentials);
+
+      if (hasCredentials) {
+        setMetaSettings({
+          appId: preview.app_id_preview || '',
+          appSecret: preview.app_secret_preview || '',
+          accessToken: preview.access_token_preview || '',
+        });
+      }
+    } catch (error) {
+      console.error('[Meta Settings] 조회 실패:', error);
+    } finally {
+      setIsMetaLoading(false);
+    }
+  }, [organizationId, canManageGcp]);
+
+  // Meta 설정 저장
+  const handleSaveMetaSettings = async () => {
+    if (!organizationId) {
+      toast({
+        title: '오류',
+        description: '조직 정보를 찾을 수 없습니다.',
+        status: 'error',
+        duration: 3000,
+        isClosable: true,
+      });
+      return;
+    }
+
+    const isMasked = (value) => value && value.includes('••••');
+    const isAccessTokenMasked = isMasked(metaSettings.accessToken);
+
+    if (!hasExistingMeta && !metaSettings.accessToken) {
+      toast({
+        title: '필수 항목 누락',
+        description: 'Access Token은 필수입니다.',
+        status: 'warning',
+        duration: 3000,
+        isClosable: true,
+      });
+      return;
+    }
+
+    setIsSavingMeta(true);
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const accessToken = sessionData?.session?.access_token;
+
+      if (!accessToken) {
+        throw new Error('인증 세션이 없습니다. 다시 로그인해주세요.');
+      }
+
+      const apiKey = process.env.REACT_APP_SUPABASE_ANON_KEY;
+
+      const payload = {
+        organization_id: organizationId,
+      };
+
+      if (!isMasked(metaSettings.appId)) {
+        payload.app_id = metaSettings.appId?.trim() || 'EMPTY_STRING';
+      }
+      if (!isMasked(metaSettings.appSecret)) {
+        payload.app_secret = metaSettings.appSecret?.trim() || 'EMPTY_STRING';
+      }
+      if (!isAccessTokenMasked) {
+        payload.access_token = metaSettings.accessToken?.trim() || 'EMPTY_STRING';
+      }
+
+      const response = await fetch(
+        `${process.env.REACT_APP_SUPABASE_URL}/functions/v1/save-organization-meta`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${accessToken}`,
+            'apikey': apiKey,
+          },
+          body: JSON.stringify(payload),
+        }
+      );
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to save Meta credentials');
+      }
+
+      toast({
+        title: '저장 완료',
+        description: 'Meta API 설정이 저장되었습니다.',
+        status: 'success',
+        duration: 3000,
+        isClosable: true,
+      });
+
+      await fetchMetaSettings();
+    } catch (error) {
+      console.error('[Meta Settings] 저장 실패:', error);
+      toast({
+        title: '저장 실패',
+        description: error.message || '설정 저장에 실패했습니다.',
+        status: 'error',
+        duration: 4000,
+        isClosable: true,
+      });
+    } finally {
+      setIsSavingMeta(false);
+    }
+  };
+
+  // Meta 입력 필드 클릭 시 마스킹 해제
+  const handleMetaInputFocus = (field) => {
+    const value = metaSettings[field];
+    if (value && value.includes('••••')) {
+      setMetaSettings(prev => ({ ...prev, [field]: '' }));
+    }
+  };
+
   useEffect(() => {
     const fetchStats = async () => {
       try {
@@ -308,8 +457,9 @@ export default function SuperAdminDashboard() {
     if (user) {
       fetchStats();
       fetchGcpSettings();
+      fetchMetaSettings();
     }
-  }, [user?.id, role, organizationId, advertiserId, organizationType]);
+  }, [user?.id, role, organizationId, advertiserId, organizationType, fetchGcpSettings, fetchMetaSettings]);
 
   return (
     <Box pt={{ base: "130px", md: "80px", xl: "80px" }}>
@@ -500,6 +650,128 @@ export default function SuperAdminDashboard() {
               alignSelf="flex-start"
             >
               {hasExistingGcp ? '설정 업데이트' : '설정 저장'}
+            </Button>
+          </VStack>
+        </Box>
+      )}
+
+      {/* Meta API 설정 섹션 - master 또는 agency_admin만 표시 */}
+      {canManageGcp && (
+        <Box
+          bg={cardBg}
+          p="24px"
+          borderRadius="20px"
+          mt="20px"
+          mx="25px"
+          border="1px solid"
+          borderColor={borderColor}
+        >
+          <HStack mb="16px" spacing={3}>
+            <Icon as={SiMeta} w="24px" h="24px" color="blue.500" />
+            <Text color={textColor} fontSize="lg" fontWeight="700">
+              Meta API 설정
+            </Text>
+            {hasExistingMeta && (
+              <Badge colorScheme="blue" fontSize="xs">설정됨</Badge>
+            )}
+          </HStack>
+
+          <Alert status="info" borderRadius="md" mb="16px" fontSize="sm">
+            <AlertIcon />
+            <AlertDescription>
+              이 설정은 조직 내 모든 브랜드에서 Meta Ads 연동 시 공유됩니다.
+              브랜드별로 자체 토큰을 사용할 수도 있습니다.
+            </AlertDescription>
+          </Alert>
+
+          <VStack spacing={4} align="stretch">
+            <FormControl>
+              <FormLabel fontSize="sm" fontWeight="500">
+                Meta App ID (선택)
+              </FormLabel>
+              <Input
+                placeholder="1234567890123456"
+                value={metaSettings.appId}
+                onChange={(e) => setMetaSettings(prev => ({ ...prev, appId: e.target.value }))}
+                onFocus={() => handleMetaInputFocus('appId')}
+                bg={inputBg}
+                fontSize="sm"
+              />
+              <Text fontSize="xs" color="gray.500" mt={1}>
+                App ID는 토큰 검증 시 사용됩니다 (선택사항).
+              </Text>
+            </FormControl>
+
+            <FormControl>
+              <FormLabel fontSize="sm" fontWeight="500">
+                Meta App Secret (선택)
+              </FormLabel>
+              <InputGroup>
+                <Input
+                  type={showAppSecret ? "text" : "password"}
+                  placeholder="xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+                  value={metaSettings.appSecret}
+                  onChange={(e) => setMetaSettings(prev => ({ ...prev, appSecret: e.target.value }))}
+                  onFocus={() => handleMetaInputFocus('appSecret')}
+                  bg={inputBg}
+                  fontSize="sm"
+                />
+                <InputRightElement>
+                  <IconButton
+                    size="sm"
+                    variant="ghost"
+                    icon={showAppSecret ? <MdVisibilityOff /> : <MdVisibility />}
+                    onClick={() => setShowAppSecret(!showAppSecret)}
+                    aria-label={showAppSecret ? "숨기기" : "보기"}
+                  />
+                </InputRightElement>
+              </InputGroup>
+              <Text fontSize="xs" color="gray.500" mt={1}>
+                App Secret은 토큰 검증 시 사용됩니다 (선택사항).
+              </Text>
+            </FormControl>
+
+            <FormControl isRequired>
+              <FormLabel fontSize="sm" fontWeight="500">
+                Meta Access Token (Long-lived User Access Token) *
+              </FormLabel>
+              <InputGroup>
+                <Input
+                  type={showAccessToken ? "text" : "password"}
+                  placeholder="EAAxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+                  value={metaSettings.accessToken}
+                  onChange={(e) => setMetaSettings(prev => ({ ...prev, accessToken: e.target.value }))}
+                  onFocus={() => handleMetaInputFocus('accessToken')}
+                  bg={inputBg}
+                  fontSize="sm"
+                />
+                <InputRightElement>
+                  <IconButton
+                    size="sm"
+                    variant="ghost"
+                    icon={showAccessToken ? <MdVisibilityOff /> : <MdVisibility />}
+                    onClick={() => setShowAccessToken(!showAccessToken)}
+                    aria-label={showAccessToken ? "숨기기" : "보기"}
+                  />
+                </InputRightElement>
+              </InputGroup>
+              <Text fontSize="xs" color="gray.500" mt={1}>
+                60일 유효기간의 Long-lived User Access Token을 입력하세요.
+              </Text>
+            </FormControl>
+
+            <Divider />
+
+            <Button
+              colorScheme="brand"
+              leftIcon={<MdSave />}
+              onClick={handleSaveMetaSettings}
+              isLoading={isSavingMeta}
+              loadingText="저장 중..."
+              size="md"
+              alignSelf="flex-start"
+            >
+              {hasExistingMeta ? '설정 업데이트' : '설정 저장'}
             </Button>
           </VStack>
         </Box>

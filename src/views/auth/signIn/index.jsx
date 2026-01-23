@@ -48,6 +48,7 @@ import { FaFacebook } from "react-icons/fa";
 import { MdOutlineRemoveRedEye } from "react-icons/md";
 import { RiEyeCloseLine } from "react-icons/ri";
 import { useAuth } from "contexts/AuthContext";
+import { PageHelmet } from "components/HelmetProvider";
 
 function SignIn() {
   // Chakra color mode
@@ -109,14 +110,20 @@ function SignIn() {
   };
 
   return (
-    <Flex
-      w="100vw"
-      h="100vh"
-      bg={useColorModeValue("white", "navy.900")}
-      overflow="hidden"
-    >
-      {/* 왼쪽: 로그인 폼 */}
+    <>
+      <PageHelmet
+        title="로그인 | 제스트닷"
+        description="제스트닷 마케팅 대시보드에 로그인하세요"
+        keywords="로그인, 마케팅 대시보드, 광고 관리"
+      />
       <Flex
+        w="100vw"
+        h="100vh"
+        bg={useColorModeValue("white", "navy.900")}
+        overflow="hidden"
+      >
+        {/* 왼쪽: 로그인 폼 */}
+        <Flex
         w={{ base: "100%", lg: "50%" }}
         direction="column"
         justify="center"
@@ -325,6 +332,7 @@ function SignIn() {
         />
       </Box>
     </Flex>
+    </>
   );
 }
 

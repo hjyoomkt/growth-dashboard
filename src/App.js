@@ -15,52 +15,55 @@ import initialTheme from './theme/theme'; //  { themeGreen }
 import { useState } from 'react';
 import { DateRangeProvider } from './contexts/DateRangeContext';
 import { AuthProvider } from './contexts/AuthContext';
+import { HelmetProvider } from 'react-helmet-async';
 // Chakra imports
 
 export default function Main() {
   // eslint-disable-next-line
   const [currentTheme, setCurrentTheme] = useState(initialTheme);
   return (
-    <ChakraProvider theme={currentTheme}>
-      <AuthProvider>
-        <DateRangeProvider>
-          <Routes>
-            <Route path="/" element={<Landing />} />
-            <Route path="/main" element={<Landing />} />
-            <Route path="auth/*" element={<AuthLayout />} />
-            <Route
-              path="admin/*"
-              element={
-                <AdminLayout theme={currentTheme} setTheme={setCurrentTheme} />
-              }
-            />
-            <Route
-              path="superadmin/*"
-              element={
-                <SuperAdminLayout theme={currentTheme} setTheme={setCurrentTheme} />
-              }
-            />
-            <Route
-              path="brandadmin/*"
-              element={
-                <ClientAdminLayout theme={currentTheme} setTheme={setCurrentTheme} />
-              }
-            />
-            <Route
-              path="master/*"
-              element={
-                <MasterLayout theme={currentTheme} setTheme={setCurrentTheme} />
-              }
-            />
-            <Route
-              path="rtl/*"
-              element={
-                <RTLLayout theme={currentTheme} setTheme={setCurrentTheme} />
-              }
-            />
-          </Routes>
-        </DateRangeProvider>
-      </AuthProvider>
-    </ChakraProvider>
+    <HelmetProvider>
+      <ChakraProvider theme={currentTheme}>
+        <AuthProvider>
+          <DateRangeProvider>
+            <Routes>
+              <Route path="/" element={<Landing />} />
+              <Route path="/main" element={<Landing />} />
+              <Route path="auth/*" element={<AuthLayout />} />
+              <Route
+                path="admin/*"
+                element={
+                  <AdminLayout theme={currentTheme} setTheme={setCurrentTheme} />
+                }
+              />
+              <Route
+                path="superadmin/*"
+                element={
+                  <SuperAdminLayout theme={currentTheme} setTheme={setCurrentTheme} />
+                }
+              />
+              <Route
+                path="brandadmin/*"
+                element={
+                  <ClientAdminLayout theme={currentTheme} setTheme={setCurrentTheme} />
+                }
+              />
+              <Route
+                path="master/*"
+                element={
+                  <MasterLayout theme={currentTheme} setTheme={setCurrentTheme} />
+                }
+              />
+              <Route
+                path="rtl/*"
+                element={
+                  <RTLLayout theme={currentTheme} setTheme={setCurrentTheme} />
+                }
+              />
+            </Routes>
+          </DateRangeProvider>
+        </AuthProvider>
+      </ChakraProvider>
+    </HelmetProvider>
   );
 }

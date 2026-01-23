@@ -27,7 +27,7 @@ export default function PlatformLoginModal({ isOpen, onClose, onPlatformSelect }
   const disabledColor = useColorModeValue('gray.400', 'whiteAlpha.400');
 
   const handlePlatformClick = (platform) => {
-    if (platform === 'Google Ads') {
+    if (platform === 'Google Ads' || platform === 'Meta Ads') {
       onPlatformSelect(platform);
     }
   };
@@ -43,7 +43,7 @@ export default function PlatformLoginModal({ isOpen, onClose, onPlatformSelect }
       name: 'Meta Ads',
       icon: SiMeta,
       color: 'blue.600',
-      enabled: false,
+      enabled: true,
     },
     {
       name: 'Naver',

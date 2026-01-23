@@ -54,6 +54,7 @@ import GenderPurchasePie from "views/admin/default/components/GenderPurchasePie"
 import { useAuth } from "contexts/AuthContext";
 import { useDateRange } from "contexts/DateRangeContext";
 import { getKPIData } from "services/supabaseService";
+import { PageHelmet } from "components/HelmetProvider";
 
 export default function UserReports() {
   // Chakra Color Mode
@@ -102,6 +103,11 @@ export default function UserReports() {
   const formatROAS = (num) => `${(num * 100).toFixed(0)}%`; // 퍼센티지로 변환 (10.0 → 1000%)
   return (
     <Box pt={{ base: "130px", md: "80px", xl: "80px" }}>
+      <PageHelmet
+        title="대시보드 | 제스트닷"
+        description="광고 성과를 실시간으로 확인하세요"
+        keywords="대시보드, 광고 성과, 실시간 분석, KPI"
+      />
       {/* 날짜 선택 UI */}
       <DateRangePicker />
 

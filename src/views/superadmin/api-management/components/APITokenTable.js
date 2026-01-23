@@ -868,7 +868,82 @@ export default function APITokenTable(props) {
   const handlePlatformLoginComplete = async (data) => {
     setPlatformLoginData(data);
 
-    // formData 업데이트
+    // Meta Ads 처리
+    if (data.platform === 'Meta Ads') {
+      try {
+        // 1. Integration 생성
+        const { data: newIntegration, error: integrationError } = await supabase
+          .from('integrations')
+          .insert({
+            advertiser_id: data.brandId,
+            platform: 'Meta Ads',
+            integration_type: 'token',
+            legacy_account_id: data.metaAccountId,
+            account_description: data.metaAccountName,
+          })
+          .select()
+          .single();
+
+        if (integrationError) throw integrationError;
+
+        // 2. Access Token 저장
+        let tokenToSave = data.metaAccessToken;
+
+        // 조직 토큰 사용 시 (metaAccessToken이 null) - 조직에서 토큰 가져오기
+        if (!tokenToSave) {
+          const { data: metaCredentials, error: metaError } = await supabase
+            .rpc('get_organization_meta_credentials', { org_id: organizationId });
+
+          if (metaError || !metaCredentials || metaCredentials.length === 0) {
+            throw new Error('조직 메타 토큰을 찾을 수 없습니다.');
+          }
+
+          const credentials = Array.isArray(metaCredentials) ? metaCredentials[0] : metaCredentials;
+          tokenToSave = credentials.access_token;
+        }
+
+        if (!tokenToSave) {
+          throw new Error('Meta Access Token이 필요합니다.');
+        }
+
+        const { error: tokenError } = await supabase.rpc('store_encrypted_token', {
+          p_api_token_id: newIntegration.id,
+          p_access_token: tokenToSave,
+        });
+
+        if (tokenError) throw tokenError;
+
+        // 3. 토큰 목록 새로고침
+        fetchTokens();
+
+        toast({
+          title: 'API 토큰 추가 완료',
+          description: '초기 데이터 수집을 설정합니다.',
+          status: 'success',
+          duration: 2000,
+          isClosable: true,
+        });
+
+        // 4. savedIntegrationId 설정 후 초기 수집 모달 열기
+        setSavedIntegrationId(newIntegration.id);
+        onInitialCollectionModalOpen();
+
+        // 5. platformLoginData 초기화
+        setPlatformLoginData(null);
+      } catch (error) {
+        console.error('[Meta 토큰 저장] 실패:', error);
+        toast({
+          title: 'Meta 토큰 저장 실패',
+          description: error.message,
+          status: 'error',
+          duration: 4000,
+          isClosable: true,
+        });
+      }
+      return;
+    }
+
+    // Google Ads 처리
     setFormData(prev => ({
       ...prev,
       advertiser: availableAdvertisers.find(adv => adv.id === data.brandId)?.name || '',
@@ -886,7 +961,7 @@ export default function APITokenTable(props) {
       await fetchOrganizationGcp();
     }
 
-    // 직접 전환 액션 조회 실행
+    // Google Ads 전환 액션 조회 실행
     try {
       setIsLoadingConversions(true);
       setConversionActions([]);
