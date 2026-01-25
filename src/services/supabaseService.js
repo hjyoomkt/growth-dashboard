@@ -155,6 +155,29 @@ export const getAvailableAdvertisers = async (userData) => {
       .map(ua => ua.advertisers)
       .filter(Boolean);
 
+    // "담당 브랜드 전체" 처리: user_advertisers가 비어있고 organization_id가 있으면 조직의 모든 브랜드 반환
+    if (advertisers.length === 0 && userData.organization_id) {
+      console.log('[getAvailableAdvertisers] 담당 브랜드 전체 감지 - 조직의 모든 브랜드 반환:', {
+        userId: userData.id,
+        role: userData.role,
+        organizationId: userData.organization_id
+      });
+
+      const { data: orgAdvertisers, error: orgError } = await supabase
+        .from('advertisers')
+        .select('*')
+        .eq('organization_id', userData.organization_id)
+        .is('deleted_at', null);
+
+      if (orgError) {
+        console.error('[getAvailableAdvertisers] 조직 브랜드 조회 실패:', orgError);
+        throw orgError;
+      }
+
+      console.log('[getAvailableAdvertisers] 조회 성공 (담당 브랜드 전체):', { count: orgAdvertisers?.length });
+      return orgAdvertisers || [];
+    }
+
     console.log('[getAvailableAdvertisers] 조회 성공:', { role: userData.role, count: advertisers.length });
     return advertisers;
   }
