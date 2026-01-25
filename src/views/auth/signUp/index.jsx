@@ -12,7 +12,7 @@ import {
   Icon,
 } from "@chakra-ui/react";
 import { MdLock } from "react-icons/md";
-import illustration from "assets/img/auth/auth.png";
+import illustration from "assets/img/auth/lemon.jpg";
 import InviteSignUpForm from "./components/InviteSignUpForm";
 import SelfSignUpForm from "./components/SelfSignUpForm";
 import { PageHelmet } from "components/HelmetProvider";
@@ -42,8 +42,9 @@ function SignUp() {
       />
       <Flex
         w="100vw"
-        minH="100vh"
+        h="100vh"
         bg={useColorModeValue("white", "navy.900")}
+        overflow="hidden"
       >
         {/* 왼쪽: 회원가입 폼 */}
         <Flex
@@ -203,6 +204,7 @@ function SignUp() {
       {/* 우측: 이미지 영역 (데스크탑만) */}
       <Box
         w="50%"
+        h="100%"
         display={{ base: "none", lg: "flex" }}
         alignItems="center"
         justifyContent="center"
@@ -213,7 +215,7 @@ function SignUp() {
           alt="Growth Dashboard Illustration"
           w="100%"
           h="100%"
-          objectFit="contain"
+          objectFit="cover"
           borderRadius="20px"
         />
       </Box>

@@ -42,7 +42,7 @@ import {
   useToast,
 } from "@chakra-ui/react";
 // Assets
-import illustration from "assets/img/auth/auth.png";
+import illustration from "assets/img/auth/lemon.jpg";
 import { FcGoogle } from "react-icons/fc";
 import { FaFacebook } from "react-icons/fa";
 import { MdOutlineRemoveRedEye } from "react-icons/md";
