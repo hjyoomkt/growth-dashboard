@@ -361,8 +361,18 @@ export const getUsers = async (currentUser) => {
       })
     );
 
-    console.log('[getUsers] 조회 성공 (advertiser):', { count: usersWithAdvertisers.length });
-    return usersWithAdvertisers;
+    // 브랜드 관련 역할만 필터링
+    const BRAND_ROLES = ['viewer', 'editor', 'advertiser_admin', 'advertiser_staff'];
+    const filteredUsers = usersWithAdvertisers.filter(user =>
+      BRAND_ROLES.includes(user.role)
+    );
+
+    console.log('[getUsers] 조회 성공 (advertiser):', {
+      count: filteredUsers.length,
+      totalBeforeFilter: usersWithAdvertisers.length,
+      filtered: usersWithAdvertisers.length - filteredUsers.length
+    });
+    return filteredUsers;
   }
 
   return [];

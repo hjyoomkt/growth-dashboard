@@ -21,10 +21,17 @@ serve(async (req) => {
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
 
-    // 어제 날짜 계산
-    const yesterday = new Date()
-    yesterday.setDate(yesterday.getDate() - 1)
-    const yesterdayStr = yesterday.toISOString().split('T')[0]
+    // 어제 날짜 계산 (한국 시간 기준)
+    const getKSTYesterday = (): string => {
+      const now = new Date()
+      const kstOffset = 9 * 60 // UTC+9 (분 단위)
+      const kstNow = new Date(now.getTime() + kstOffset * 60 * 1000)
+      kstNow.setDate(kstNow.getDate() - 1)
+      return kstNow.toISOString().split('T')[0]
+    }
+
+    const yesterdayStr = getKSTYesterday()
+    console.log(`[Daily Scheduler] Collecting data for date (KST yesterday): ${yesterdayStr}`)
 
     // active integrations 조회 (토큰이 있는 것만)
     const { data: integrations, error: fetchError } = await supabase
