@@ -18,10 +18,12 @@ import {
   useColorModeValue,
   Flex,
   IconButton,
+  useToast,
 } from '@chakra-ui/react';
 import { MdCamera } from 'react-icons/md';
 
 export default function ProfileEditModal({ isOpen, onClose, currentData }) {
+  const toast = useToast();
   const [formData, setFormData] = useState({
     name: currentData?.name || '',
     job: currentData?.job || '',
@@ -42,28 +44,26 @@ export default function ProfileEditModal({ isOpen, onClose, currentData }) {
     onClose();
   };
 
-  const handleAvatarUpload = (e) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      // TODO: 실제로는 파일을 서버에 업로드
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setFormData({ ...formData, avatar: reader.result });
-      };
-      reader.readAsDataURL(file);
-    }
+  const handleAvatarUpload = () => {
+    toast({
+      title: '서비스 준비중',
+      description: '프로필 이미지 업로드 기능은 현재 준비 중입니다.',
+      status: 'info',
+      duration: 3000,
+      isClosable: true,
+      position: 'top',
+    });
   };
 
-  const handleBannerUpload = (e) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      // TODO: 실제로는 파일을 서버에 업로드
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setFormData({ ...formData, banner: reader.result });
-      };
-      reader.readAsDataURL(file);
-    }
+  const handleBannerUpload = () => {
+    toast({
+      title: '서비스 준비중',
+      description: '배너 이미지 업로드 기능은 현재 준비 중입니다.',
+      status: 'info',
+      duration: 3000,
+      isClosable: true,
+      position: 'top',
+    });
   };
 
   return (
@@ -100,14 +100,7 @@ export default function ProfileEditModal({ isOpen, onClose, currentData }) {
                   right="10px"
                   size="sm"
                   borderRadius="8px"
-                  onClick={() => document.getElementById('banner-upload').click()}
-                />
-                <Input
-                  id="banner-upload"
-                  type="file"
-                  accept="image/*"
-                  display="none"
-                  onChange={handleBannerUpload}
+                  onClick={handleBannerUpload}
                 />
               </Box>
             </FormControl>
@@ -133,14 +126,7 @@ export default function ProfileEditModal({ isOpen, onClose, currentData }) {
                     right="0"
                     size="sm"
                     borderRadius="50%"
-                    onClick={() => document.getElementById('avatar-upload').click()}
-                  />
-                  <Input
-                    id="avatar-upload"
-                    type="file"
-                    accept="image/*"
-                    display="none"
-                    onChange={handleAvatarUpload}
+                    onClick={handleAvatarUpload}
                   />
                 </Box>
                 <Text fontSize="xs" color={placeholderColor}>

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import {
   Box,
   Flex,
@@ -16,25 +16,31 @@ import {
   Spinner,
   Alert,
   AlertIcon,
+  Badge,
+  Menu,
+  MenuButton,
+  MenuItem,
+  MenuList,
 } from "@chakra-ui/react";
-import { MdChevronLeft, MdChevronRight } from "react-icons/md";
+import { MdChevronLeft, MdChevronRight, MdKeyboardArrowDown } from "react-icons/md";
 import Card from "components/card/Card.js";
 import { useDateRange } from "contexts/DateRangeContext";
 import { useAuth } from "contexts/AuthContext";
 import {
-  getDailyAdSummary,
-  getWeeklyAdSummary,
-  getMonthlyAdSummary,
+  getCampaignAdSummary,
+  getAdGroupAdSummary,
+  getAdAdSummary,
 } from "services/supabaseService";
 
-export default function TotalAdSummary() {
+export default function HierarchicalAdSummary() {
   const { startDate, endDate } = useDateRange();
   const { currentAdvertiserId, availableAdvertisers } = useAuth();
-  const [activeTab, setActiveTab] = useState("daily");
+  const [activeTab, setActiveTab] = useState("campaign");
   const [currentPage, setCurrentPage] = useState(1);
   const [tableData, setTableData] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [selectedMedia, setSelectedMedia] = useState("all");
   const itemsPerPage = 30;
 
   const textColor = useColorModeValue("secondaryGray.900", "white");
@@ -48,6 +54,8 @@ export default function TotalAdSummary() {
   const pageBtnBorderColor = useColorModeValue("gray.200", "whiteAlpha.100");
   const bgHover = useColorModeValue('gray.100', 'whiteAlpha.100');
   const tableHeaderBg = useColorModeValue('white', 'navy.800');
+  const inputBg = useColorModeValue('white', 'navy.700');
+  const brandColor = useColorModeValue('brand.500', 'white');
 
   // Supabase에서 데이터 조회
   useEffect(() => {
@@ -59,22 +67,22 @@ export default function TotalAdSummary() {
         const availableAdvertiserIds = (availableAdvertisers || []).map(adv => adv.id);
         let data = [];
 
-        if (activeTab === "daily") {
-          data = await getDailyAdSummary({
+        if (activeTab === "campaign") {
+          data = await getCampaignAdSummary({
             advertiserId: currentAdvertiserId,
             availableAdvertiserIds,
             startDate,
             endDate,
           });
-        } else if (activeTab === "weekly") {
-          data = await getWeeklyAdSummary({
+        } else if (activeTab === "adgroup") {
+          data = await getAdGroupAdSummary({
             advertiserId: currentAdvertiserId,
             availableAdvertiserIds,
             startDate,
             endDate,
           });
-        } else if (activeTab === "monthly") {
-          data = await getMonthlyAdSummary({
+        } else if (activeTab === "ad") {
+          data = await getAdAdSummary({
             advertiserId: currentAdvertiserId,
             availableAdvertiserIds,
             startDate,
@@ -84,7 +92,7 @@ export default function TotalAdSummary() {
 
         setTableData(data);
       } catch (err) {
-        console.error("전체 광고 요약 데이터 조회 실패:", err);
+        console.error("계층별 광고 요약 데이터 조회 실패:", err);
         setError("데이터를 불러오는데 실패했습니다.");
       } finally {
         setIsLoading(false);
@@ -105,22 +113,41 @@ export default function TotalAdSummary() {
   };
 
   const tabs = [
-    { id: "daily", label: "일별" },
-    { id: "weekly", label: "주별" },
-    { id: "monthly", label: "월별" },
+    { id: "campaign", label: "캠페인", columnHeader: "캠페인명" },
+    { id: "adgroup", label: "광고그룹", columnHeader: "광고그룹명" },
+    { id: "ad", label: "광고", columnHeader: "광고명" },
   ];
 
+  // 고유 매체 목록 추출
+  const availableMedias = useMemo(() => {
+    const mediaSet = new Set();
+    tableData.forEach(row => {
+      if (row.media) {
+        mediaSet.add(row.media);
+      }
+    });
+    return Array.from(mediaSet).sort();
+  }, [tableData]);
+
+  // 매체 필터링된 데이터
+  const filteredData = useMemo(() => {
+    if (selectedMedia === "all") {
+      return tableData;
+    }
+    return tableData.filter(row => row.media === selectedMedia);
+  }, [tableData, selectedMedia]);
+
   // 페이지네이션 계산
-  const totalPages = Math.ceil(tableData.length / itemsPerPage);
-  const paginatedData = tableData.slice(
+  const totalPages = Math.ceil(filteredData.length / itemsPerPage);
+  const paginatedData = filteredData.slice(
     (currentPage - 1) * itemsPerPage,
     currentPage * itemsPerPage
   );
 
-  // 탭 변경 시 페이지 초기화
+  // 탭/매체 변경 시 페이지 초기화
   React.useEffect(() => {
     setCurrentPage(1);
-  }, [activeTab, startDate, endDate]);
+  }, [activeTab, startDate, endDate, selectedMedia]);
 
   // 페이지네이션 버튼 생성
   const getPageNumbers = () => {
@@ -158,30 +185,105 @@ export default function TotalAdSummary() {
     return pages;
   };
 
+  // 현재 탭의 컬럼 헤더 가져오기
+  const currentTab = tabs.find(t => t.id === activeTab);
+  const columnHeader = currentTab?.columnHeader || "이름";
+
   return (
-    <Card flexDirection='column' w='100%' px='0px' overflowX={{ sm: 'scroll', lg: 'hidden' }} mb='20px' h='auto' maxH='650px'>
+    <Card flexDirection='column' w='100%' px='0px' overflowX='auto' mb='20px' h='auto' maxH='650px'>
       <Flex px='25px' mb='8px' justifyContent='space-between' align='center'>
         <Text color={textColor} fontSize='22px' fontWeight='700' lineHeight='100%'>
-          전체 광고 요약
+          계층별 광고 요약
         </Text>
-        <Flex gap='8px'>
-          {tabs.map((tab) => (
-            <Button
-              key={tab.id}
-              size='sm'
-              bg={activeTab === tab.id ? tabActiveBg : tabBg}
-              color={activeTab === tab.id ? tabActiveColor : tabInactiveColor}
-              fontWeight={activeTab === tab.id ? '600' : '500'}
-              _hover={{
-                bg: activeTab === tab.id ? tabActiveBg : tabBg,
-              }}
-              borderRadius='6px'
-              onClick={() => setActiveTab(tab.id)}>
-              {tab.label}
-            </Button>
-          ))}
+        <Flex gap='12px' align='center'>
+          {/* 매체 필터 */}
+          <Menu closeOnSelect={true}>
+            <MenuButton
+              as={Button}
+              rightIcon={<MdKeyboardArrowDown />}
+              bg={inputBg}
+              border='1px solid'
+              borderColor={borderColor}
+              color={textColor}
+              fontWeight='500'
+              fontSize='sm'
+              _hover={{ bg: bgHover }}
+              _active={{ bg: bgHover }}
+              px='16px'
+              h='36px'
+              borderRadius='12px'>
+              {selectedMedia === "all" ? "전체" : selectedMedia}
+            </MenuButton>
+            <MenuList minW='auto' w='fit-content' px='8px' py='8px' zIndex='10'>
+              <MenuItem
+                onClick={(e) => {
+                  e.preventDefault();
+                  setSelectedMedia("all");
+                }}
+                bg={selectedMedia === "all" ? brandColor : 'transparent'}
+                color={selectedMedia === "all" ? 'white' : textColor}
+                _hover={{
+                  bg: selectedMedia === "all" ? brandColor : bgHover,
+                }}
+                fontWeight={selectedMedia === "all" ? '600' : '500'}
+                fontSize='sm'
+                borderRadius='8px'
+                mb='4px'>
+                전체
+              </MenuItem>
+              {availableMedias.map((media) => (
+                <MenuItem
+                  key={media}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    setSelectedMedia(media);
+                  }}
+                  bg={selectedMedia === media ? brandColor : 'transparent'}
+                  color={selectedMedia === media ? 'white' : textColor}
+                  _hover={{
+                    bg: selectedMedia === media ? brandColor : bgHover,
+                  }}
+                  fontWeight={selectedMedia === media ? '600' : '500'}
+                  fontSize='sm'
+                  borderRadius='8px'
+                  mb='4px'>
+                  {media}
+                </MenuItem>
+              ))}
+            </MenuList>
+          </Menu>
+
+          {/* 탭 버튼들 */}
+          <Flex gap='8px'>
+            {tabs.map((tab) => (
+              <Button
+                key={tab.id}
+                size='sm'
+                bg={activeTab === tab.id ? tabActiveBg : tabBg}
+                color={activeTab === tab.id ? tabActiveColor : tabInactiveColor}
+                fontWeight={activeTab === tab.id ? '600' : '500'}
+                _hover={{
+                  bg: activeTab === tab.id ? tabActiveBg : tabBg,
+                }}
+                borderRadius='6px'
+                onClick={() => setActiveTab(tab.id)}>
+                {tab.label}
+              </Button>
+            ))}
+          </Flex>
         </Flex>
       </Flex>
+
+      {/* 광고 탭에서 안내 메시지 표시 */}
+      {activeTab === "ad" && (
+        <Alert status="info" mx="25px" mb="12px" borderRadius="8px">
+          <AlertIcon />
+          <Text fontSize="sm">
+            Google Ads와 Naver는 광고 단위 데이터를 제공하지 않습니다.
+            광고그룹 단위로 집계된 데이터가 "N/A"로 표시됩니다.
+          </Text>
+        </Alert>
+      )}
 
       {isLoading ? (
         <Flex justify='center' align='center' minH='200px'>
@@ -192,10 +294,12 @@ export default function TotalAdSummary() {
           <AlertIcon />
           {error}
         </Alert>
-      ) : tableData.length === 0 ? (
+      ) : filteredData.length === 0 ? (
         <Flex justify='center' align='center' minH='200px'>
           <Text color='gray.500' fontSize='md'>
-            선택한 기간에 데이터가 없습니다.
+            {selectedMedia === "all"
+              ? "선택한 기간에 데이터가 없습니다."
+              : `${selectedMedia} 매체의 데이터가 없습니다.`}
           </Text>
         </Flex>
       ) : (
@@ -206,7 +310,12 @@ export default function TotalAdSummary() {
             <Tr>
               <Th pe='10px' borderColor={borderColor}>
                 <Flex justifyContent='space-between' align='center' fontSize={{ sm: '10px', lg: '12px' }} color='gray.400'>
-                  날짜
+                  매체
+                </Flex>
+              </Th>
+              <Th pe='10px' borderColor={borderColor}>
+                <Flex justifyContent='space-between' align='center' fontSize={{ sm: '10px', lg: '12px' }} color='gray.400'>
+                  {columnHeader}
                 </Flex>
               </Th>
               <Th pe='10px' borderColor={borderColor}>
@@ -262,14 +371,26 @@ export default function TotalAdSummary() {
               const cpc = calculateMetric(row.cost, row.clicks, false);
               const roas = calculateMetric(row.conversionValue, row.cost);
               const cvr = calculateMetric(row.conversions, row.clicks);
-              const rowHeight = tableData.length > 30 ? 'compact' : 'normal';
+              const rowHeight = filteredData.length > 30 ? 'compact' : 'normal';
 
               return (
                 <Tr key={index} h={rowHeight === 'compact' ? '36px' : 'auto'}>
-                  <Td fontSize={{ sm: '14px' }} minW={{ sm: '150px', md: '200px', lg: 'auto' }} borderColor={borderColor} py={rowHeight === 'compact' ? '8px' : '12px'}>
+                  <Td fontSize={{ sm: '14px' }} minW={{ sm: '100px', md: '120px', lg: 'auto' }} borderColor={borderColor} py={rowHeight === 'compact' ? '8px' : '12px'}>
                     <Text fontSize='sm' fontWeight='700' color={textColor}>
-                      {row.key}
+                      {row.media}
                     </Text>
+                  </Td>
+                  <Td fontSize={{ sm: '14px' }} minW={{ sm: '150px', md: '200px', lg: 'auto' }} borderColor={borderColor} py={rowHeight === 'compact' ? '8px' : '12px'}>
+                    <Flex align="center" gap="8px">
+                      <Text fontSize='sm' fontWeight='700' color={textColor}>
+                        {row.key}
+                      </Text>
+                      {activeTab === "ad" && !row.hasAdData && (
+                        <Badge colorScheme="gray" fontSize="10px">
+                          광고명 없음
+                        </Badge>
+                      )}
+                    </Flex>
                   </Td>
                   <Td fontSize={{ sm: '14px' }} minW={{ sm: '150px', md: '200px', lg: 'auto' }} borderColor={borderColor} py={rowHeight === 'compact' ? '8px' : '12px'}>
                     <Text fontSize='sm' fontWeight='700' color={textColor}>

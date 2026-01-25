@@ -25,6 +25,7 @@ import { Box, SimpleGrid } from "@chakra-ui/react";
 import DateRangePicker from "components/fields/DateRangePicker";
 import MediaAdSummary from "views/admin/dataTables/components/MediaAdSummary";
 import TotalAdSummary from "views/admin/dataTables/components/TotalAdSummary";
+import HierarchicalAdSummary from "views/admin/dataTables/components/HierarchicalAdSummary";
 import DevelopmentTable from "views/admin/dataTables/components/DevelopmentTable";
 import CheckTable from "views/admin/dataTables/components/CheckTable";
 import ColumnsTable from "views/admin/dataTables/components/ColumnsTable";
@@ -54,6 +55,7 @@ export default function Settings() {
       <DateRangePicker />
       <MediaAdSummary />
       <TotalAdSummary />
+      <HierarchicalAdSummary />
       <SimpleGrid
         mb='20px'
         columns={{ sm: 1, md: 2 }}

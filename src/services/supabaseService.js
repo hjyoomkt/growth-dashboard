@@ -1457,6 +1457,184 @@ export const getCampaignAdSummary = async ({ advertiserId, availableAdvertiserId
 };
 
 /**
+ * 광고그룹별 광고 요약 데이터 조회
+ * @param {object} params - 필터 파라미터
+ * @param {string} params.advertiserId - 광고주 ID (선택)
+ * @param {array} params.availableAdvertiserIds - 접근 가능한 광고주 ID 목록
+ * @param {string} params.startDate - 시작일 (YYYY-MM-DD)
+ * @param {string} params.endDate - 종료일 (YYYY-MM-DD)
+ */
+export const getAdGroupAdSummary = async ({ advertiserId, availableAdvertiserIds, startDate, endDate }) => {
+  // 메타 전환 타입 조회 (단일 광고주인 경우)
+  let metaConversionType = 'purchase';
+  if (advertiserId && advertiserId !== 'all') {
+    const { data: advertiserData } = await supabase
+      .from('advertisers')
+      .select('meta_conversion_type')
+      .eq('id', advertiserId)
+      .single();
+    metaConversionType = advertiserData?.meta_conversion_type || 'purchase';
+  }
+
+  let query = supabase
+    .from('ad_performance')
+    .select('source, campaign_name, ad_group_name, cost, impressions, clicks, conversions, conversion_value, complete_registrations, complete_registrations_value');
+
+  // 광고주 필터
+  if (advertiserId) {
+    query = query.eq('advertiser_id', advertiserId);
+  } else if (availableAdvertiserIds && availableAdvertiserIds.length > 0) {
+    query = query.in('advertiser_id', availableAdvertiserIds);
+  }
+
+  // 날짜 필터
+  if (startDate) {
+    query = query.gte('date', startDate);
+  }
+  if (endDate) {
+    query = query.lte('date', endDate);
+  }
+
+  query = query.is('deleted_at', null);
+
+  const { data, error } = await query;
+  if (error) throw error;
+
+  // 광고그룹별로 그룹화하여 집계
+  const groupedData = (data || []).reduce((acc, row) => {
+    const key = `${row.source}_${row.campaign_name}_${row.ad_group_name}`;
+    if (!acc[key]) {
+      acc[key] = {
+        media: row.source,
+        key: row.ad_group_name,
+        campaignName: row.campaign_name,
+        cost: 0,
+        impressions: 0,
+        clicks: 0,
+        conversions: 0,
+        conversionValue: 0,
+      };
+    }
+
+    let conversions = 0;
+    let conversionValue = 0;
+
+    if (row.source === 'Meta') {
+      if (metaConversionType === 'complete_registration') {
+        conversions = Number(row.complete_registrations) || 0;
+        conversionValue = Number(row.complete_registrations_value) || 0;
+      } else {
+        conversions = Number(row.conversions) || 0;
+        conversionValue = Number(row.conversion_value) || 0;
+      }
+    } else {
+      conversions = Number(row.conversions) || 0;
+      conversionValue = Number(row.conversion_value) || 0;
+    }
+
+    acc[key].cost += Number(row.cost) || 0;
+    acc[key].impressions += Number(row.impressions) || 0;
+    acc[key].clicks += Number(row.clicks) || 0;
+    acc[key].conversions += conversions;
+    acc[key].conversionValue += conversionValue;
+    return acc;
+  }, {});
+
+  return Object.values(groupedData);
+};
+
+/**
+ * 광고별 광고 요약 데이터 조회 (ad_name NULL 처리 포함)
+ * @param {object} params - 필터 파라미터
+ * @param {string} params.advertiserId - 광고주 ID (선택)
+ * @param {array} params.availableAdvertiserIds - 접근 가능한 광고주 ID 목록
+ * @param {string} params.startDate - 시작일 (YYYY-MM-DD)
+ * @param {string} params.endDate - 종료일 (YYYY-MM-DD)
+ */
+export const getAdAdSummary = async ({ advertiserId, availableAdvertiserIds, startDate, endDate }) => {
+  // 메타 전환 타입 조회 (단일 광고주인 경우)
+  let metaConversionType = 'purchase';
+  if (advertiserId && advertiserId !== 'all') {
+    const { data: advertiserData } = await supabase
+      .from('advertisers')
+      .select('meta_conversion_type')
+      .eq('id', advertiserId)
+      .single();
+    metaConversionType = advertiserData?.meta_conversion_type || 'purchase';
+  }
+
+  let query = supabase
+    .from('ad_performance')
+    .select('source, campaign_name, ad_group_name, ad_name, cost, impressions, clicks, conversions, conversion_value, complete_registrations, complete_registrations_value');
+
+  // 광고주 필터
+  if (advertiserId) {
+    query = query.eq('advertiser_id', advertiserId);
+  } else if (availableAdvertiserIds && availableAdvertiserIds.length > 0) {
+    query = query.in('advertiser_id', availableAdvertiserIds);
+  }
+
+  // 날짜 필터
+  if (startDate) {
+    query = query.gte('date', startDate);
+  }
+  if (endDate) {
+    query = query.lte('date', endDate);
+  }
+
+  query = query.is('deleted_at', null);
+
+  const { data, error } = await query;
+  if (error) throw error;
+
+  // 광고별로 그룹화하여 집계 (NULL ad_name 처리)
+  const groupedData = (data || []).reduce((acc, row) => {
+    const adName = row.ad_name || 'N/A';
+    const key = `${row.source}_${row.campaign_name}_${row.ad_group_name}_${adName}`;
+
+    if (!acc[key]) {
+      acc[key] = {
+        media: row.source,
+        key: adName,
+        campaignName: row.campaign_name,
+        adGroupName: row.ad_group_name,
+        hasAdData: row.ad_name !== null,
+        cost: 0,
+        impressions: 0,
+        clicks: 0,
+        conversions: 0,
+        conversionValue: 0,
+      };
+    }
+
+    let conversions = 0;
+    let conversionValue = 0;
+
+    if (row.source === 'Meta') {
+      if (metaConversionType === 'complete_registration') {
+        conversions = Number(row.complete_registrations) || 0;
+        conversionValue = Number(row.complete_registrations_value) || 0;
+      } else {
+        conversions = Number(row.conversions) || 0;
+        conversionValue = Number(row.conversion_value) || 0;
+      }
+    } else {
+      conversions = Number(row.conversions) || 0;
+      conversionValue = Number(row.conversion_value) || 0;
+    }
+
+    acc[key].cost += Number(row.cost) || 0;
+    acc[key].impressions += Number(row.impressions) || 0;
+    acc[key].clicks += Number(row.clicks) || 0;
+    acc[key].conversions += conversions;
+    acc[key].conversionValue += conversionValue;
+    return acc;
+  }, {});
+
+  return Object.values(groupedData);
+};
+
+/**
  * 일별 광고 요약 데이터 조회
  * @param {object} params - 필터 파라미터
  * @param {string} params.advertiserId - 광고주 ID (선택)
