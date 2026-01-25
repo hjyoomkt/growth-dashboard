@@ -86,7 +86,7 @@ export async function collectNaverAds(
       const timeRange = encodeURIComponent(JSON.stringify({ since: startDate, until: endDate }))
 
       const stats = await callNaverAPI(
-        `/stats?id=${adgroup.nccAdgroupId}&fields=${fields}&timeRange=${timeRange}`,
+        `/stats?id=${adgroup.nccAdgroupId}&fields=${fields}&timeRange=${timeRange}&timeIncrement=1`,
         'GET',
         null,
         apiKey,
@@ -95,15 +95,19 @@ export async function collectNaverAds(
       )
 
       // 통계 데이터 저장
-      if (stats && stats.data && Array.isArray(stats.data)) {
-        for (const s of stats.data) {
+      // timeIncrement=1 사용 시: stats.dailyStat.data[]
+      // fallback: stats.data[] (호환성 유지)
+      const dailyData = stats?.dailyStat?.data || stats?.data || []
+
+      if (Array.isArray(dailyData) && dailyData.length > 0) {
+        for (const s of dailyData) {
           // 데이터가 있는 경우만 저장 (노출, 클릭, 전환 중 하나라도 있으면 저장)
           if ((s.impCnt || 0) > 0 || (s.clkCnt || 0) > 0 || (s.ccnt || 0) > 0) {
             const rowData = {
               advertiser_id: integration.advertiser_id,
               source: 'Naver',
               ad_id: adgroup.nccAdgroupId, // 광고그룹 ID
-              date: startDate, // 통계 데이터에 날짜 필드가 없으므로 요청 날짜 사용
+              date: s.dateStart || startDate, // dailyStat에서 날짜 추출, fallback to request date
               campaign_name: campaign.name || '',
               ad_group_name: adgroup.name || '',
               ad_name: '', // 광고그룹 레벨이므로 빈 문자열
