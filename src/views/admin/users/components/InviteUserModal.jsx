@@ -99,20 +99,20 @@ export default function InviteUserModal({ isOpen, onClose }) {
 
   // 권한 계층 구조 정의
   const roleHierarchy = {
-    master: 8,
-    org_admin: 7,            // 대행사 최고관리자
-    org_manager: 6,          // 대행사 관리자
-    org_staff: 5,            // 대행사 직원
-    advertiser_admin: 4,     // 클라이언트 최고관리자
-    manager: 3,              // 클라이언트 관리자
+    master: 8,               // 마스터 (시스템 관리자)
+    agency_admin: 7,         // 에이전시 대표
+    agency_manager: 6,       // 에이전시 관리자
+    agency_staff: 5,         // 에이전시 직원
+    advertiser_admin: 4,     // 브랜드 대표운영자
+    advertiser_staff: 3,     // 브랜드 부운영자
     editor: 2,               // 편집자
     viewer: 1,               // 뷰어
   };
 
   // 현재 사용자보다 낮거나 같은 권한만 부여 가능
   const canAssignRole = (targetRole) => {
-    // org_admin은 절대 초대 불가 (master만 생성 가능)
-    if (targetRole === 'org_admin') {
+    // agency_admin은 절대 초대 불가 (master만 생성 가능)
+    if (targetRole === 'agency_admin') {
       return false;
     }
 
@@ -126,19 +126,14 @@ export default function InviteUserModal({ isOpen, onClose }) {
       return targetRole === 'advertiser_admin';
     }
 
-    // 대행사(org_admin, org_manager, org_staff)는 클라이언트 직원까지 모두 초대 가능
-    if (['org_admin', 'org_manager', 'org_staff'].includes(currentUserRole)) {
-      return ['org_manager', 'org_staff', 'advertiser_admin', 'manager', 'editor', 'viewer'].includes(targetRole);
+    // 대행사(agency_admin, agency_manager, agency_staff)는 클라이언트 직원까지 모두 초대 가능
+    if (['agency_admin', 'agency_manager', 'agency_staff'].includes(currentUserRole)) {
+      return ['agency_manager', 'agency_staff', 'advertiser_admin', 'advertiser_staff', 'editor', 'viewer'].includes(targetRole);
     }
 
-    // advertiser_admin이 초대하는 경우: manager, editor, viewer 가능
+    // advertiser_admin이 초대하는 경우: advertiser_staff, editor, viewer 가능
     if (currentUserRole === 'advertiser_admin') {
-      return ['manager', 'editor', 'viewer'].includes(targetRole);
-    }
-
-    // manager가 초대하는 경우: editor, viewer만 가능
-    if (currentUserRole === 'manager') {
-      return ['editor', 'viewer'].includes(targetRole);
+      return ['advertiser_staff', 'editor', 'viewer'].includes(targetRole);
     }
 
     // 나머지는 계층 구조에 따라 판단 (낮은 권한만)
@@ -179,11 +174,11 @@ export default function InviteUserModal({ isOpen, onClose }) {
     const roleLabels = {
       viewer: '뷰어',
       editor: '편집자',
-      manager: '클라이언트 관리자',
-      advertiser_admin: '클라이언트 최고관리자',
-      org_staff: '대행사 직원',
-      org_manager: '대행사 관리자',
-      org_admin: '대행사 최고관리자',
+      advertiser_staff: '브랜드 부운영자',
+      advertiser_admin: '브랜드 대표운영자',
+      agency_staff: '에이전시 직원',
+      agency_manager: '에이전시 관리자',
+      agency_admin: '에이전시 대표',
     };
     return roleLabels[role] || role;
   };
@@ -525,114 +520,118 @@ export default function InviteUserModal({ isOpen, onClose }) {
                     </MenuItem>
 
                     <MenuItem
-                      onClick={() => canAssignRole('manager') && handleRoleChange('manager')}
-                      bg={formData.role === 'manager' ? brandColor : 'transparent'}
-                      color={formData.role === 'manager' ? 'white' : textColor}
+                      onClick={() => canAssignRole('advertiser_staff') && handleRoleChange('advertiser_staff')}
+                      bg={formData.role === 'advertiser_staff' ? brandColor : 'transparent'}
+                      color={formData.role === 'advertiser_staff' ? 'white' : textColor}
                       _hover={{
-                        bg: formData.role === 'manager' ? brandColor : bgHover,
+                        bg: formData.role === 'advertiser_staff' ? brandColor : bgHover,
                       }}
-                      fontWeight={formData.role === 'manager' ? '600' : '500'}
+                      fontWeight={formData.role === 'advertiser_staff' ? '600' : '500'}
                       fontSize='sm'
                       px='12px'
                       py='10px'
                       borderRadius='8px'
                       mt='4px'
-                      isDisabled={!canAssignRole('manager')}
-                      opacity={!canAssignRole('manager') ? 0.4 : 1}
+                      isDisabled={!canAssignRole('advertiser_staff')}
+                      opacity={!canAssignRole('advertiser_staff') ? 0.4 : 1}
                     >
                       <Box>
-                        <Text fontWeight="600">관리자</Text>
-                        <Text fontSize="xs" opacity="0.8">어드민 접근 가능, 직원 관리 가능</Text>
+                        <Text fontWeight="600">브랜드 부운영자</Text>
+                        <Text fontSize="xs" opacity="0.8">브랜드 어드민 접근 가능</Text>
                       </Box>
                     </MenuItem>
 
+                    {/* 브랜드 대표운영자: 신규 광고주/브랜드 초대 시에만 표시 */}
+                    {(isAgency() || isMaster()) && (formData.isNewAdvertiser || formData.isNewBrand) && (
+                      <MenuItem
+                        onClick={() => canAssignRole('advertiser_admin') && handleRoleChange('advertiser_admin')}
+                        bg={formData.role === 'advertiser_admin' ? brandColor : 'transparent'}
+                        color={formData.role === 'advertiser_admin' ? 'white' : textColor}
+                        _hover={{
+                          bg: formData.role === 'advertiser_admin' ? brandColor : bgHover,
+                        }}
+                        fontWeight={formData.role === 'advertiser_admin' ? '600' : '500'}
+                        fontSize='sm'
+                        px='12px'
+                        py='10px'
+                        borderRadius='8px'
+                        mt='4px'
+                        isDisabled={!canAssignRole('advertiser_admin')}
+                        opacity={!canAssignRole('advertiser_admin') ? 0.4 : 1}
+                      >
+                        <Box>
+                          <Text fontWeight="600">브랜드 대표운영자</Text>
+                          <Text fontSize="xs" opacity="0.8">브랜드 어드민 접근, 전체 관리 권한</Text>
+                        </Box>
+                      </MenuItem>
+                    )}
+
+                    {/* 에이전시 권한들 */}
                     {(isAgency() || isMaster()) && (
                       <>
                         <MenuItem
-                          onClick={() => canAssignRole('advertiser_admin') && handleRoleChange('advertiser_admin')}
-                          bg={formData.role === 'advertiser_admin' ? brandColor : 'transparent'}
-                          color={formData.role === 'advertiser_admin' ? 'white' : textColor}
+                          onClick={() => canAssignRole('agency_manager') && handleRoleChange('agency_manager')}
+                          bg={formData.role === 'agency_manager' ? brandColor : 'transparent'}
+                          color={formData.role === 'agency_manager' ? 'white' : textColor}
                           _hover={{
-                            bg: formData.role === 'advertiser_admin' ? brandColor : bgHover,
+                            bg: formData.role === 'agency_manager' ? brandColor : bgHover,
                           }}
-                          fontWeight={formData.role === 'advertiser_admin' ? '600' : '500'}
+                          fontWeight={formData.role === 'agency_manager' ? '600' : '500'}
                           fontSize='sm'
                           px='12px'
                           py='10px'
                           borderRadius='8px'
                           mt='4px'
-                          isDisabled={!canAssignRole('advertiser_admin')}
-                          opacity={!canAssignRole('advertiser_admin') ? 0.4 : 1}
+                          isDisabled={!canAssignRole('agency_manager')}
+                          opacity={!canAssignRole('agency_manager') ? 0.4 : 1}
                         >
                           <Box>
-                            <Text fontWeight="600">클라이언트 최고관리자</Text>
-                            <Text fontSize="xs" opacity="0.8">광고주 대표, 전체 관리 권한</Text>
+                            <Text fontWeight="600">에이전시 관리자</Text>
+                            <Text fontSize="xs" opacity="0.8">슈퍼 어드민 접근, 직원 관리</Text>
                           </Box>
                         </MenuItem>
 
                         <MenuItem
-                          onClick={() => canAssignRole('org_manager') && handleRoleChange('org_manager')}
-                          bg={formData.role === 'org_manager' ? brandColor : 'transparent'}
-                          color={formData.role === 'org_manager' ? 'white' : textColor}
+                          onClick={() => canAssignRole('agency_staff') && handleRoleChange('agency_staff')}
+                          bg={formData.role === 'agency_staff' ? brandColor : 'transparent'}
+                          color={formData.role === 'agency_staff' ? 'white' : textColor}
                           _hover={{
-                            bg: formData.role === 'org_manager' ? brandColor : bgHover,
+                            bg: formData.role === 'agency_staff' ? brandColor : bgHover,
                           }}
-                          fontWeight={formData.role === 'org_manager' ? '600' : '500'}
+                          fontWeight={formData.role === 'agency_staff' ? '600' : '500'}
                           fontSize='sm'
                           px='12px'
                           py='10px'
                           borderRadius='8px'
                           mt='4px'
-                          isDisabled={!canAssignRole('org_manager')}
-                          opacity={!canAssignRole('org_manager') ? 0.4 : 1}
+                          isDisabled={!canAssignRole('agency_staff')}
+                          opacity={!canAssignRole('agency_staff') ? 0.4 : 1}
                         >
                           <Box>
-                            <Text fontWeight="600">대행사 관리자</Text>
-                            <Text fontSize="xs" opacity="0.8">대행사 직원, 클라이언트 직원 관리 가능</Text>
+                            <Text fontWeight="600">에이전시 직원</Text>
+                            <Text fontSize="xs" opacity="0.8">담당 브랜드 관리, 데이터 수정</Text>
                           </Box>
                         </MenuItem>
 
                         <MenuItem
-                          onClick={() => canAssignRole('org_staff') && handleRoleChange('org_staff')}
-                          bg={formData.role === 'org_staff' ? brandColor : 'transparent'}
-                          color={formData.role === 'org_staff' ? 'white' : textColor}
+                          onClick={() => canAssignRole('agency_admin') && handleRoleChange('agency_admin')}
+                          bg={formData.role === 'agency_admin' ? brandColor : 'transparent'}
+                          color={formData.role === 'agency_admin' ? 'white' : textColor}
                           _hover={{
-                            bg: formData.role === 'org_staff' ? brandColor : bgHover,
+                            bg: formData.role === 'agency_admin' ? brandColor : bgHover,
                           }}
-                          fontWeight={formData.role === 'org_staff' ? '600' : '500'}
+                          fontWeight={formData.role === 'agency_admin' ? '600' : '500'}
                           fontSize='sm'
                           px='12px'
                           py='10px'
                           borderRadius='8px'
                           mt='4px'
-                          isDisabled={!canAssignRole('org_staff')}
-                          opacity={!canAssignRole('org_staff') ? 0.4 : 1}
+                          isDisabled={!canAssignRole('agency_admin')}
+                          opacity={!canAssignRole('agency_admin') ? 0.4 : 1}
                         >
                           <Box>
-                            <Text fontWeight="600">대행사 직원</Text>
-                            <Text fontSize="xs" opacity="0.8">담당 클라이언트 관리, 데이터 수정 가능</Text>
-                          </Box>
-                        </MenuItem>
-
-                        <MenuItem
-                          onClick={() => canAssignRole('org_admin') && handleRoleChange('org_admin')}
-                          bg={formData.role === 'org_admin' ? brandColor : 'transparent'}
-                          color={formData.role === 'org_admin' ? 'white' : textColor}
-                          _hover={{
-                            bg: formData.role === 'org_admin' ? brandColor : bgHover,
-                          }}
-                          fontWeight={formData.role === 'org_admin' ? '600' : '500'}
-                          fontSize='sm'
-                          px='12px'
-                          py='10px'
-                          borderRadius='8px'
-                          mt='4px'
-                          isDisabled={!canAssignRole('org_admin')}
-                          opacity={!canAssignRole('org_admin') ? 0.4 : 1}
-                        >
-                          <Box>
-                            <Text fontWeight="600">대행사 최고관리자</Text>
-                            <Text fontSize="xs" opacity="0.8">전체 시스템 관리</Text>
+                            <Text fontWeight="600">에이전시 대표</Text>
+                            <Text fontSize="xs" opacity="0.8">슈퍼 어드민 접근, 대행사 전체 관리</Text>
                           </Box>
                         </MenuItem>
                       </>
@@ -642,7 +641,7 @@ export default function InviteUserModal({ isOpen, onClose }) {
               </FormControl>
 
               {/* 브랜드/클라이언트 선택 (관리자급만 접근 가능, 신규 광고주/브랜드 아닐 때만) */}
-              {!formData.isNewAdvertiser && !formData.isNewBrand && (currentUserRole === 'master' || currentUserRole === 'org_admin' || currentUserRole === 'org_manager' || currentUserRole === 'advertiser_admin' || currentUserRole === 'advertiser_staff' || currentUserRole === 'manager') && (
+              {!formData.isNewAdvertiser && !formData.isNewBrand && (currentUserRole === 'master' || currentUserRole === 'agency_admin' || currentUserRole === 'agency_manager' || currentUserRole === 'agency_staff' || currentUserRole === 'advertiser_admin' || currentUserRole === 'advertiser_staff') && (
                 <FormControl>
                   <FormLabel fontSize="sm" color="gray.500">
                     {isAgency() ? '담당 클라이언트 (복수 선택 가능)' : '접근 가능한 브랜드 (복수 선택 가능)'}

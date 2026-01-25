@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   Modal,
   ModalOverlay,
@@ -20,6 +20,12 @@ import {
   Box,
   HStack,
   useToast,
+  AlertDialog,
+  AlertDialogBody,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogContent,
+  AlertDialogOverlay,
 } from "@chakra-ui/react";
 import { useAuth } from "contexts/AuthContext";
 import { MdKeyboardArrowDown } from "react-icons/md";
@@ -33,6 +39,8 @@ export default function EditUserModal({ isOpen, onClose, user, onUpdate }) {
     advertiserIds: [], // 단일 → 다중 선택으로 변경
   });
   const [isLoading, setIsLoading] = useState(false);
+  const [isConfirmOpen, setIsConfirmOpen] = useState(false);
+  const cancelRef = useRef();
 
   // Color mode values
   const textColor = useColorModeValue('secondaryGray.900', 'white');
@@ -128,7 +136,26 @@ export default function EditUserModal({ isOpen, onClose, user, onUpdate }) {
     return roleLabels[role] || role;
   };
 
-  const handleSubmit = async () => {
+  // 브랜드 권한 목록
+  const BRAND_ROLES = ['viewer', 'editor', 'advertiser_admin', 'advertiser_staff'];
+
+  // 담당 브랜드가 변경되었는지 확인
+  const isBrandChanged = () => {
+    const originalIds = user.advertiserIds || [];
+    const newIds = formData.advertiserIds || [];
+
+    // 배열 길이가 다르면 변경됨
+    if (originalIds.length !== newIds.length) return true;
+
+    // 정렬 후 비교
+    const sortedOriginal = [...originalIds].sort();
+    const sortedNew = [...newIds].sort();
+
+    return !sortedOriginal.every((id, index) => id === sortedNew[index]);
+  };
+
+  // 실제 저장 로직
+  const performSave = async () => {
     setIsLoading(true);
 
     try {
@@ -174,6 +201,29 @@ export default function EditUserModal({ isOpen, onClose, user, onUpdate }) {
     }
   };
 
+  // 저장 버튼 클릭 시 처리
+  const handleSubmit = () => {
+    // 브랜드 권한을 가진 사용자의 담당 브랜드가 변경되었는지 확인
+    if (BRAND_ROLES.includes(formData.role) && isBrandChanged()) {
+      // 확인 다이얼로그 표시
+      setIsConfirmOpen(true);
+    } else {
+      // 바로 저장
+      performSave();
+    }
+  };
+
+  // 확인 다이얼로그에서 "예" 클릭 시
+  const handleConfirmSave = () => {
+    setIsConfirmOpen(false);
+    performSave();
+  };
+
+  // 확인 다이얼로그에서 "아니요" 클릭 시
+  const handleCancelSave = () => {
+    setIsConfirmOpen(false);
+  };
+
   const handleClose = () => {
     setFormData({ role: "", advertiserIds: [] });
     onClose();
@@ -185,6 +235,7 @@ export default function EditUserModal({ isOpen, onClose, user, onUpdate }) {
   const hasEditPermission = canEditUser(user);
 
   return (
+    <>
     <Modal isOpen={isOpen} onClose={handleClose} size="md">
       <ModalOverlay />
       <ModalContent>
@@ -521,5 +572,36 @@ export default function EditUserModal({ isOpen, onClose, user, onUpdate }) {
         </ModalFooter>
       </ModalContent>
     </Modal>
+
+    {/* 브랜드 변경 확인 다이얼로그 */}
+    <AlertDialog
+      isOpen={isConfirmOpen}
+      leastDestructiveRef={cancelRef}
+      onClose={handleCancelSave}
+    >
+      <AlertDialogOverlay>
+        <AlertDialogContent>
+          <AlertDialogHeader fontSize="lg" fontWeight="bold">
+            담당 브랜드 변경 확인
+          </AlertDialogHeader>
+
+          <AlertDialogBody>
+            타 광고주 목록이 선택된 것이 아닌지 주의하세요.
+            <br />
+            정말 변경하시겠습니까?
+          </AlertDialogBody>
+
+          <AlertDialogFooter>
+            <Button ref={cancelRef} onClick={handleCancelSave}>
+              아니요
+            </Button>
+            <Button colorScheme="brand" onClick={handleConfirmSave} ml={3}>
+              예
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialogOverlay>
+    </AlertDialog>
+  </>
   );
 }

@@ -128,9 +128,20 @@ function InviteSignUpForm({ initialCode, onSuccess }) {
         advertiserName = advData?.name;
       }
 
+      // 복수 브랜드 이름 조회 (advertiser_ids가 있는 경우)
+      let advertiserNames = [];
+      if (data.advertiser_ids && data.advertiser_ids.length > 0) {
+        const { data: advDataList } = await supabase
+          .from('advertisers')
+          .select('name')
+          .in('id', data.advertiser_ids);
+        advertiserNames = advDataList?.map(adv => adv.name) || [];
+      }
+
       setInviteData({
         organizationName: organizationName,
         advertiserName: advertiserName,
+        advertiserNames: advertiserNames, // 복수 브랜드 이름들
         role: data.role,
         invitedBy: '관리자',
         invitedEmail: data.invited_email,
@@ -141,6 +152,7 @@ function InviteSignUpForm({ initialCode, onSuccess }) {
         invitationId: data.id,
         organizationId: data.organization_id,
         advertiserId: data.advertiser_id,
+        advertiserIds: data.advertiser_ids, // 복수 브랜드 IDs
       });
       setCodeError(null);
     } catch (err) {
@@ -290,14 +302,21 @@ function InviteSignUpForm({ initialCode, onSuccess }) {
 
       if (userError) throw userError;
 
-      // 5. user_advertisers 테이블에 매핑 추가
-      if (finalAdvertiserId) {
+      // 5. user_advertisers 테이블에 매핑 추가 (복수 브랜드 지원)
+      // advertiserIds가 있으면 복수 브랜드, 없으면 단수 브랜드(하위 호환)
+      const advertiserIdsToMap = inviteData.advertiserIds && inviteData.advertiserIds.length > 0
+        ? inviteData.advertiserIds
+        : (finalAdvertiserId ? [finalAdvertiserId] : []);
+
+      if (advertiserIdsToMap.length > 0) {
+        const userAdvertiserMappings = advertiserIdsToMap.map(advId => ({
+          user_id: authData.user.id,
+          advertiser_id: advId,
+        }));
+
         const { error: userAdvError } = await supabase
           .from('user_advertisers')
-          .insert({
-            user_id: authData.user.id,
-            advertiser_id: finalAdvertiserId,
-          });
+          .insert(userAdvertiserMappings);
 
         if (userAdvError) throw userAdvError;
       }
@@ -435,7 +454,9 @@ function InviteSignUpForm({ initialCode, onSuccess }) {
               ) : (
                 <>
                   <Text><strong>조직:</strong> {inviteData.organizationName}</Text>
-                  {inviteData.advertiserName && (
+                  {inviteData.advertiserNames && inviteData.advertiserNames.length > 0 ? (
+                    <Text><strong>접근 가능한 브랜드:</strong> {inviteData.advertiserNames.join(', ')}</Text>
+                  ) : inviteData.advertiserName && (
                     <Text><strong>광고주:</strong> {inviteData.advertiserName}</Text>
                   )}
                   <Text><strong>권한:</strong> {

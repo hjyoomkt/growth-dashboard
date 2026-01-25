@@ -58,7 +58,9 @@ export default function HeaderLinks(props) {
     role === 'agency_manager' ||
     role === 'agency_staff' ||
     role === 'advertiser_admin' ||
-    role === 'advertiser_staff';
+    role === 'advertiser_staff' ||
+    role === 'viewer' ||
+    role === 'editor';
 
   console.log('[NavbarLinks]', {
     role,

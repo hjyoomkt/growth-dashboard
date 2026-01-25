@@ -110,7 +110,7 @@ export const getUserMetadata = async (userId) => {
  */
 export const getAvailableAdvertisers = async (userData) => {
   const isAgency = ['agency_admin', 'agency_manager', 'agency_staff'].includes(userData.role);
-  const isAdvertiser = ['advertiser_admin', 'advertiser_staff'].includes(userData.role);
+  const isAdvertiser = ['advertiser_admin', 'advertiser_staff', 'viewer', 'editor'].includes(userData.role);
 
   if (userData.role === 'master') {
     // Master: 모든 광고주
@@ -730,6 +730,7 @@ export const createInviteCode = async (inviteData) => {
       code: code,
       organization_id: inviteData.organizationId || null,
       advertiser_id: inviteData.advertiserId || null,
+      advertiser_ids: inviteData.advertiserIds || null, // 복수 브랜드 지원
       invited_email: inviteData.email,
       role: inviteData.role,
       created_by: inviteData.createdBy,
