@@ -20,7 +20,7 @@ export default function Notifications(props) {
   const boardNotificationBorder = useColorModeValue("purple.200", "purple.700");
   const listBorderColor = useColorModeValue("gray.200", "whiteAlpha.100");
   const listHoverBg = useColorModeValue("gray.50", "whiteAlpha.50");
-  const { apiNotifications, markNotificationAsRead, removeNotification, user, currentAdvertiserId, role } = useAuth();
+  const { apiNotifications, markNotificationAsRead, removeNotification, user, currentAdvertiserId, role, availableAdvertisers } = useAuth();
 
   // DB에서 실제 게시글 가져오기
   const [dbBoardPosts, setDbBoardPosts] = useState([]);
@@ -48,7 +48,13 @@ export default function Notifications(props) {
         // 브랜드 사용자인 경우에만 currentAdvertiserId로 필터링
         const filterAdvertiserId = isBrandUser ? currentAdvertiserId : null;
 
-        const posts = await getBoardPosts(boardType, user.id, filterAdvertiserId);
+        const posts = await getBoardPosts(
+          boardType,
+          user.id,
+          filterAdvertiserId,
+          role,  // 사용자 역할 전달
+          availableAdvertisers  // 접근 가능한 브랜드 전달
+        );
         // 모든 게시글 가져오기 (읽음/안읽음 상관없이)
         setDbBoardPosts(posts);
       } catch (error) {

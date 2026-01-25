@@ -196,7 +196,7 @@ export const getAvailableAdvertisers = async (userData) => {
  */
 export const getUsers = async (currentUser) => {
   const isAgency = ['agency_admin', 'agency_manager', 'agency_staff'].includes(currentUser.role);
-  const isAdvertiser = ['advertiser_admin', 'advertiser_staff'].includes(currentUser.role);
+  const isAdvertiser = ['advertiser_admin', 'advertiser_staff', 'viewer', 'editor'].includes(currentUser.role);
 
   if (currentUser.role === 'master') {
     // Master: 모든 사용자 조회 가능
@@ -224,9 +224,22 @@ export const getUsers = async (currentUser) => {
           `)
           .eq('user_id', user.id);
 
-        user.accessible_advertisers = (userAdvertisers || [])
+        let advertisers = (userAdvertisers || [])
           .map(ua => ua.advertisers)
           .filter(Boolean);
+
+        // "담당 브랜드 전체" 처리: user_advertisers가 비어있고 organization_id가 있으면 조직의 모든 브랜드
+        if (advertisers.length === 0 && user.organization_id) {
+          const { data: orgAdvertisers } = await supabase
+            .from('advertisers')
+            .select('id, name')
+            .eq('organization_id', user.organization_id)
+            .is('deleted_at', null);
+
+          advertisers = orgAdvertisers || [];
+        }
+
+        user.accessible_advertisers = advertisers;
 
         return user;
       })
@@ -315,9 +328,22 @@ export const getUsers = async (currentUser) => {
           `)
           .eq('user_id', user.id);
 
-        user.accessible_advertisers = (userAdvertisers || [])
+        let advertisers = (userAdvertisers || [])
           .map(ua => ua.advertisers)
           .filter(Boolean);
+
+        // "담당 브랜드 전체" 처리: user_advertisers가 비어있고 organization_id가 있으면 조직의 모든 브랜드
+        if (advertisers.length === 0 && user.organization_id) {
+          const { data: orgAdvertisers } = await supabase
+            .from('advertisers')
+            .select('id, name')
+            .eq('organization_id', user.organization_id)
+            .is('deleted_at', null);
+
+          advertisers = orgAdvertisers || [];
+        }
+
+        user.accessible_advertisers = advertisers;
 
         return user;
       })
@@ -2345,7 +2371,43 @@ export const getUserStats = async () => {
  * @param {string} advertiserId - 광고주 ID (brand 게시판용)
  * @returns {Array} 게시글 목록
  */
-export const getBoardPosts = async (boardType, userId, advertiserId = null) => {
+export const getBoardPosts = async (
+  boardType,
+  userId,
+  advertiserId = null,
+  userRole = null,
+  availableAdvertisers = []
+) => {
+  // 시스템 정의 대상 (브랜드명이 아님)
+  const SYSTEM_TARGETS = ['모든 사용자', '대행사 소속', '모든 브랜드', '내 브랜드'];
+
+  // 슈퍼어드민 역할
+  const SUPER_ADMIN_ROLES = ['master', 'agency_admin', 'agency_manager'];
+
+  // target_roles 필터링 함수
+  const filterTargetRoles = (targetRoles, userRole, availableAdvertisers) => {
+    if (!targetRoles || targetRoles.length === 0) {
+      return ['모든 사용자'];
+    }
+
+    // 슈퍼어드민은 필터링 없이 모든 대상 반환
+    if (SUPER_ADMIN_ROLES.includes(userRole)) {
+      return targetRoles;
+    }
+
+    // 일반 사용자: 시스템 대상 + 자신의 브랜드만 필터링
+    const availableAdvertiserNames = (availableAdvertisers || []).map(adv => adv.name);
+
+    return targetRoles.filter(target => {
+      // 시스템 대상은 항상 포함
+      if (SYSTEM_TARGETS.includes(target)) {
+        return true;
+      }
+      // 사용자가 접근 가능한 브랜드만 포함
+      return availableAdvertiserNames.includes(target);
+    });
+  };
+
   let data = [];
 
   if (boardType === 'brand' && advertiserId) {
@@ -2447,7 +2509,11 @@ export const getBoardPosts = async (boardType, userId, advertiserId = null) => {
     authorEmail: post.users?.email || '',
     authorRole: post.users?.role || null,
     date: new Date(post.created_at).toISOString().split('T')[0],
-    targets: post.target_roles || ['모든 사용자'],
+    targets: filterTargetRoles(
+      post.target_roles,
+      userRole,
+      availableAdvertisers
+    ),  // 서버 사이드 필터링 적용
     isRead: readStatus[post.id] || false,
     createdBy: post.created_by,
   }));

@@ -6,7 +6,8 @@ import {
   signOut as supabaseSignOut,
   getCurrentUser,
   getUserMetadata,
-  getAvailableAdvertisers
+  getAvailableAdvertisers,
+  getBoardPosts
 } from '../services/supabaseService';
 
 const AuthContext = createContext();
@@ -103,6 +104,58 @@ export const AuthProvider = ({ children }) => {
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);
   }, [availableAdvertisers, currentAdvertiserId]);
+
+  // 게시판 알림 자동 로드
+  useEffect(() => {
+    const fetchBoardNotifications = async () => {
+      if (!user || !role || !availableAdvertisers) return;
+
+      try {
+        // 브랜드 사용자 여부 확인
+        const isBrandUser = ['advertiser_admin', 'advertiser_staff', 'viewer', 'editor'].includes(role);
+
+        // 브랜드 사용자는 'brand' 타입, 나머지는 'admin' 타입
+        const boardType = isBrandUser ? 'brand' : 'admin';
+
+        // 브랜드 사용자인 경우에만 currentAdvertiserId로 필터링
+        const filterAdvertiserId = isBrandUser ? currentAdvertiserId : null;
+
+        // 게시글 조회 (서버 사이드 필터링 적용)
+        const posts = await getBoardPosts(
+          boardType,
+          user.id,
+          filterAdvertiserId,
+          role,
+          availableAdvertisers
+        );
+
+        // 읽지 않은 게시글만 알림으로 변환
+        const unreadNotifications = posts
+          .filter(post => !post.isRead)
+          .map(post => ({
+            id: `board-${post.id}`,
+            type: 'board',
+            title: '새 게시글',
+            message: post.title,
+            postId: post.id,
+            postTitle: post.title,
+            postContent: post.content,
+            timestamp: post.date,
+            read: false,
+          }));
+
+        setBoardNotifications(unreadNotifications);
+      } catch (error) {
+        console.error('[AuthContext] 게시판 알림 조회 실패:', error);
+      }
+    };
+
+    fetchBoardNotifications();
+
+    // 30초마다 알림 새로고침
+    const interval = setInterval(fetchBoardNotifications, 30000);
+    return () => clearInterval(interval);
+  }, [user, role, availableAdvertisers, currentAdvertiserId]);
 
   // ✅ 사용자 메타데이터 조회 함수
   const fetchUserMetadata = async (userId) => {

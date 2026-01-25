@@ -27,7 +27,7 @@ import { getBoardPosts, markPostAsRead, deleteBoardPost, canDeletePost } from 's
 export default function Board() {
   const textColor = useColorModeValue('secondaryGray.900', 'white');
   const borderColor = useColorModeValue('gray.200', 'whiteAlpha.100');
-  const { role, user, currentAdvertiserId } = useAuth();
+  const { role, user, currentAdvertiserId, availableAdvertisers } = useAuth();
   const toast = useToast();
 
   // 현재 경로로 게시판 타입 판단 (브랜드 어드민 vs 슈퍼 어드민)
@@ -60,7 +60,13 @@ export default function Board() {
 
     setIsLoading(true);
     try {
-      const data = await getBoardPosts(boardType, user.id, filterAdvertiserId);
+      const data = await getBoardPosts(
+        boardType,
+        user.id,
+        filterAdvertiserId,
+        role,  // 사용자 역할 전달
+        availableAdvertisers  // 접근 가능한 브랜드 전달
+      );
       console.log('[게시판] 조회된 게시글:', data);
       setPosts(data);
 
