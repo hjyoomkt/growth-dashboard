@@ -827,9 +827,20 @@ export const deleteData = async (tableName, id) => {
  * 요일별 전환수 조회 (일~토 집계)
  */
 export const getWeeklyConversions = async ({ advertiserId, availableAdvertiserIds, startDate, endDate }) => {
+  // 메타 전환 타입 조회 (단일 광고주인 경우)
+  let metaConversionType = 'purchase';
+  if (advertiserId && advertiserId !== 'all') {
+    const { data: advertiserData } = await supabase
+      .from('advertisers')
+      .select('meta_conversion_type')
+      .eq('id', advertiserId)
+      .single();
+    metaConversionType = advertiserData?.meta_conversion_type || 'purchase';
+  }
+
   let query = supabase
     .from('ad_performance')
-    .select('date, conversions');
+    .select('date, source, conversions, complete_registrations');
 
   if (advertiserId) {
     query = query.eq('advertiser_id', advertiserId);
@@ -849,7 +860,17 @@ export const getWeeklyConversions = async ({ advertiserId, availableAdvertiserId
   (data || []).forEach(row => {
     const date = new Date(row.date);
     const dayOfWeek = date.getDay();
-    dayConversions[dayOfWeek] += Number(row.conversions) || 0;
+
+    let convValue = 0;
+    if (row.source === 'Meta') {
+      convValue = metaConversionType === 'complete_registration'
+        ? Number(row.complete_registrations) || 0
+        : Number(row.conversions) || 0;
+    } else {
+      convValue = Number(row.conversions) || 0;
+    }
+
+    dayConversions[dayOfWeek] += convValue;
   });
 
   // 월~일 순서로 재배열
@@ -954,9 +975,20 @@ export const unsubscribe = (subscription) => {
  * @param {string} params.endDate - 종료일 (YYYY-MM-DD)
  */
 export const getKPIData = async ({ advertiserId, availableAdvertiserIds, startDate, endDate }) => {
+  // 메타 전환 타입 조회 (단일 광고주인 경우)
+  let metaConversionType = 'purchase';
+  if (advertiserId && advertiserId !== 'all') {
+    const { data: advertiserData } = await supabase
+      .from('advertisers')
+      .select('meta_conversion_type')
+      .eq('id', advertiserId)
+      .single();
+    metaConversionType = advertiserData?.meta_conversion_type || 'purchase';
+  }
+
   let query = supabase
     .from('ad_performance')
-    .select('cost, impressions, clicks, conversions, conversion_value');
+    .select('source, cost, impressions, clicks, conversions, conversion_value, complete_registrations, complete_registrations_value');
 
   // 광고주 필터
   if (advertiserId) {
@@ -980,15 +1012,35 @@ export const getKPIData = async ({ advertiserId, availableAdvertiserIds, startDa
   const { data, error } = await query;
   if (error) throw error;
 
-  // 클라이언트에서 집계 계산
+  // 클라이언트에서 집계 계산 (매체별 분기 처리)
   const totals = (data || []).reduce(
-    (acc, row) => ({
-      cost: acc.cost + (Number(row.cost) || 0),
-      impressions: acc.impressions + (Number(row.impressions) || 0),
-      clicks: acc.clicks + (Number(row.clicks) || 0),
-      conversions: acc.conversions + (Number(row.conversions) || 0),
-      conversion_value: acc.conversion_value + (Number(row.conversion_value) || 0),
-    }),
+    (acc, row) => {
+      let conversions = 0;
+      let conversionValue = 0;
+
+      if (row.source === 'Meta') {
+        // 메타 광고: 설정에 따라 분기
+        if (metaConversionType === 'complete_registration') {
+          conversions = Number(row.complete_registrations) || 0;
+          conversionValue = Number(row.complete_registrations_value) || 0;
+        } else {
+          conversions = Number(row.conversions) || 0;
+          conversionValue = Number(row.conversion_value) || 0;
+        }
+      } else {
+        // 다른 매체: 항상 conversions 사용
+        conversions = Number(row.conversions) || 0;
+        conversionValue = Number(row.conversion_value) || 0;
+      }
+
+      return {
+        cost: acc.cost + (Number(row.cost) || 0),
+        impressions: acc.impressions + (Number(row.impressions) || 0),
+        clicks: acc.clicks + (Number(row.clicks) || 0),
+        conversions: acc.conversions + conversions,
+        conversion_value: acc.conversion_value + conversionValue,
+      };
+    },
     { cost: 0, impressions: 0, clicks: 0, conversions: 0, conversion_value: 0 }
   );
 
@@ -1183,9 +1235,20 @@ export const getMediaRevenue = async ({ advertiserId, availableAdvertiserIds, st
  * @param {string} params.endDate - 종료일 (YYYY-MM-DD)
  */
 export const getMediaAdSummary = async ({ advertiserId, availableAdvertiserIds, startDate, endDate }) => {
+  // 메타 전환 타입 조회 (단일 광고주인 경우)
+  let metaConversionType = 'purchase';
+  if (advertiserId && advertiserId !== 'all') {
+    const { data: advertiserData } = await supabase
+      .from('advertisers')
+      .select('meta_conversion_type')
+      .eq('id', advertiserId)
+      .single();
+    metaConversionType = advertiserData?.meta_conversion_type || 'purchase';
+  }
+
   let query = supabase
     .from('ad_performance')
-    .select('source, cost, impressions, clicks, conversions, conversion_value');
+    .select('source, cost, impressions, clicks, conversions, conversion_value, complete_registrations, complete_registrations_value');
 
   // 광고주 필터
   if (advertiserId) {
@@ -1206,7 +1269,7 @@ export const getMediaAdSummary = async ({ advertiserId, availableAdvertiserIds, 
   const { data, error } = await query;
   if (error) throw error;
 
-  // 매체별로 그룹화하여 집계
+  // 매체별로 그룹화하여 집계 (매체별 분기 처리)
   const groupedData = (data || []).reduce((acc, row) => {
     const source = row.source;
     if (!acc[source]) {
@@ -1219,11 +1282,28 @@ export const getMediaAdSummary = async ({ advertiserId, availableAdvertiserIds, 
         conversionValue: 0,
       };
     }
+
+    let conversions = 0;
+    let conversionValue = 0;
+
+    if (row.source === 'Meta') {
+      if (metaConversionType === 'complete_registration') {
+        conversions = Number(row.complete_registrations) || 0;
+        conversionValue = Number(row.complete_registrations_value) || 0;
+      } else {
+        conversions = Number(row.conversions) || 0;
+        conversionValue = Number(row.conversion_value) || 0;
+      }
+    } else {
+      conversions = Number(row.conversions) || 0;
+      conversionValue = Number(row.conversion_value) || 0;
+    }
+
     acc[source].cost += Number(row.cost) || 0;
     acc[source].impressions += Number(row.impressions) || 0;
     acc[source].clicks += Number(row.clicks) || 0;
-    acc[source].conversions += Number(row.conversions) || 0;
-    acc[source].conversionValue += Number(row.conversion_value) || 0;
+    acc[source].conversions += conversions;
+    acc[source].conversionValue += conversionValue;
     return acc;
   }, {});
 
@@ -1239,9 +1319,20 @@ export const getMediaAdSummary = async ({ advertiserId, availableAdvertiserIds, 
  * @param {string} params.endDate - 종료일 (YYYY-MM-DD)
  */
 export const getCampaignAdSummary = async ({ advertiserId, availableAdvertiserIds, startDate, endDate }) => {
+  // 메타 전환 타입 조회 (단일 광고주인 경우)
+  let metaConversionType = 'purchase';
+  if (advertiserId && advertiserId !== 'all') {
+    const { data: advertiserData } = await supabase
+      .from('advertisers')
+      .select('meta_conversion_type')
+      .eq('id', advertiserId)
+      .single();
+    metaConversionType = advertiserData?.meta_conversion_type || 'purchase';
+  }
+
   let query = supabase
     .from('ad_performance')
-    .select('source, campaign_name, cost, impressions, clicks, conversions, conversion_value');
+    .select('source, campaign_name, cost, impressions, clicks, conversions, conversion_value, complete_registrations, complete_registrations_value');
 
   // 광고주 필터
   if (advertiserId) {
@@ -1262,7 +1353,7 @@ export const getCampaignAdSummary = async ({ advertiserId, availableAdvertiserId
   const { data, error } = await query;
   if (error) throw error;
 
-  // 캠페인별로 그룹화하여 집계
+  // 캠페인별로 그룹화하여 집계 (매체별 분기 처리)
   const groupedData = (data || []).reduce((acc, row) => {
     const key = `${row.source}_${row.campaign_name}`;
     if (!acc[key]) {
@@ -1276,11 +1367,28 @@ export const getCampaignAdSummary = async ({ advertiserId, availableAdvertiserId
         conversionValue: 0,
       };
     }
+
+    let conversions = 0;
+    let conversionValue = 0;
+
+    if (row.source === 'Meta') {
+      if (metaConversionType === 'complete_registration') {
+        conversions = Number(row.complete_registrations) || 0;
+        conversionValue = Number(row.complete_registrations_value) || 0;
+      } else {
+        conversions = Number(row.conversions) || 0;
+        conversionValue = Number(row.conversion_value) || 0;
+      }
+    } else {
+      conversions = Number(row.conversions) || 0;
+      conversionValue = Number(row.conversion_value) || 0;
+    }
+
     acc[key].cost += Number(row.cost) || 0;
     acc[key].impressions += Number(row.impressions) || 0;
     acc[key].clicks += Number(row.clicks) || 0;
-    acc[key].conversions += Number(row.conversions) || 0;
-    acc[key].conversionValue += Number(row.conversion_value) || 0;
+    acc[key].conversions += conversions;
+    acc[key].conversionValue += conversionValue;
     return acc;
   }, {});
 
@@ -1296,9 +1404,20 @@ export const getCampaignAdSummary = async ({ advertiserId, availableAdvertiserId
  * @param {string} params.endDate - 종료일 (YYYY-MM-DD)
  */
 export const getDailyAdSummary = async ({ advertiserId, availableAdvertiserIds, startDate, endDate }) => {
+  // 메타 전환 타입 조회 (단일 광고주인 경우)
+  let metaConversionType = 'purchase';
+  if (advertiserId && advertiserId !== 'all') {
+    const { data: advertiserData } = await supabase
+      .from('advertisers')
+      .select('meta_conversion_type')
+      .eq('id', advertiserId)
+      .single();
+    metaConversionType = advertiserData?.meta_conversion_type || 'purchase';
+  }
+
   let query = supabase
     .from('ad_performance')
-    .select('date, cost, impressions, clicks, conversions, conversion_value');
+    .select('source, date, cost, impressions, clicks, conversions, conversion_value, complete_registrations, complete_registrations_value');
 
   // 광고주 필터
   if (advertiserId) {
@@ -1319,7 +1438,7 @@ export const getDailyAdSummary = async ({ advertiserId, availableAdvertiserIds, 
   const { data, error } = await query;
   if (error) throw error;
 
-  // 날짜별로 그룹화하여 집계
+  // 날짜별로 그룹화하여 집계 (매체별 분기 처리)
   const groupedData = (data || []).reduce((acc, row) => {
     const date = row.date;
     if (!acc[date]) {
@@ -1332,11 +1451,28 @@ export const getDailyAdSummary = async ({ advertiserId, availableAdvertiserIds, 
         conversionValue: 0,
       };
     }
+
+    let conversions = 0;
+    let conversionValue = 0;
+
+    if (row.source === 'Meta') {
+      if (metaConversionType === 'complete_registration') {
+        conversions = Number(row.complete_registrations) || 0;
+        conversionValue = Number(row.complete_registrations_value) || 0;
+      } else {
+        conversions = Number(row.conversions) || 0;
+        conversionValue = Number(row.conversion_value) || 0;
+      }
+    } else {
+      conversions = Number(row.conversions) || 0;
+      conversionValue = Number(row.conversion_value) || 0;
+    }
+
     acc[date].cost += Number(row.cost) || 0;
     acc[date].impressions += Number(row.impressions) || 0;
     acc[date].clicks += Number(row.clicks) || 0;
-    acc[date].conversions += Number(row.conversions) || 0;
-    acc[date].conversionValue += Number(row.conversion_value) || 0;
+    acc[date].conversions += conversions;
+    acc[date].conversionValue += conversionValue;
     return acc;
   }, {});
 
@@ -1352,9 +1488,20 @@ export const getDailyAdSummary = async ({ advertiserId, availableAdvertiserIds, 
  * @param {string} params.endDate - 종료일 (YYYY-MM-DD)
  */
 export const getWeeklyAdSummary = async ({ advertiserId, availableAdvertiserIds, startDate, endDate }) => {
+  // 메타 전환 타입 조회 (단일 광고주인 경우)
+  let metaConversionType = 'purchase';
+  if (advertiserId && advertiserId !== 'all') {
+    const { data: advertiserData } = await supabase
+      .from('advertisers')
+      .select('meta_conversion_type')
+      .eq('id', advertiserId)
+      .single();
+    metaConversionType = advertiserData?.meta_conversion_type || 'purchase';
+  }
+
   let query = supabase
     .from('ad_performance')
-    .select('date, cost, impressions, clicks, conversions, conversion_value');
+    .select('source, date, cost, impressions, clicks, conversions, conversion_value, complete_registrations, complete_registrations_value');
 
   // 광고주 필터
   if (advertiserId) {
@@ -1375,7 +1522,7 @@ export const getWeeklyAdSummary = async ({ advertiserId, availableAdvertiserIds,
   const { data, error } = await query;
   if (error) throw error;
 
-  // 주별로 그룹화 (월요일 시작)
+  // 주별로 그룹화 (월요일 시작, 매체별 분기 처리)
   const groupedData = {};
 
   (data || []).forEach(row => {
@@ -1402,11 +1549,27 @@ export const getWeeklyAdSummary = async ({ advertiserId, availableAdvertiserIds,
       };
     }
 
+    let conversions = 0;
+    let conversionValue = 0;
+
+    if (row.source === 'Meta') {
+      if (metaConversionType === 'complete_registration') {
+        conversions = Number(row.complete_registrations) || 0;
+        conversionValue = Number(row.complete_registrations_value) || 0;
+      } else {
+        conversions = Number(row.conversions) || 0;
+        conversionValue = Number(row.conversion_value) || 0;
+      }
+    } else {
+      conversions = Number(row.conversions) || 0;
+      conversionValue = Number(row.conversion_value) || 0;
+    }
+
     groupedData[weekKey].cost += Number(row.cost) || 0;
     groupedData[weekKey].impressions += Number(row.impressions) || 0;
     groupedData[weekKey].clicks += Number(row.clicks) || 0;
-    groupedData[weekKey].conversions += Number(row.conversions) || 0;
-    groupedData[weekKey].conversionValue += Number(row.conversion_value) || 0;
+    groupedData[weekKey].conversions += conversions;
+    groupedData[weekKey].conversionValue += conversionValue;
   });
 
   return Object.values(groupedData);
@@ -1420,9 +1583,20 @@ export const getWeeklyAdSummary = async ({ advertiserId, availableAdvertiserIds,
  * @param {string} params.endDate - 종료일 (YYYY-MM-DD)
  */
 export const getMonthlyAdSummary = async ({ advertiserId, availableAdvertiserIds, startDate, endDate }) => {
+  // 메타 전환 타입 조회 (단일 광고주인 경우)
+  let metaConversionType = 'purchase';
+  if (advertiserId && advertiserId !== 'all') {
+    const { data: advertiserData } = await supabase
+      .from('advertisers')
+      .select('meta_conversion_type')
+      .eq('id', advertiserId)
+      .single();
+    metaConversionType = advertiserData?.meta_conversion_type || 'purchase';
+  }
+
   let query = supabase
     .from('ad_performance')
-    .select('date, cost, impressions, clicks, conversions, conversion_value');
+    .select('source, date, cost, impressions, clicks, conversions, conversion_value, complete_registrations, complete_registrations_value');
 
   // 광고주 필터
   if (advertiserId) {
@@ -1443,7 +1617,7 @@ export const getMonthlyAdSummary = async ({ advertiserId, availableAdvertiserIds
   const { data, error } = await query;
   if (error) throw error;
 
-  // 월별로 그룹화
+  // 월별로 그룹화 (매체별 분기 처리)
   const groupedData = (data || []).reduce((acc, row) => {
     const date = new Date(row.date);
     const year = date.getFullYear();
@@ -1461,11 +1635,27 @@ export const getMonthlyAdSummary = async ({ advertiserId, availableAdvertiserIds
       };
     }
 
+    let conversions = 0;
+    let conversionValue = 0;
+
+    if (row.source === 'Meta') {
+      if (metaConversionType === 'complete_registration') {
+        conversions = Number(row.complete_registrations) || 0;
+        conversionValue = Number(row.complete_registrations_value) || 0;
+      } else {
+        conversions = Number(row.conversions) || 0;
+        conversionValue = Number(row.conversion_value) || 0;
+      }
+    } else {
+      conversions = Number(row.conversions) || 0;
+      conversionValue = Number(row.conversion_value) || 0;
+    }
+
     acc[monthKey].cost += Number(row.cost) || 0;
     acc[monthKey].impressions += Number(row.impressions) || 0;
     acc[monthKey].clicks += Number(row.clicks) || 0;
-    acc[monthKey].conversions += Number(row.conversions) || 0;
-    acc[monthKey].conversionValue += Number(row.conversion_value) || 0;
+    acc[monthKey].conversions += conversions;
+    acc[monthKey].conversionValue += conversionValue;
     return acc;
   }, {});
 
@@ -1544,9 +1734,20 @@ export const getMediaROASAnalysis = async ({ advertiserId, availableAdvertiserId
  * @param {object} params - 필터 파라미터
  */
 export const getDailyROASAndCost = async ({ advertiserId, availableAdvertiserIds, startDate, endDate }) => {
+  // 메타 전환 타입 조회 (단일 광고주인 경우)
+  let metaConversionType = 'purchase';
+  if (advertiserId && advertiserId !== 'all') {
+    const { data: advertiserData } = await supabase
+      .from('advertisers')
+      .select('meta_conversion_type')
+      .eq('id', advertiserId)
+      .single();
+    metaConversionType = advertiserData?.meta_conversion_type || 'purchase';
+  }
+
   let query = supabase
     .from('ad_performance')
-    .select('date, cost, conversion_value');
+    .select('source, date, cost, conversion_value, complete_registrations_value');
 
   // 광고주 필터
   if (advertiserId) {
@@ -1567,14 +1768,24 @@ export const getDailyROASAndCost = async ({ advertiserId, availableAdvertiserIds
   const { data, error } = await query;
   if (error) throw error;
 
-  // 날짜별로 그룹화하여 합산
+  // 날짜별로 그룹화하여 합산 (매체별 분기 처리)
   const groupedData = (data || []).reduce((acc, row) => {
     const date = row.date;
     if (!acc[date]) {
       acc[date] = { cost: 0, conversion_value: 0 };
     }
+
+    let conversionValue = 0;
+    if (row.source === 'Meta') {
+      conversionValue = metaConversionType === 'complete_registration'
+        ? Number(row.complete_registrations_value) || 0
+        : Number(row.conversion_value) || 0;
+    } else {
+      conversionValue = Number(row.conversion_value) || 0;
+    }
+
     acc[date].cost += Number(row.cost) || 0;
-    acc[date].conversion_value += Number(row.conversion_value) || 0;
+    acc[date].conversion_value += conversionValue;
     return acc;
   }, {});
 
@@ -1597,10 +1808,21 @@ export const getDailyROASAndCost = async ({ advertiserId, availableAdvertiserIds
 export const getBestCreatives = async ({ advertiserId, availableAdvertiserIds, startDate, endDate, limit = 6 }) => {
   // ===== 2025-12-31: Supabase 크리에이티브 데이터 조회 =====
 
+  // 메타 전환 타입 조회 (단일 광고주인 경우)
+  let metaConversionType = 'purchase';
+  if (advertiserId && advertiserId !== 'all') {
+    const { data: advertiserData } = await supabase
+      .from('advertisers')
+      .select('meta_conversion_type')
+      .eq('id', advertiserId)
+      .single();
+    metaConversionType = advertiserData?.meta_conversion_type || 'purchase';
+  }
+
   // 1. ad_performance 데이터 조회 (성과 데이터)
   let performanceQuery = supabase
     .from('ad_performance')
-    .select('ad_id, source, cost, impressions, clicks, conversions, conversion_value');
+    .select('ad_id, source, cost, impressions, clicks, conversions, conversion_value, complete_registrations, complete_registrations_value');
 
   // 광고주 필터
   if (advertiserId) {
@@ -1620,7 +1842,7 @@ export const getBestCreatives = async ({ advertiserId, availableAdvertiserIds, s
   const { data: performanceData, error: performanceError } = await performanceQuery;
   if (performanceError) throw performanceError;
 
-  // 2. ad_id별로 성과 집계
+  // 2. ad_id별로 성과 집계 (매체별 분기 처리)
   const aggregatedPerformance = (performanceData || []).reduce((acc, row) => {
     const adId = row.ad_id;
     if (!acc[adId]) {
@@ -1634,11 +1856,28 @@ export const getBestCreatives = async ({ advertiserId, availableAdvertiserIds, s
         conversion_value: 0,
       };
     }
+
+    let conversions = 0;
+    let conversionValue = 0;
+
+    if (row.source === 'Meta') {
+      if (metaConversionType === 'complete_registration') {
+        conversions = Number(row.complete_registrations) || 0;
+        conversionValue = Number(row.complete_registrations_value) || 0;
+      } else {
+        conversions = Number(row.conversions) || 0;
+        conversionValue = Number(row.conversion_value) || 0;
+      }
+    } else {
+      conversions = Number(row.conversions) || 0;
+      conversionValue = Number(row.conversion_value) || 0;
+    }
+
     acc[adId].cost += Number(row.cost) || 0;
     acc[adId].impressions += Number(row.impressions) || 0;
     acc[adId].clicks += Number(row.clicks) || 0;
-    acc[adId].conversions += Number(row.conversions) || 0;
-    acc[adId].conversion_value += Number(row.conversion_value) || 0;
+    acc[adId].conversions += conversions;
+    acc[adId].conversion_value += conversionValue;
     return acc;
   }, {});
 
@@ -1707,10 +1946,21 @@ export const getBestCreatives = async ({ advertiserId, availableAdvertiserIds, s
 export const getAllCreatives = async ({ advertiserId, availableAdvertiserIds, startDate, endDate }) => {
   // ===== 2025-12-31: Supabase 크리에이티브 데이터 조회 =====
 
+  // 메타 전환 타입 조회 (단일 광고주인 경우)
+  let metaConversionType = 'purchase';
+  if (advertiserId && advertiserId !== 'all') {
+    const { data: advertiserData } = await supabase
+      .from('advertisers')
+      .select('meta_conversion_type')
+      .eq('id', advertiserId)
+      .single();
+    metaConversionType = advertiserData?.meta_conversion_type || 'purchase';
+  }
+
   // 1. ad_performance 데이터 조회 (성과 데이터)
   let performanceQuery = supabase
     .from('ad_performance')
-    .select('ad_id, source, campaign_name, cost, impressions, clicks, conversions, conversion_value');
+    .select('ad_id, source, campaign_name, cost, impressions, clicks, conversions, conversion_value, complete_registrations, complete_registrations_value');
 
   // 광고주 필터
   if (advertiserId) {
@@ -1730,7 +1980,7 @@ export const getAllCreatives = async ({ advertiserId, availableAdvertiserIds, st
   const { data: performanceData, error: performanceError } = await performanceQuery;
   if (performanceError) throw performanceError;
 
-  // 2. ad_id별로 성과 집계
+  // 2. ad_id별로 성과 집계 (매체별 분기 처리)
   const aggregatedPerformance = (performanceData || []).reduce((acc, row) => {
     const adId = row.ad_id;
     if (!acc[adId]) {
@@ -1745,11 +1995,28 @@ export const getAllCreatives = async ({ advertiserId, availableAdvertiserIds, st
         conversion_value: 0,
       };
     }
+
+    let conversions = 0;
+    let conversionValue = 0;
+
+    if (row.source === 'Meta') {
+      if (metaConversionType === 'complete_registration') {
+        conversions = Number(row.complete_registrations) || 0;
+        conversionValue = Number(row.complete_registrations_value) || 0;
+      } else {
+        conversions = Number(row.conversions) || 0;
+        conversionValue = Number(row.conversion_value) || 0;
+      }
+    } else {
+      conversions = Number(row.conversions) || 0;
+      conversionValue = Number(row.conversion_value) || 0;
+    }
+
     acc[adId].cost += Number(row.cost) || 0;
     acc[adId].impressions += Number(row.impressions) || 0;
     acc[adId].clicks += Number(row.clicks) || 0;
-    acc[adId].conversions += Number(row.conversions) || 0;
-    acc[adId].conversion_value += Number(row.conversion_value) || 0;
+    acc[adId].conversions += conversions;
+    acc[adId].conversion_value += conversionValue;
     return acc;
   }, {});
 

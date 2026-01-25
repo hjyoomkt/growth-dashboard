@@ -29,3 +29,6 @@ verify_jwt = false
 
 [functions.list-meta-adaccounts]
 verify_jwt = false
+
+[functions.save-organization-naver]
+verify_jwt = false

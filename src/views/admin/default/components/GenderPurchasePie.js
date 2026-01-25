@@ -42,9 +42,20 @@ export default function GenderPurchasePie(props) {
         return;
       }
 
+      // 메타 전환 타입 조회 (단일 광고주인 경우)
+      let metaConversionType = 'purchase';
+      if (currentAdvertiserId && currentAdvertiserId !== 'all') {
+        const { data: advertiserData } = await supabase
+          .from('advertisers')
+          .select('meta_conversion_type')
+          .eq('id', currentAdvertiserId)
+          .single();
+        metaConversionType = advertiserData?.meta_conversion_type || 'purchase';
+      }
+
       const { data, error } = await supabase
         .from('ad_performance_demographics')
-        .select('gender, conversions')
+        .select('gender, source, conversions, complete_registrations')
         .in('advertiser_id', advertiserIds)
         .gte('date', startDate)
         .lte('date', endDate);
@@ -53,7 +64,15 @@ export default function GenderPurchasePie(props) {
 
       const result = { male: 0, female: 0, unknown: 0 };
       (data || []).forEach(row => {
-        const conv = parseFloat(row.conversions) || 0;
+        let conv = 0;
+        if (row.source === 'Meta') {
+          conv = metaConversionType === 'complete_registration'
+            ? parseFloat(row.complete_registrations) || 0
+            : parseFloat(row.conversions) || 0;
+        } else {
+          conv = parseFloat(row.conversions) || 0;
+        }
+
         if (row.gender === 'male') result.male += conv;
         else if (row.gender === 'female') result.female += conv;
         else result.unknown += conv;

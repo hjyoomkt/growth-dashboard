@@ -43,9 +43,20 @@ export default function AgeGenderPurchase(props) {
         return;
       }
 
+      // 메타 전환 타입 조회 (단일 광고주인 경우)
+      let metaConversionType = 'purchase';
+      if (currentAdvertiserId && currentAdvertiserId !== 'all') {
+        const { data: advertiserData } = await supabase
+          .from('advertisers')
+          .select('meta_conversion_type')
+          .eq('id', currentAdvertiserId)
+          .single();
+        metaConversionType = advertiserData?.meta_conversion_type || 'purchase';
+      }
+
       const { data, error } = await supabase
         .from('ad_performance_demographics')
-        .select('gender, age, conversions')
+        .select('gender, age, source, conversions, complete_registrations')
         .in('advertiser_id', advertiserIds)
         .gte('date', startDate)
         .lte('date', endDate);
@@ -68,7 +79,15 @@ export default function AgeGenderPurchase(props) {
       };
 
       (data || []).forEach(row => {
-        const conv = parseFloat(row.conversions) || 0;
+        let conv = 0;
+        if (row.source === 'Meta') {
+          conv = metaConversionType === 'complete_registration'
+            ? parseFloat(row.complete_registrations) || 0
+            : parseFloat(row.conversions) || 0;
+        } else {
+          conv = parseFloat(row.conversions) || 0;
+        }
+
         const ageIdx = ageIndexMap[row.age];
         if (ageIdx === undefined) return;
 

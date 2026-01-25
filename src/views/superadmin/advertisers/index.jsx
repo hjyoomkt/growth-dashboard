@@ -55,6 +55,7 @@ export default function AdvertisersManagement() {
             website_url,
             contact_email,
             contact_phone,
+            meta_conversion_type,
             created_at,
             organization_id
           )
