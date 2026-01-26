@@ -273,11 +273,7 @@ export default function CollectionMonitor() {
 
           {/* 페이지네이션 UI */}
           {jobs.length > 0 && (
-            <Flex justify="space-between" align="center" mt={4}>
-              <Text fontSize="sm" color="gray.600">
-                {(currentPage - 1) * itemsPerPage + 1} -{' '}
-                {Math.min(currentPage * itemsPerPage, jobs.length)} / {jobs.length}
-              </Text>
+            <Flex justify="center" align="center" mt={4}>
               <HStack spacing={2}>
                 <Button
                   size="sm"

@@ -19,6 +19,7 @@ import {
   Icon,
   Switch,
   useToast,
+  HStack,
 } from '@chakra-ui/react';
 import {
   createColumnHelper,
@@ -50,6 +51,10 @@ export default function UserTable(props) {
   const [data, setData] = React.useState([]);
   const [isLoading, setIsLoading] = React.useState(false);
   const toast = useToast();
+
+  // 페이지네이션 상태
+  const [currentPage, setCurrentPage] = React.useState(1);
+  const itemsPerPage = 10;
 
   // ✅ 디버그 로그
   React.useEffect(() => {
@@ -439,8 +444,22 @@ export default function UserTable(props) {
     return baseColumns;
   }, [isAgency, textColor]);
 
+  // 페이지네이션 계산
+  const totalPages = Math.ceil(data.length / itemsPerPage);
+  const currentData = React.useMemo(() => {
+    return data.slice(
+      (currentPage - 1) * itemsPerPage,
+      currentPage * itemsPerPage
+    );
+  }, [data, currentPage, itemsPerPage]);
+
+  // 데이터 변경 시 첫 페이지로 리셋
+  React.useEffect(() => {
+    setCurrentPage(1);
+  }, [data.length]);
+
   const table = useReactTable({
-    data,
+    data: currentData,
     columns,
     state: {
       sorting,
@@ -528,6 +547,45 @@ export default function UserTable(props) {
           })}
         </Tbody>
       </Table>
+
+      {/* 페이지네이션 UI */}
+      {data.length > 0 && (
+        <Flex justify="center" align="center" mt={4} px="25px" pb="20px">
+          <HStack spacing={2}>
+            <Button
+              size="sm"
+              onClick={() => setCurrentPage(1)}
+              isDisabled={currentPage === 1}
+            >
+              처음
+            </Button>
+            <Button
+              size="sm"
+              onClick={() => setCurrentPage(currentPage - 1)}
+              isDisabled={currentPage === 1}
+            >
+              이전
+            </Button>
+            <Text fontSize="sm" px={3}>
+              {currentPage} / {totalPages}
+            </Text>
+            <Button
+              size="sm"
+              onClick={() => setCurrentPage(currentPage + 1)}
+              isDisabled={currentPage === totalPages}
+            >
+              다음
+            </Button>
+            <Button
+              size="sm"
+              onClick={() => setCurrentPage(totalPages)}
+              isDisabled={currentPage === totalPages}
+            >
+              마지막
+            </Button>
+          </HStack>
+        </Flex>
+      )}
     </Card>
 
     <EditUserModal
