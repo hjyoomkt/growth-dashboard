@@ -2153,6 +2153,7 @@ export const getBestCreatives = async ({ advertiserId, availableAdvertiserIds, s
     const mediaUrl = creative.url || '';
 
     return {
+      ad_id: creative.ad_id,
       adName: creative.ad_name || '광고명 없음',
       media: performance.source || '알 수 없음',
       author: performance.source ? `${performance.source} 광고팀` : '알 수 없음',
@@ -2302,6 +2303,7 @@ export const getAllCreatives = async ({ advertiserId, availableAdvertiserIds, st
     const mediaUrl = creative.url || '';
 
     return {
+      ad_id: creative.ad_id,
       adName: creative.ad_name || '광고명 없음',
       media: performance.source || '알 수 없음',
       campaign: performance.campaign_name || '캠페인 없음',
@@ -2323,6 +2325,59 @@ export const getAllCreatives = async ({ advertiserId, availableAdvertiserIds, st
 
   // 6. 광고비 순으로 정렬 (내림차순)
   return joinedData.sort((a, b) => b.cost - a.cost);
+};
+
+/**
+ * 광고별 일자별 성과 데이터 조회 (크리에이티브 상세 모달용)
+ * @param {string} adId - 광고 ID
+ * @param {string} startDate - 시작일 (YYYY-MM-DD)
+ * @param {string} endDate - 종료일 (YYYY-MM-DD)
+ * @returns {Array} [{date, cost, impressions, clicks, conversions, conversion_value, ctr, roas}]
+ */
+export const getAdDailyPerformance = async (adId, startDate, endDate) => {
+  const { data, error } = await supabase
+    .from('ad_performance')
+    .select('date, cost, impressions, clicks, conversions, conversion_value')
+    .eq('ad_id', adId)
+    .gte('date', startDate)
+    .lte('date', endDate)
+    .is('deleted_at', null)
+    .order('date', { ascending: true });
+
+  if (error) throw error;
+
+  // 날짜별 집계 (동일 날짜 여러 행 가능)
+  const aggregatedByDate = (data || []).reduce((acc, row) => {
+    const dateKey = row.date;
+    if (!acc[dateKey]) {
+      acc[dateKey] = {
+        date: dateKey,
+        cost: 0,
+        impressions: 0,
+        clicks: 0,
+        conversions: 0,
+        conversion_value: 0,
+      };
+    }
+    acc[dateKey].cost += Number(row.cost) || 0;
+    acc[dateKey].impressions += Number(row.impressions) || 0;
+    acc[dateKey].clicks += Number(row.clicks) || 0;
+    acc[dateKey].conversions += Number(row.conversions) || 0;
+    acc[dateKey].conversion_value += Number(row.conversion_value) || 0;
+    return acc;
+  }, {});
+
+  // CTR, ROAS 계산
+  return Object.values(aggregatedByDate).map(row => ({
+    date: row.date,
+    cost: row.cost,
+    impressions: row.impressions,
+    clicks: row.clicks,
+    conversions: row.conversions,
+    conversion_value: row.conversion_value,
+    ctr: row.impressions > 0 ? (row.clicks / row.impressions) * 100 : 0,
+    roas: row.cost > 0 ? (row.conversion_value / row.cost) * 100 : 0,
+  }));
 };
 
 // ============================================

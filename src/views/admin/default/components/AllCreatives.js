@@ -9,6 +9,7 @@ import {
   Image,
   Text,
   useColorModeValue,
+  useDisclosure,
   Menu,
   MenuButton,
   MenuItem,
@@ -25,6 +26,7 @@ import { IoHeart, IoHeartOutline } from "react-icons/io5";
 import { useDateRange } from "contexts/DateRangeContext";
 import { useAuth } from "contexts/AuthContext";
 import { getAllCreatives } from "services/supabaseService";
+import CreativeDetailModal from "./CreativeDetailModal";
 
 export default function AllCreatives(props) {
   const { creativeData = [], ...rest } = props;
@@ -403,6 +405,7 @@ export default function AllCreatives(props) {
 
 function CreativeCard({ creative, textColor, textColorSecondary }) {
   const [like, setLike] = useState(false);
+  const { isOpen, onOpen, onClose } = useDisclosure();
   const textColorBid = useColorModeValue("brand.500", "white");
   const cardBorder = useColorModeValue("transparent", "whiteAlpha.100");
 
@@ -562,11 +565,25 @@ function CreativeCard({ creative, textColor, textColorSecondary }) {
             px='16px'
             py='4px'
             h='32px'
-            w='100%'>
+            w='100%'
+            onClick={onOpen}>
             상세보기
           </Button>
         </Flex>
       </Flex>
+
+      <CreativeDetailModal
+        isOpen={isOpen}
+        onClose={onClose}
+        creative={{
+          ad_id: creative.ad_id,
+          adName: creative.adName,
+          imageUrl: creative.imageUrl,
+          videoUrl: creative.videoUrl,
+          isVideo: creative.isVideo,
+          media: creative.media,
+        }}
+      />
     </Card>
   );
 }
