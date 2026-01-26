@@ -190,17 +190,25 @@ export default function InviteUserModal({ isOpen, onClose }) {
       // invite_type 결정
       let inviteType = 'existing_member'; // 기본값: 기존 조직 멤버 초대
       let targetOrgId = organizationId;
-      let targetAdvId = formData.advertiserIds.length > 0 ? formData.advertiserIds[0] : advertiserId;
+
+      // 에이전시 역할은 항상 advertiser_id = null
+      const isAgencyRole = ['agency_admin', 'agency_manager', 'agency_staff'].includes(formData.role);
+      let targetAdvId = null;  // 기본값 null
+
+      // 클라이언트 역할만 advertiser_id 설정
+      if (!isAgencyRole) {
+        targetAdvId = formData.advertiserIds.length > 0 ? formData.advertiserIds[0] : advertiserId;
+      }
 
       if (formData.isNewAdvertiser) {
         // 에이전시에서 신규 클라이언트 초대 시
         inviteType = 'new_brand';
         targetOrgId = organizationId; // 에이전시의 organization_id 유지
-        targetAdvId = null;
+        targetAdvId = null;  // 명시적 null
       } else if (formData.isNewBrand) {
         inviteType = 'new_brand';
         targetOrgId = formData.targetOrganizationId;
-        targetAdvId = null;
+        targetAdvId = null;  // 명시적 null
       }
 
       // 조직 이름 가져오기
@@ -288,14 +296,14 @@ export default function InviteUserModal({ isOpen, onClose }) {
       <ModalOverlay />
       <ModalContent>
         <ModalHeader>
-          {isAgency() ? '직원 초대' : '팀원 초대'}
+          {['master', 'agency_admin', 'agency_manager', 'agency_staff'].includes(currentUserRole) ? '직원 초대' : '팀원 초대'}
         </ModalHeader>
         <ModalCloseButton />
         <ModalBody>
           {!inviteCode ? (
             <VStack spacing="24px">
               {/* 대행사 및 Master 전용: 신규 광고주 초대 옵션 */}
-              {(isAgency() || isMaster()) && (
+              {(isMaster() || ['agency_admin', 'agency_manager', 'agency_staff'].includes(currentUserRole)) && (
                 <VStack spacing="16px" w="100%">
                   <FormControl>
                     <HStack justify="space-between" align="center">
@@ -542,7 +550,7 @@ export default function InviteUserModal({ isOpen, onClose }) {
                     </MenuItem>
 
                     {/* 브랜드 대표운영자: 신규 광고주/브랜드 초대 시에만 표시 */}
-                    {(isAgency() || isMaster()) && (formData.isNewAdvertiser || formData.isNewBrand) && (
+                    {(isMaster() || ['agency_admin', 'agency_manager', 'agency_staff'].includes(currentUserRole)) && (formData.isNewAdvertiser || formData.isNewBrand) && (
                       <MenuItem
                         onClick={() => canAssignRole('advertiser_admin') && handleRoleChange('advertiser_admin')}
                         bg={formData.role === 'advertiser_admin' ? brandColor : 'transparent'}
@@ -567,7 +575,7 @@ export default function InviteUserModal({ isOpen, onClose }) {
                     )}
 
                     {/* 에이전시 권한들 */}
-                    {(isAgency() || isMaster()) && (
+                    {(isMaster() || ['agency_admin', 'agency_manager', 'agency_staff'].includes(currentUserRole)) && (
                       <>
                         <MenuItem
                           onClick={() => canAssignRole('agency_manager') && handleRoleChange('agency_manager')}
@@ -644,7 +652,7 @@ export default function InviteUserModal({ isOpen, onClose }) {
               {!formData.isNewAdvertiser && !formData.isNewBrand && (currentUserRole === 'master' || currentUserRole === 'agency_admin' || currentUserRole === 'agency_manager' || currentUserRole === 'agency_staff' || currentUserRole === 'advertiser_admin' || currentUserRole === 'advertiser_staff') && (
                 <FormControl>
                   <FormLabel fontSize="sm" color="gray.500">
-                    {isAgency() ? '담당 클라이언트 (복수 선택 가능)' : '접근 가능한 브랜드 (복수 선택 가능)'}
+                    {['master', 'agency_admin', 'agency_manager', 'agency_staff'].includes(currentUserRole) ? '담당 클라이언트 (복수 선택 가능)' : '접근 가능한 브랜드 (복수 선택 가능)'}
                   </FormLabel>
                   <VStack align="stretch" spacing="8px">
                     {/* 전체 선택 옵션 */}

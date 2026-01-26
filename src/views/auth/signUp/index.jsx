@@ -42,9 +42,8 @@ function SignUp() {
       />
       <Flex
         w="100vw"
-        h="100vh"
+        minH="100vh"
         bg={useColorModeValue("white", "navy.900")}
-        overflow="hidden"
       >
         {/* 왼쪽: 회원가입 폼 */}
         <Flex
@@ -204,7 +203,9 @@ function SignUp() {
       {/* 우측: 이미지 영역 (데스크탑만) */}
       <Box
         w="50%"
-        h="100%"
+        h="100vh"
+        position="sticky"
+        top="0"
         display={{ base: "none", lg: "flex" }}
         alignItems="center"
         justifyContent="center"
