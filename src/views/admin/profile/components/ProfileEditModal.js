@@ -19,11 +19,18 @@ import {
   Flex,
   IconButton,
   useToast,
+  useDisclosure,
+  Divider,
+  Tooltip,
 } from '@chakra-ui/react';
-import { MdCamera } from 'react-icons/md';
+import { MdCamera, MdDelete } from 'react-icons/md';
+import DeleteAccountConfirmModal from './DeleteAccountConfirmModal';
+import OwnershipTransferModal from './OwnershipTransferModal';
+import { useAuth } from 'contexts/AuthContext';
 
 export default function ProfileEditModal({ isOpen, onClose, currentData }) {
   const toast = useToast();
+  const { user, role, advertiserId } = useAuth();
   const [formData, setFormData] = useState({
     name: currentData?.name || '',
     job: currentData?.job || '',
@@ -33,10 +40,27 @@ export default function ProfileEditModal({ isOpen, onClose, currentData }) {
     banner: currentData?.banner || '',
   });
 
+  const {
+    isOpen: isDeleteConfirmOpen,
+    onOpen: onDeleteConfirmOpen,
+    onClose: onDeleteConfirmClose
+  } = useDisclosure();
+
+  const {
+    isOpen: isTransferOpen,
+    onOpen: onTransferOpen,
+    onClose: onTransferClose
+  } = useDisclosure();
+
+  const [newOwnerId, setNewOwnerId] = useState(null);
+
   const textColor = useColorModeValue('secondaryGray.900', 'white');
   const borderColor = useColorModeValue('gray.200', 'whiteAlpha.100');
   const inputBg = useColorModeValue('white', 'navy.800');
   const placeholderColor = useColorModeValue('gray.400', 'gray.500');
+
+  const isAdvertiserAdmin = role === 'advertiser_admin';
+  const isMaster = role === 'master';
 
   const handleSubmit = () => {
     // TODO: 실제로는 API 호출하여 프로필 정보 업데이트
@@ -64,6 +88,23 @@ export default function ProfileEditModal({ isOpen, onClose, currentData }) {
       isClosable: true,
       position: 'top',
     });
+  };
+
+  const handleDeleteClick = () => {
+    if (isAdvertiserAdmin) {
+      // 브랜드 대표운영자는 소유권 이전 모달 먼저 표시
+      onTransferOpen();
+    } else {
+      // 일반 사용자는 바로 삭제 확인 모달 표시
+      onDeleteConfirmOpen();
+    }
+  };
+
+  const handleTransferComplete = (selectedUserId) => {
+    setNewOwnerId(selectedUserId);
+    onTransferClose();
+    // 소유권 이전 완료 후 삭제 확인 모달 표시
+    onDeleteConfirmOpen();
   };
 
   return (
@@ -216,6 +257,37 @@ export default function ProfileEditModal({ isOpen, onClose, currentData }) {
                 _placeholder={{ color: placeholderColor }}
               />
             </FormControl>
+
+            {/* 구분선 */}
+            <Divider my={4} />
+
+            {/* 회원탈퇴 섹션 */}
+            <VStack align="stretch" spacing={2}>
+              <Text fontSize="sm" fontWeight="500" color="red.500">
+                위험 영역
+              </Text>
+              <Tooltip
+                label={isMaster ? 'Master 계정은 삭제할 수 없습니다.' : ''}
+                placement="top"
+                hasArrow
+              >
+                <Button
+                  leftIcon={<MdDelete />}
+                  colorScheme="red"
+                  variant="outline"
+                  size="sm"
+                  onClick={handleDeleteClick}
+                  isDisabled={isMaster}
+                >
+                  회원탈퇴
+                </Button>
+              </Tooltip>
+              {isMaster && (
+                <Text fontSize="xs" color="gray.500">
+                  Master 계정은 삭제할 수 없습니다.
+                </Text>
+              )}
+            </VStack>
           </VStack>
         </ModalBody>
 
@@ -233,6 +305,24 @@ export default function ProfileEditModal({ isOpen, onClose, currentData }) {
           </Button>
         </ModalFooter>
       </ModalContent>
+
+      {/* 소유권 이전 모달 (브랜드 대표운영자용) */}
+      {isAdvertiserAdmin && (
+        <OwnershipTransferModal
+          isOpen={isTransferOpen}
+          onClose={onTransferClose}
+          onTransferComplete={handleTransferComplete}
+          currentUser={{ ...user, advertiser_id: advertiserId }}
+        />
+      )}
+
+      {/* 회원탈퇴 확인 모달 */}
+      <DeleteAccountConfirmModal
+        isOpen={isDeleteConfirmOpen}
+        onClose={onDeleteConfirmClose}
+        user={user}
+        newOwnerId={newOwnerId}
+      />
     </Modal>
   );
 }

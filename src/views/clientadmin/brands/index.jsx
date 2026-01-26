@@ -35,9 +35,11 @@ export default function BrandManagement() {
 
         let advertisers;
 
-        // agency 계정: 조직이 소유한 모든 브랜드 조회
-        if (organizationType === 'agency' && organizationId) {
-          console.log('[BrandsManagement] Agency 모드: organization_id로 조회');
+        // agency 역할: 조직이 소유한 모든 브랜드 조회
+        const isAgencyRole = ['agency_admin', 'agency_manager', 'agency_staff'].includes(role);
+
+        if (isAgencyRole && organizationId) {
+          console.log('[BrandsManagement] Agency 역할 모드: organization_id로 조회', { role });
           const { data, error } = await supabase
             .from('advertisers')
             .select(`

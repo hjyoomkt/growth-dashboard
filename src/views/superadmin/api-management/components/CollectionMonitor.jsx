@@ -16,6 +16,8 @@ import {
   useColorModeValue,
   Spinner,
   Progress,
+  Button,
+  HStack,
 } from '@chakra-ui/react';
 import Card from 'components/card/Card';
 import { MdCheckCircle, MdError, MdSchedule, MdSync } from 'react-icons/md';
@@ -24,6 +26,8 @@ import { supabase } from 'config/supabase';
 export default function CollectionMonitor() {
   const [jobs, setJobs] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 15;
 
   const textColor = useColorModeValue('secondaryGray.900', 'white');
   const borderColor = useColorModeValue('gray.200', 'whiteAlpha.100');
@@ -36,12 +40,13 @@ export default function CollectionMonitor() {
         .from('collection_jobs')
         .select('*')
         .order('created_at', { ascending: false })
-        .limit(20);
+        .limit(100);
 
       if (error) {
         console.error('Error fetching collection jobs:', error);
       } else {
         setJobs(data || []);
+        setCurrentPage(1); // 데이터 업데이트 시 1페이지로 리셋
       }
     } catch (error) {
       console.error('Exception fetching jobs:', error);
@@ -153,6 +158,13 @@ export default function CollectionMonitor() {
     }
   };
 
+  // 페이지네이션 계산
+  const totalPages = Math.ceil(jobs.length / itemsPerPage);
+  const currentJobs = jobs.slice(
+    (currentPage - 1) * itemsPerPage,
+    currentPage * itemsPerPage
+  );
+
   if (loading) {
     return (
       <Card p="20px">
@@ -189,7 +201,7 @@ export default function CollectionMonitor() {
               </Tr>
             </Thead>
             <Tbody>
-              {jobs.map((job) => (
+              {currentJobs.map((job) => (
                 <Tr
                   key={job.id}
                   _hover={{ bg: bgHover }}
@@ -258,6 +270,49 @@ export default function CollectionMonitor() {
               ))}
             </Tbody>
           </Table>
+
+          {/* 페이지네이션 UI */}
+          {jobs.length > 0 && (
+            <Flex justify="space-between" align="center" mt={4}>
+              <Text fontSize="sm" color="gray.600">
+                {(currentPage - 1) * itemsPerPage + 1} -{' '}
+                {Math.min(currentPage * itemsPerPage, jobs.length)} / {jobs.length}
+              </Text>
+              <HStack spacing={2}>
+                <Button
+                  size="sm"
+                  onClick={() => setCurrentPage(1)}
+                  isDisabled={currentPage === 1}
+                >
+                  처음
+                </Button>
+                <Button
+                  size="sm"
+                  onClick={() => setCurrentPage(currentPage - 1)}
+                  isDisabled={currentPage === 1}
+                >
+                  이전
+                </Button>
+                <Text fontSize="sm" px={3}>
+                  {currentPage} / {totalPages}
+                </Text>
+                <Button
+                  size="sm"
+                  onClick={() => setCurrentPage(currentPage + 1)}
+                  isDisabled={currentPage === totalPages}
+                >
+                  다음
+                </Button>
+                <Button
+                  size="sm"
+                  onClick={() => setCurrentPage(totalPages)}
+                  isDisabled={currentPage === totalPages}
+                >
+                  마지막
+                </Button>
+              </HStack>
+            </Flex>
+          )}
         </Box>
       )}
     </Card>

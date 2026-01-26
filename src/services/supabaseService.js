@@ -155,9 +155,9 @@ export const getAvailableAdvertisers = async (userData) => {
       .map(ua => ua.advertisers)
       .filter(Boolean);
 
-    // "담당 브랜드 전체" 처리: user_advertisers가 비어있고 organization_id가 있으면 조직의 모든 브랜드 반환
-    if (advertisers.length === 0 && userData.organization_id) {
-      console.log('[getAvailableAdvertisers] 담당 브랜드 전체 감지 - 조직의 모든 브랜드 반환:', {
+    // "담당 브랜드 전체" 처리: agency 역할만 적용 (advertiser 역할은 user_advertisers에 명시적으로 등록된 브랜드만 접근)
+    if (advertisers.length === 0 && userData.organization_id && isAgency) {
+      console.log('[getAvailableAdvertisers] 담당 브랜드 전체 감지 (agency만) - 조직의 모든 브랜드 반환:', {
         userId: userData.id,
         role: userData.role,
         organizationId: userData.organization_id
@@ -2877,4 +2877,85 @@ export const getAdvertiserOrganizations = async (currentUser) => {
 
   console.log('[getAdvertiserOrganizations] 조회 완료:', brands);
   return brands;
+};
+
+// ============================================
+// 회원 탈퇴 (Account Deletion)
+// ============================================
+
+/**
+ * 브랜드의 다른 사용자 목록 조회 (소유권 이전용)
+ * @param {string} advertiserId - 브랜드 ID
+ * @param {string} excludeUserId - 제외할 사용자 ID (현재 사용자)
+ * @returns {Promise<Array>} - 사용자 목록
+ */
+export const getBrandUsersForTransfer = async (advertiserId, excludeUserId) => {
+  console.log('[getBrandUsersForTransfer] 조회 시작:', { advertiserId, excludeUserId });
+
+  try {
+    const { data, error } = await supabase.functions.invoke('get-brand-users', {
+      body: {
+        advertiser_id: advertiserId,
+        exclude_user_id: excludeUserId
+      }
+    });
+
+    if (error) {
+      console.error('[getBrandUsersForTransfer] 에러:', error);
+      throw error;
+    }
+
+    console.log('[getBrandUsersForTransfer] 조회 완료:', data);
+    return data.users || [];
+  } catch (error) {
+    console.error('[getBrandUsersForTransfer] 예외 발생:', error);
+    throw error;
+  }
+};
+
+/**
+ * 사용자 계정 삭제
+ * @param {string} userId - 삭제할 사용자 ID
+ * @param {string|null} newOwnerId - 새 소유자 ID (advertiser_admin인 경우 필수)
+ * @returns {Promise<Object>} - 삭제 결과
+ */
+export const deleteUserAccount = async (userId, newOwnerId = null) => {
+  console.log('[deleteUserAccount] 삭제 시작:', { userId, newOwnerId });
+
+  try {
+    const { data, error } = await supabase.functions.invoke('delete-user', {
+      body: {
+        user_id: userId,
+        new_owner_id: newOwnerId
+      }
+    });
+
+    if (error) {
+      console.error('[deleteUserAccount] 에러:', error);
+      throw error;
+    }
+
+    console.log('[deleteUserAccount] 삭제 완료:', data);
+    return data;
+  } catch (error) {
+    console.error('[deleteUserAccount] 예외 발생:', error);
+    throw error;
+  }
+};
+
+/**
+ * 사용자 삭제 가능 여부 확인
+ * @param {Object} user - 사용자 객체
+ * @returns {Object} - { canDelete: boolean, reason?: string }
+ */
+export const canDeleteUser = (user) => {
+  // Master 계정은 삭제 불가
+  if (user.role === 'master') {
+    return {
+      canDelete: false,
+      reason: 'Master 계정은 삭제할 수 없습니다.'
+    };
+  }
+
+  return { canDelete: true };
 };

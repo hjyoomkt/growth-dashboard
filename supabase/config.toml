@@ -32,3 +32,9 @@ verify_jwt = false
 
 [functions.save-organization-naver]
 verify_jwt = false
+
+[functions.delete-user]
+verify_jwt = false
+
+[functions.get-brand-users]
+verify_jwt = false
