@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   Modal,
   ModalOverlay,
@@ -31,6 +31,7 @@ import {
 import { useAuth } from "contexts/AuthContext";
 import { MdKeyboardArrowDown, MdContentCopy } from "react-icons/md";
 import { createInviteCode, getAdvertiserOrganizations } from "services/supabaseService";
+import { supabase } from "config/supabase";
 
 export default function InviteUserModal({ isOpen, onClose }) {
   const { isAgency, isMaster, role: currentUserRole, user, organizationId, advertiserId, availableAdvertisers } = useAuth();
@@ -50,13 +51,15 @@ export default function InviteUserModal({ isOpen, onClose }) {
     role: "viewer",
     advertiserIds: [], // 다중 광고주 할당 (배열로 변경)
     isNewAdvertiser: false, // 신규 광고주 등록 여부 (대행사 전용)
-    isNewBrand: false, // 기존 조직에 새 브랜드 추가 (대행사 전용)
-    targetOrganizationId: "", // 브랜드를 추가할 기존 조직 ID
+    isNewBrand: false, // 기존 브랜드에 하위 브랜드 추가
+    parentAdvertiserId: "", // 부모 브랜드 ID
+    targetOrganizationId: "", // 부모 브랜드의 organization_id (자동 설정)
   });
   const [isLoading, setIsLoading] = useState(false);
   const [inviteCode, setInviteCode] = useState(null);
   const [organizations, setOrganizations] = useState([]);
   const [isLoadingOrgs, setIsLoadingOrgs] = useState(false);
+  const [clients, setClients] = useState([]); // 그룹 브랜드 포함한 클라이언트 목록
 
   // Color mode values
   const textColor = useColorModeValue('secondaryGray.900', 'white');
@@ -78,15 +81,25 @@ export default function InviteUserModal({ isOpen, onClose }) {
   const fetchOrganizations = async () => {
     setIsLoadingOrgs(true);
     try {
-      const orgs = await getAdvertiserOrganizations({
-        role: currentUserRole,
-        organization_id: organizationId
-      });
-      setOrganizations(orgs);
+      // isNewBrand일 때는 브랜드 목록 조회 (자신의 organization에 속한 브랜드만)
+      let query = supabase
+        .from('advertisers')
+        .select('id, name, organization_id, advertiser_group_id')
+        .is('deleted_at', null);
+
+      // Agency는 자신의 organization에 속한 브랜드만
+      if (currentUserRole === 'agency_admin' || currentUserRole === 'agency_manager') {
+        query = query.eq('organization_id', organizationId);
+      }
+
+      const { data, error } = await query.order('name', { ascending: true });
+
+      if (error) throw error;
+      setOrganizations(data || []); // 변수명 유지 (실제로는 advertisers)
     } catch (error) {
-      console.error('조직 목록 조회 실패:', error);
+      console.error('브랜드 목록 조회 실패:', error);
       toast({
-        title: '조직 목록 조회 실패',
+        title: '브랜드 목록 조회 실패',
         description: error.message,
         status: 'error',
         duration: 3000,
@@ -140,21 +153,85 @@ export default function InviteUserModal({ isOpen, onClose }) {
     return roleHierarchy[targetRole] < roleHierarchy[currentUserRole];
   };
 
-  // 실제 클라이언트 목록 (availableAdvertisers 사용)
-  // advertiser_admin, advertiser_staff는 자신의 브랜드만, agency/master는 모든 브랜드
-  const clients = (availableAdvertisers || [])
-    .filter(adv => {
-      // advertiser_admin, advertiser_staff는 자신의 브랜드만 표시
-      if (['advertiser_admin', 'advertiser_staff'].includes(currentUserRole) && advertiserId) {
-        return adv.id === advertiserId;
+  // 그룹 브랜드 포함하여 클라이언트 목록 조회
+  useEffect(() => {
+    const fetchGroupClients = async () => {
+      if (!availableAdvertisers || availableAdvertisers.length === 0) {
+        setClients([]);
+        return;
       }
-      // agency_admin, master 등은 모든 브랜드 표시
-      return true;
-    })
-    .map(adv => ({
-      id: adv.id,
-      name: adv.name
-    }));
+
+      try {
+        // advertiser_admin, advertiser_staff는 자신의 브랜드만 필터링
+        let baseAdvertisers = availableAdvertisers;
+        if (['advertiser_admin', 'advertiser_staff'].includes(currentUserRole) && advertiserId) {
+          baseAdvertisers = availableAdvertisers.filter(adv => adv.id === advertiserId);
+        }
+
+        // 기본 브랜드 IDs
+        const myAdvertiserIds = baseAdvertisers.map(adv => adv.id);
+
+        // advertiser_group_id 조회
+        const { data: myAdvertisers } = await supabase
+          .from('advertisers')
+          .select('id, advertiser_group_id')
+          .in('id', myAdvertiserIds);
+
+        const groupIds = [...new Set(
+          myAdvertisers.map(adv => adv.advertiser_group_id).filter(Boolean)
+        )];
+
+        // 같은 그룹의 모든 브랜드 ID
+        let allBrandIds = [...myAdvertiserIds];
+
+        if (groupIds.length > 0) {
+          const { data: groupBrands } = await supabase
+            .from('advertisers')
+            .select('id')
+            .in('advertiser_group_id', groupIds);
+
+          allBrandIds = [
+            ...allBrandIds,
+            ...groupBrands.map(adv => adv.id)
+          ];
+        }
+
+        // 중복 제거
+        allBrandIds = [...new Set(allBrandIds)];
+
+        // 전체 브랜드 정보 조회
+        const { data: allBrands } = await supabase
+          .from('advertisers')
+          .select('id, name')
+          .in('id', allBrandIds)
+          .is('deleted_at', null)
+          .order('name');
+
+        setClients((allBrands || []).map(adv => ({
+          id: adv.id,
+          name: adv.name
+        })));
+      } catch (error) {
+        console.error('그룹 클라이언트 조회 실패:', error);
+        // 에러 시 기본 availableAdvertisers 사용
+        setClients(
+          (availableAdvertisers || [])
+            .filter(adv => {
+              if (['advertiser_admin', 'advertiser_staff'].includes(currentUserRole) && advertiserId) {
+                return adv.id === advertiserId;
+              }
+              return true;
+            })
+            .map(adv => ({
+              id: adv.id,
+              name: adv.name
+            }))
+        );
+      }
+    };
+
+    fetchGroupClients();
+  }, [availableAdvertisers, currentUserRole, advertiserId]);
 
   const handleChange = (e) => {
     setFormData({
@@ -190,6 +267,7 @@ export default function InviteUserModal({ isOpen, onClose }) {
       // invite_type 결정
       let inviteType = 'existing_member'; // 기본값: 기존 조직 멤버 초대
       let targetOrgId = organizationId;
+      let parentAdvertiserId = null; // 부모 브랜드 ID (isNewBrand일 때만 사용)
 
       // 에이전시 역할은 항상 advertiser_id = null
       const isAgencyRole = ['agency_admin', 'agency_manager', 'agency_staff'].includes(formData.role);
@@ -207,8 +285,9 @@ export default function InviteUserModal({ isOpen, onClose }) {
         targetAdvId = null;  // 명시적 null
       } else if (formData.isNewBrand) {
         inviteType = 'new_brand';
-        targetOrgId = formData.targetOrganizationId;
-        targetAdvId = null;  // 명시적 null
+        targetOrgId = formData.targetOrganizationId; // 부모 브랜드의 organization_id
+        targetAdvId = null;  // 신규 브랜드는 아직 생성 전
+        parentAdvertiserId = formData.parentAdvertiserId; // 부모 브랜드 ID 저장
       }
 
       // 조직 이름 가져오기
@@ -229,6 +308,7 @@ export default function InviteUserModal({ isOpen, onClose }) {
         advertiserIds: formData.advertiserIds.length > 0 ? formData.advertiserIds : null,
         inviterName: user.name || '관리자',
         organizationName: organizationName,
+        parentAdvertiserId: parentAdvertiserId, // 부모 브랜드 ID 추가
       };
 
       const result = await createInviteCode(inviteData);
@@ -286,7 +366,15 @@ export default function InviteUserModal({ isOpen, onClose }) {
   };
 
   const handleClose = () => {
-    setFormData({ email: "", role: "viewer", advertiserIds: [], isNewAdvertiser: false, isNewBrand: false });
+    setFormData({
+      email: "",
+      role: "viewer",
+      advertiserIds: [],
+      isNewAdvertiser: false,
+      isNewBrand: false,
+      parentAdvertiserId: "",
+      targetOrganizationId: "",
+    });
     setInviteCode(null);
     onClose();
   };
@@ -358,10 +446,10 @@ export default function InviteUserModal({ isOpen, onClose }) {
                     </HStack>
                   </FormControl>
 
-                  {/* 하위 브랜드를 추가할 브랜드 선택 (isNewBrand일 때만) */}
+                  {/* 하위 브랜드를 추가할 부모 브랜드 선택 (isNewBrand일 때만) */}
                   {formData.isNewBrand && (
                     <FormControl isRequired>
-                      <FormLabel fontSize="sm" color="gray.500">하위 브랜드를 추가할 기존 브랜드 선택</FormLabel>
+                      <FormLabel fontSize="sm" color="gray.500">하위 브랜드를 추가할 부모 브랜드 선택</FormLabel>
                       <Menu>
                         <MenuButton
                           as={Button}
@@ -379,44 +467,48 @@ export default function InviteUserModal({ isOpen, onClose }) {
                           borderRadius='12px'
                           textAlign="left"
                         >
-                          {formData.targetOrganizationId
-                            ? organizations.find(org => org.id === formData.targetOrganizationId)?.name
+                          {formData.parentAdvertiserId
+                            ? organizations.find(adv => adv.id === formData.parentAdvertiserId)?.name
                             : isLoadingOrgs ? "로딩 중..." : "브랜드를 선택하세요"}
                         </MenuButton>
                         <MenuList minW='auto' w='400px' px='8px' py='8px'>
-                          {organizations.map((org) => (
+                          {organizations.map((advertiser) => (
                             <MenuItem
-                              key={org.id}
+                              key={advertiser.id}
                               onClick={() => {
-                                // 조직 선택 시 해당 조직의 최고관리자 이메일을 기본값으로 제안
+                                // 부모 브랜드 선택 시 해당 브랜드의 organization_id도 저장
                                 setFormData({
                                   ...formData,
-                                  targetOrganizationId: org.id,
-                                  email: org.adminEmail, // 기본값 제안 (변경 가능)
+                                  parentAdvertiserId: advertiser.id,
+                                  targetOrganizationId: advertiser.organization_id,
                                 });
                               }}
-                              bg={formData.targetOrganizationId === org.id ? brandColor : 'transparent'}
-                              color={formData.targetOrganizationId === org.id ? 'white' : textColor}
+                              bg={formData.parentAdvertiserId === advertiser.id ? brandColor : 'transparent'}
+                              color={formData.parentAdvertiserId === advertiser.id ? 'white' : textColor}
                               _hover={{
-                                bg: formData.targetOrganizationId === org.id ? brandColor : bgHover,
+                                bg: formData.parentAdvertiserId === advertiser.id ? brandColor : bgHover,
                               }}
-                              fontWeight={formData.targetOrganizationId === org.id ? '600' : '500'}
+                              fontWeight={formData.parentAdvertiserId === advertiser.id ? '600' : '500'}
                               fontSize='sm'
                               px='12px'
                               py='10px'
                               borderRadius='8px'
                             >
                               <Box>
-                                <Text>{org.name}</Text>
-                                <Text fontSize="xs" opacity="0.7">관리자: {org.adminEmail}</Text>
+                                <Text>{advertiser.name}</Text>
+                                {advertiser.advertiser_group_id && (
+                                  <Text fontSize="xs" opacity="0.7">
+                                    그룹 ID: {advertiser.advertiser_group_id.substring(0, 8)}...
+                                  </Text>
+                                )}
                               </Box>
                             </MenuItem>
                           ))}
                         </MenuList>
                       </Menu>
-                      {formData.targetOrganizationId && (
+                      {formData.parentAdvertiserId && (
                         <Text fontSize="xs" color="gray.500" mt="8px">
-                          선택한 브랜드 관리자 계정에 새 하위 브랜드 접근 권한이 추가됩니다
+                          선택한 브랜드와 같은 advertiser_group_id를 가진 브랜드가 생성됩니다
                         </Text>
                       )}
                     </FormControl>

@@ -38,3 +38,6 @@ verify_jwt = false
 
 [functions.get-brand-users]
 verify_jwt = false
+
+[functions.assign-advertiser-group]
+verify_jwt = false

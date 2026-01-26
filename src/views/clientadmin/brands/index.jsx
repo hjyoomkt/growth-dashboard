@@ -51,18 +51,22 @@ export default function BrandManagement() {
               contact_phone,
               created_at,
               organization_id,
+              advertiser_group_id,
               organizations (
                 name
               )
             `)
-            .eq('organization_id', organizationId);
+            .eq('organization_id', organizationId)
+            .is('deleted_at', null);
 
           if (error) throw error;
           advertisers = data;
           console.log('[BrandsManagement] Agency 브랜드 조회 결과:', advertisers);
         } else {
-          // advertiser 계정: 사용자가 속한 브랜드들 조회
-          console.log('[BrandsManagement] Advertiser 모드: user_advertisers로 조회');
+          // advertiser 계정: 사용자가 속한 브랜드 + 같은 그룹의 브랜드 조회
+          console.log('[BrandsManagement] Advertiser 모드: 그룹 브랜드 포함 조회');
+
+          // 1. 내 브랜드 ID 조회
           const { data: userAdvertisers, error: userAdvError } = await supabase
             .from('user_advertisers')
             .select('advertiser_id')
@@ -70,14 +74,44 @@ export default function BrandManagement() {
 
           if (userAdvError) throw userAdvError;
 
-          const advertiserIds = userAdvertisers.map(ua => ua.advertiser_id);
+          const myAdvertiserIds = userAdvertisers.map(ua => ua.advertiser_id);
 
-          if (advertiserIds.length === 0) {
+          if (myAdvertiserIds.length === 0) {
             setBrands([]);
             return;
           }
 
-          // 브랜드 상세 정보 조회
+          // 2. 내 브랜드들의 advertiser_group_id 조회
+          const { data: myAdvertisers } = await supabase
+            .from('advertisers')
+            .select('id, advertiser_group_id')
+            .in('id', myAdvertiserIds);
+
+          const groupIds = [...new Set(
+            myAdvertisers
+              .map(adv => adv.advertiser_group_id)
+              .filter(Boolean)
+          )];
+
+          // 3. 같은 그룹의 모든 브랜드 ID 조회
+          let allBrandIds = [...myAdvertiserIds];
+
+          if (groupIds.length > 0) {
+            const { data: groupBrands } = await supabase
+              .from('advertisers')
+              .select('id')
+              .in('advertiser_group_id', groupIds);
+
+            allBrandIds = [
+              ...allBrandIds,
+              ...groupBrands.map(adv => adv.id)
+            ];
+          }
+
+          // 중복 제거
+          allBrandIds = [...new Set(allBrandIds)];
+
+          // 4. 전체 브랜드 정보 조회
           const { data, error: advError } = await supabase
             .from('advertisers')
             .select(`
@@ -89,15 +123,21 @@ export default function BrandManagement() {
               contact_phone,
               created_at,
               organization_id,
+              advertiser_group_id,
               organizations (
                 name
               )
             `)
-            .in('id', advertiserIds);
+            .in('id', allBrandIds)
+            .is('deleted_at', null);
 
           if (advError) throw advError;
           advertisers = data;
-          console.log('[BrandsManagement] Advertiser 브랜드 조회 결과:', advertisers);
+          console.log('[BrandsManagement] Advertiser 브랜드 조회 결과 (그룹 포함):', {
+            myAdvertiserIds: myAdvertiserIds.length,
+            groupIds: groupIds.length,
+            totalBrands: advertisers?.length
+          });
         }
 
         if (!advertisers) {

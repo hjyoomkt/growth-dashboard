@@ -20,6 +20,8 @@ import {
   Divider,
   Heading,
   Flex,
+  Radio,
+  RadioGroup,
 } from "@chakra-ui/react";
 import { MdOutlineRemoveRedEye, MdCheckCircle } from "react-icons/md";
 import { RiEyeCloseLine } from "react-icons/ri";
@@ -44,6 +46,7 @@ function InviteSignUpForm({ initialCode, onSuccess }) {
     websiteUrl: "",
     contactEmail: "",
     contactPhone: "",
+    selectedMainAdvertiserId: null, // 메인 브랜드 ID
   });
 
   const [showPassword, setShowPassword] = useState(false);
@@ -59,6 +62,10 @@ function InviteSignUpForm({ initialCode, onSuccess }) {
     { bg: "gray.50" },
     { bg: "whiteAlpha.100" }
   );
+  const borderColor = useColorModeValue('gray.200', 'whiteAlpha.100');
+  const selectedBg = useColorModeValue('brand.50', 'whiteAlpha.100');
+  const bgHover = useColorModeValue('gray.50', 'whiteAlpha.50');
+  const inputBg = useColorModeValue('white', 'navy.700');
 
   // 초대 코드 자동 검증 (initialCode가 있을 때)
   useEffect(() => {
@@ -128,20 +135,22 @@ function InviteSignUpForm({ initialCode, onSuccess }) {
         advertiserName = advData?.name;
       }
 
-      // 복수 브랜드 이름 조회 (advertiser_ids가 있는 경우)
-      let advertiserNames = [];
+      // 복수 브랜드 정보 (advertiser_ids와 advertiser_names 매핑)
+      let advertiserBrands = [];
       if (data.advertiser_ids && data.advertiser_ids.length > 0) {
-        const { data: advDataList } = await supabase
-          .from('advertisers')
-          .select('name')
-          .in('id', data.advertiser_ids);
-        advertiserNames = advDataList?.map(adv => adv.name) || [];
+        // advertiser_names가 초대 코드에 저장되어 있으므로 직접 사용 (RLS 문제 해결)
+        advertiserBrands = data.advertiser_ids.map((id, index) => ({
+          id: id,
+          name: data.advertiser_names?.[index] || '알 수 없는 브랜드'
+        }));
+
+        console.log('✅ 브랜드 목록:', advertiserBrands);
       }
 
       setInviteData({
         organizationName: organizationName,
         advertiserName: advertiserName,
-        advertiserNames: advertiserNames, // 복수 브랜드 이름들
+        advertiserBrands: advertiserBrands, // 복수 브랜드 정보 (id, name)
         role: data.role,
         invitedBy: '관리자',
         invitedEmail: data.invited_email,
@@ -153,7 +162,17 @@ function InviteSignUpForm({ initialCode, onSuccess }) {
         organizationId: data.organization_id,
         advertiserId: data.advertiser_id,
         advertiserIds: data.advertiser_ids, // 복수 브랜드 IDs
+        parentAdvertiserId: data.parent_advertiser_id, // NEW: 부모 브랜드 ID
       });
+
+      // 복수 브랜드일 경우 첫 번째 브랜드를 기본값으로 설정
+      if (data.advertiser_ids && data.advertiser_ids.length > 1) {
+        setFormData(prev => ({
+          ...prev,
+          selectedMainAdvertiserId: data.advertiser_ids[0]
+        }));
+      }
+
       setCodeError(null);
     } catch (err) {
       console.error('초대 코드 검증 오류:', err);
@@ -197,6 +216,14 @@ function InviteSignUpForm({ initialCode, onSuccess }) {
       return;
     }
 
+    // 복수 브랜드일 때 메인 브랜드 선택 필수
+    if (inviteData.advertiserBrands && inviteData.advertiserBrands.length > 1 &&
+        ['viewer', 'editor', 'advertiser_staff'].includes(inviteData.role) &&
+        !formData.selectedMainAdvertiserId) {
+      setError("메인 소속 브랜드를 선택해주세요.");
+      return;
+    }
+
     setIsLoading(true);
 
     try {
@@ -215,7 +242,12 @@ function InviteSignUpForm({ initialCode, onSuccess }) {
       if (authError) throw authError;
 
       let finalOrganizationId = inviteData.organizationId;
+
+      // 메인 브랜드 결정: selectedMainAdvertiserId > 첫 번째 브랜드 > advertiserId
       let finalAdvertiserId = inviteData.advertiserId;
+      if (inviteData.advertiserIds && inviteData.advertiserIds.length > 0) {
+        finalAdvertiserId = formData.selectedMainAdvertiserId || inviteData.advertiserIds[0];
+      }
 
       // 2. 신규 광고주(조직) 생성
       if (inviteData.isNewAdvertiser) {
@@ -285,6 +317,41 @@ function InviteSignUpForm({ initialCode, onSuccess }) {
 
         if (advError) throw advError;
         finalAdvertiserId = newAdv.id;
+
+        // NEW: Edge Function 호출하여 advertiser_group_id 설정
+        if (inviteData.parentAdvertiserId) {
+          console.log('🔍 Edge Function 호출 시작:', {
+            parentAdvertiserId: inviteData.parentAdvertiserId,
+            newAdvertiserId: newAdv.id,
+          });
+
+          try {
+            const { data: groupData, error: groupError } = await supabase.functions.invoke(
+              'assign-advertiser-group',
+              {
+                body: {
+                  parentAdvertiserId: inviteData.parentAdvertiserId,
+                  newAdvertiserId: newAdv.id,
+                },
+              }
+            );
+
+            console.log('📦 Edge Function 응답:', { groupData, groupError });
+
+            if (groupError) {
+              console.error('❌ 브랜드 그룹 설정 실패:', groupError);
+              // 실패해도 회원가입은 완료되었으므로 경고만 표시
+              setError(`브랜드 그룹 설정 중 오류가 발생했습니다: ${groupError.message || JSON.stringify(groupError)}`);
+            } else {
+              console.log('✅ 브랜드 그룹 설정 완료:', groupData);
+            }
+          } catch (err) {
+            console.error('❌ Edge Function 호출 실패:', err);
+            setError(`브랜드 그룹 설정 중 오류가 발생했습니다: ${err.message}`);
+          }
+        } else {
+          console.log('⚠️ parentAdvertiserId가 없어 Edge Function을 호출하지 않습니다');
+        }
       }
 
       // 4. Users 테이블에 추가 정보 저장
@@ -454,8 +521,8 @@ function InviteSignUpForm({ initialCode, onSuccess }) {
               ) : (
                 <>
                   <Text><strong>조직:</strong> {inviteData.organizationName}</Text>
-                  {inviteData.advertiserNames && inviteData.advertiserNames.length > 0 ? (
-                    <Text><strong>접근 가능한 브랜드:</strong> {inviteData.advertiserNames.join(', ')}</Text>
+                  {inviteData.advertiserBrands && inviteData.advertiserBrands.length > 0 ? (
+                    <Text><strong>접근 가능한 브랜드:</strong> {inviteData.advertiserBrands.map(b => b.name).join(', ')}</Text>
                   ) : inviteData.advertiserName && (
                     <Text><strong>광고주:</strong> {inviteData.advertiserName}</Text>
                   )}
@@ -573,6 +640,55 @@ function InviteSignUpForm({ initialCode, onSuccess }) {
           </InputRightElement>
         </InputGroup>
       </FormControl>
+
+      {/* 메인 소속 브랜드 선택 */}
+      {inviteData && inviteData.advertiserBrands && inviteData.advertiserBrands.length > 1 &&
+       ['viewer', 'editor', 'advertiser_staff'].includes(inviteData.role) && (
+        <>
+          <Divider my="24px" />
+
+          <Heading size="sm" color={textColor} mb="16px">
+            메인 소속 브랜드 선택
+          </Heading>
+
+          <FormControl mb="20px">
+            <FormLabel fontSize="sm" fontWeight="500" color={textColor}>
+              메인 브랜드 *
+            </FormLabel>
+            <Text fontSize="xs" color="gray.500" mb="12px">
+              여러 브랜드에 접근 가능하지만, 하나의 메인 브랜드를 지정해야 합니다.
+            </Text>
+            <RadioGroup
+              value={formData.selectedMainAdvertiserId}
+              onChange={(value) => setFormData({ ...formData, selectedMainAdvertiserId: value })}
+            >
+              <VStack align="stretch" spacing="8px">
+                {inviteData.advertiserBrands && inviteData.advertiserBrands.map((brand) => {
+                  return (
+                    <Box
+                      key={brand.id}
+                      p="12px"
+                      borderRadius="8px"
+                      border="1px solid"
+                      borderColor={formData.selectedMainAdvertiserId === brand.id ? brandColor : borderColor}
+                      bg={formData.selectedMainAdvertiserId === brand.id ? selectedBg : inputBg}
+                      cursor="pointer"
+                      onClick={() => setFormData({ ...formData, selectedMainAdvertiserId: brand.id })}
+                      _hover={{ borderColor: brandColor, bg: bgHover }}
+                    >
+                      <Radio value={brand.id} colorScheme="brand">
+                        <Text fontSize="sm" fontWeight="500" color={textColor}>
+                          {brand.name}
+                        </Text>
+                      </Radio>
+                    </Box>
+                  );
+                })}
+              </VStack>
+            </RadioGroup>
+          </FormControl>
+        </>
+      )}
 
       {/* 신규 조직/브랜드 정보 입력 섹션 */}
       {(inviteData?.isNewAdvertiser || inviteData?.isNewBrand || inviteData?.isNewAgency) && (

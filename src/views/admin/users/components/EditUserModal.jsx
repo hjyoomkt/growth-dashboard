@@ -30,6 +30,7 @@ import {
 import { useAuth } from "contexts/AuthContext";
 import { MdKeyboardArrowDown } from "react-icons/md";
 import { updateUserRoleAndAdvertisers } from "services/supabaseService";
+import { supabase } from "config/supabase";
 
 export default function EditUserModal({ isOpen, onClose, user, onUpdate }) {
   const { isAgency, role: currentUserRole, isMaster, organizationType, availableAdvertisers, user: currentUser } = useAuth();
@@ -101,8 +102,66 @@ export default function EditUserModal({ isOpen, onClose, user, onUpdate }) {
     return targetRoleLevel < currentRoleLevel;
   };
 
-  // 실제 광고주 목록 (AuthContext에서 가져옴)
-  const advertisers = availableAdvertisers || [];
+  // 실제 광고주 목록 (AuthContext에서 가져옴 + 그룹 브랜드 포함)
+  const [advertisers, setAdvertisers] = useState([]);
+
+  // 그룹 브랜드 포함하여 조회
+  useEffect(() => {
+    const fetchGroupAdvertisers = async () => {
+      if (!availableAdvertisers || availableAdvertisers.length === 0) {
+        setAdvertisers([]);
+        return;
+      }
+
+      try {
+        // 내 브랜드 IDs
+        const myAdvertiserIds = availableAdvertisers.map(adv => adv.id);
+
+        // advertiser_group_id 조회
+        const { data: myAdvertisers } = await supabase
+          .from('advertisers')
+          .select('id, advertiser_group_id')
+          .in('id', myAdvertiserIds);
+
+        const groupIds = [...new Set(
+          myAdvertisers.map(adv => adv.advertiser_group_id).filter(Boolean)
+        )];
+
+        // 같은 그룹의 모든 브랜드 ID
+        let allBrandIds = [...myAdvertiserIds];
+
+        if (groupIds.length > 0) {
+          const { data: groupBrands } = await supabase
+            .from('advertisers')
+            .select('id')
+            .in('advertiser_group_id', groupIds);
+
+          allBrandIds = [
+            ...allBrandIds,
+            ...groupBrands.map(adv => adv.id)
+          ];
+        }
+
+        // 중복 제거
+        allBrandIds = [...new Set(allBrandIds)];
+
+        // 전체 브랜드 정보 조회
+        const { data: allBrands } = await supabase
+          .from('advertisers')
+          .select('id, name')
+          .in('id', allBrandIds)
+          .is('deleted_at', null)
+          .order('name');
+
+        setAdvertisers(allBrands || []);
+      } catch (error) {
+        console.error('그룹 브랜드 조회 실패:', error);
+        setAdvertisers(availableAdvertisers || []);
+      }
+    };
+
+    fetchGroupAdvertisers();
+  }, [availableAdvertisers]);
 
   useEffect(() => {
     if (user) {

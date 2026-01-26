@@ -128,60 +128,77 @@ export default function AdvertisersTree({ organizations = [], onAddBrand, onEdit
                     </Text>
                   ) : (
                     <Box>
-                      {org.advertisers.map((brand, idx) => (
-                        <Flex
-                          key={brand.id}
-                          align="center"
-                          justify="space-between"
-                          p="12px 16px"
-                          mb={idx < brandCount - 1 ? "8px" : "0"}
-                          border="1px solid"
-                          borderColor={borderColor}
-                          borderRadius="8px"
-                          _hover={{ bg: hoverBg }}
-                          transition="all 0.2s"
-                        >
-                          <Flex align="center" gap="12px" flex="1">
-                            <Icon as={MdStorefront} w="18px" h="18px" color="brand.500" />
-                            <Box flex="1">
-                              <HStack spacing="8px" mb="4px">
-                                <Text fontSize="sm" fontWeight="600" color={textColor}>
-                                  {brand.name}
-                                </Text>
-                              </HStack>
-                              <HStack spacing="16px" fontSize="xs" color="gray.500">
-                                {brand.business_number && <Text>사업자: {brand.business_number}</Text>}
-                                {brand.contact_email && <Text>이메일: {brand.contact_email}</Text>}
-                                {brand.contact_phone && <Text>연락처: {brand.contact_phone}</Text>}
-                                <Text>생성일: {formatDate(brand.created_at)}</Text>
-                              </HStack>
-                            </Box>
-                          </Flex>
+                      {org.advertisers.map((brand, idx) => {
+                        // 같은 그룹의 다른 브랜드들 찾기
+                        const otherBrandsInGroup = brand.advertiser_group_id
+                          ? org.advertisers
+                              .filter(b =>
+                                b.advertiser_group_id === brand.advertiser_group_id &&
+                                b.id !== brand.id
+                              )
+                              .map(b => b.name)
+                          : [];
 
-                          <Menu>
-                            <MenuButton
-                              as={IconButton}
-                              icon={<Icon as={MdMoreVert} />}
-                              variant="ghost"
-                              size="sm"
-                            />
-                            <MenuList>
-                              <MenuItem onClick={() => handleEditBrand(brand)}>
-                                정보 수정
-                              </MenuItem>
-                              {canDeleteBrand(brand) && (
-                                <MenuItem
-                                  icon={<Icon as={MdDelete} />}
-                                  color="red.500"
-                                  onClick={() => onDeleteBrand(brand)}
-                                >
-                                  브랜드 삭제
+                        return (
+                          <Flex
+                            key={brand.id}
+                            align="center"
+                            justify="space-between"
+                            p="12px 16px"
+                            mb={idx < brandCount - 1 ? "8px" : "0"}
+                            border="1px solid"
+                            borderColor={borderColor}
+                            borderRadius="8px"
+                            _hover={{ bg: hoverBg }}
+                            transition="all 0.2s"
+                          >
+                            <Flex align="center" gap="12px" flex="1">
+                              <Icon as={MdStorefront} w="18px" h="18px" color="brand.500" />
+                              <Box flex="1">
+                                <HStack spacing="8px" mb="4px">
+                                  <Text fontSize="sm" fontWeight="600" color={textColor}>
+                                    {brand.name}
+                                  </Text>
+                                  {otherBrandsInGroup.length > 0 && (
+                                    <Text fontSize="xs" color="gray.500" fontWeight="400">
+                                      ({otherBrandsInGroup.join(', ')})
+                                    </Text>
+                                  )}
+                                </HStack>
+                                <HStack spacing="16px" fontSize="xs" color="gray.500">
+                                  {brand.business_number && <Text>사업자: {brand.business_number}</Text>}
+                                  {brand.contact_email && <Text>이메일: {brand.contact_email}</Text>}
+                                  {brand.contact_phone && <Text>연락처: {brand.contact_phone}</Text>}
+                                  <Text>생성일: {formatDate(brand.created_at)}</Text>
+                                </HStack>
+                              </Box>
+                            </Flex>
+
+                            <Menu>
+                              <MenuButton
+                                as={IconButton}
+                                icon={<Icon as={MdMoreVert} />}
+                                variant="ghost"
+                                size="sm"
+                              />
+                              <MenuList>
+                                <MenuItem onClick={() => handleEditBrand(brand)}>
+                                  정보 수정
                                 </MenuItem>
-                              )}
-                            </MenuList>
-                          </Menu>
-                        </Flex>
-                      ))}
+                                {canDeleteBrand(brand) && (
+                                  <MenuItem
+                                    icon={<Icon as={MdDelete} />}
+                                    color="red.500"
+                                    onClick={() => onDeleteBrand(brand)}
+                                  >
+                                    브랜드 삭제
+                                  </MenuItem>
+                                )}
+                              </MenuList>
+                            </Menu>
+                          </Flex>
+                        );
+                      })}
                     </Box>
                   )}
                 </Box>

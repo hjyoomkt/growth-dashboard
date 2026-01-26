@@ -7,13 +7,15 @@ import {
   getCurrentUser,
   getUserMetadata,
   getAvailableAdvertisers,
-  getBoardPosts
+  getBoardPosts,
+  markPostAsRead
 } from '../services/supabaseService';
 
 const AuthContext = createContext();
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
+  const [userName, setUserName] = useState(null);
   const [organizationId, setOrganizationId] = useState(null);
   const [advertiserId, setAdvertiserId] = useState(null);
   const [role, setRole] = useState(null);
@@ -70,6 +72,7 @@ export const AuthProvider = ({ children }) => {
       if (session?.user) {
         fetchUserMetadata(session.user.id);
       } else {
+        setUserName(null);
         setOrganizationId(null);
         setAdvertiserId(null);
         setRole(null);
@@ -163,6 +166,7 @@ export const AuthProvider = ({ children }) => {
       const userData = await getUserMetadata(userId);
       console.log('✅ 사용자 메타데이터:', userData);
 
+      setUserName(userData.name);
       setOrganizationId(userData.organization_id);
       setAdvertiserId(userData.advertiser_id);
       setRole(userData.role);
@@ -261,6 +265,7 @@ export const AuthProvider = ({ children }) => {
       await supabaseSignOut();
       console.log('Sign out successful');
       setUser(null);
+      setUserName(null);
       setOrganizationId(null);
       setAdvertiserId(null);
       setRole(null);
@@ -330,7 +335,8 @@ export const AuthProvider = ({ children }) => {
   };
 
   // API 알림 읽음 처리
-  const markNotificationAsRead = (notificationId) => {
+  const markNotificationAsRead = async (notificationId) => {
+    // 로컬 상태 업데이트
     setApiNotifications(prev =>
       prev.map(notif =>
         notif.id === notificationId ? { ...notif, read: true } : notif
@@ -341,16 +347,38 @@ export const AuthProvider = ({ children }) => {
         notif.id === notificationId ? { ...notif, read: true } : notif
       )
     );
+
+    // 게시판 알림인 경우 DB에 읽음 상태 저장
+    const boardNotif = boardNotifications.find(n => n.id === notificationId);
+    if (boardNotif && boardNotif.postId && user) {
+      try {
+        await markPostAsRead(boardNotif.postId, user.id);
+      } catch (error) {
+        console.error('[AuthContext] 게시글 읽음 처리 실패:', error);
+      }
+    }
   };
 
   // 모든 알림 읽음 처리
-  const markAllNotificationsAsRead = () => {
+  const markAllNotificationsAsRead = async () => {
+    // 로컬 상태 업데이트
     setApiNotifications(prev =>
       prev.map(notif => ({ ...notif, read: true }))
     );
     setBoardNotifications(prev =>
       prev.map(notif => ({ ...notif, read: true }))
     );
+
+    // 모든 게시판 알림을 DB에 읽음 상태로 저장
+    if (user && boardNotifications.length > 0) {
+      const savePromises = boardNotifications
+        .filter(notif => !notif.read && notif.postId)
+        .map(notif => markPostAsRead(notif.postId, user.id).catch(err => {
+          console.error('[AuthContext] 게시글 읽음 처리 실패:', notif.postId, err);
+        }));
+
+      await Promise.all(savePromises);
+    }
   };
 
   // 알림 삭제
@@ -365,6 +393,7 @@ export const AuthProvider = ({ children }) => {
 
   const value = {
     user,
+    userName,
     organizationId,
     advertiserId,
     role,

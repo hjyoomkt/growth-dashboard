@@ -39,6 +39,7 @@ export default function HeaderLinks(props) {
   const { colorMode, toggleColorMode } = useColorMode();
   const {
     user,
+    userName,
     role,
     availableAdvertisers,
     currentAdvertiserId,
@@ -48,6 +49,21 @@ export default function HeaderLinks(props) {
     markAllNotificationsAsRead,
     signOut,
   } = useAuth();
+
+  // 권한을 한글로 매핑하는 함수
+  const getRoleKorean = (role) => {
+    const roleMap = {
+      'master': '마스터',
+      'agency_admin': '에이전시 대표',
+      'agency_manager': '에이전시 관리자',
+      'agency_staff': '에이전시 직원',
+      'advertiser_admin': '브랜드 대표운영자',
+      'advertiser_staff': '브랜드 부운영자',
+      'viewer': '뷰어',
+      'editor': '편집자',
+    };
+    return roleMap[role] || role;
+  };
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -116,8 +132,8 @@ export default function HeaderLinks(props) {
   const [selectedPost, setSelectedPost] = useState(null);
 
   // 알림 클릭 핸들러
-  const handleNotificationClick = (notification) => {
-    markNotificationAsRead(notification.id);
+  const handleNotificationClick = async (notification) => {
+    await markNotificationAsRead(notification.id);
 
     // 게시판 알림인 경우 모달 열기
     if (notification.type === 'board') {
@@ -457,7 +473,7 @@ export default function HeaderLinks(props) {
           <Avatar
             _hover={{ cursor: 'pointer' }}
             color="white"
-            name={user?.email || "User"}
+            name={userName || user?.email || "User"}
             bg="#11047A"
             size="sm"
             w="40px"
@@ -484,7 +500,7 @@ export default function HeaderLinks(props) {
               fontWeight="700"
               color={textColor}
             >
-              👋&nbsp; {user?.email || "User"} ({role || "guest"})
+              {userName || user?.email || "사용자"}({getRoleKorean(role) || "게스트"})
             </Text>
           </Flex>
           <Flex flexDirection="column" p="10px">

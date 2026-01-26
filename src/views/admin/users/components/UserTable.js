@@ -33,6 +33,7 @@ import { MdMoreVert } from 'react-icons/md';
 import { useAuth } from 'contexts/AuthContext';
 import { getUsers, updateUserRole, updateUserStatus } from 'services/supabaseService';
 import EditUserModal from './EditUserModal';
+import BrandListModal from './BrandListModal';
 
 const columnHelper = createColumnHelper();
 
@@ -41,6 +42,8 @@ export default function UserTable(props) {
   const [sorting, setSorting] = React.useState([]);
   const [editModalOpen, setEditModalOpen] = React.useState(false);
   const [selectedUser, setSelectedUser] = React.useState(null);
+  const [brandListModalOpen, setBrandListModalOpen] = React.useState(false);
+  const [selectedBrandUser, setSelectedBrandUser] = React.useState(null);
   const textColor = useColorModeValue('secondaryGray.900', 'white');
   const borderColor = useColorModeValue('gray.200', 'whiteAlpha.100');
   const { user, isAgency, role, organizationId, advertiserId, organizationType, isMaster } = useAuth();
@@ -153,6 +156,11 @@ export default function UserTable(props) {
   const handleEditUser = (user) => {
     setSelectedUser(user);
     setEditModalOpen(true);
+  };
+
+  const handleShowBrands = (user) => {
+    setSelectedBrandUser(user);
+    setBrandListModalOpen(true);
   };
 
   const handleUpdateUser = async (userId, updatedData) => {
@@ -297,21 +305,36 @@ export default function UserTable(props) {
           const clients = row.clients;
 
           if (clients && clients.length > 0) {
+            if (clients.length === 1) {
+              return (
+                <Badge bg="black" color="white" fontSize="xs">
+                  {clients[0]}
+                </Badge>
+              );
+            }
+
             return (
-              <Text color={textColor} fontSize="sm">
-                {clients.join(', ')}
-              </Text>
+              <Flex align="center" gap="6px">
+                <Badge bg="black" color="white" fontSize="xs">
+                  {clients[0]}
+                </Badge>
+                <Badge
+                  colorScheme="blue"
+                  fontSize="xs"
+                  cursor="pointer"
+                  onClick={() => handleShowBrands(row)}
+                  _hover={{ transform: 'scale(1.05)', opacity: 0.8 }}
+                >
+                  +{clients.length - 1}
+                </Badge>
+              </Flex>
             );
           }
 
           return (
-            <Text color={textColor} fontSize="sm">
-              {client || (
-                <Text as="span" color="gray.400">
-                  전체
-                </Text>
-              )}
-            </Text>
+            <Badge colorScheme="gray" fontSize="xs">
+              전체
+            </Badge>
           );
         },
       })
@@ -512,6 +535,13 @@ export default function UserTable(props) {
       onClose={() => setEditModalOpen(false)}
       user={selectedUser}
       onUpdate={handleUpdateUser}
+    />
+
+    <BrandListModal
+      isOpen={brandListModalOpen}
+      onClose={() => setBrandListModalOpen(false)}
+      userName={selectedBrandUser?.name}
+      brands={selectedBrandUser?.clients}
     />
     </>
   );

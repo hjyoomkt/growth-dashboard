@@ -167,11 +167,17 @@ function SignUp() {
               {mode === 'invite' ? (
                 <InviteSignUpForm
                   initialCode={urlInviteCode}
-                  onSuccess={() => navigate('/admin/default')}
+                  onSuccess={() => {
+                    // 사용자 메타데이터 로딩을 위해 페이지 새로고침과 함께 이동
+                    window.location.href = '/admin/default';
+                  }}
                 />
               ) : (
                 <SelfSignUpForm
-                  onSuccess={() => navigate('/admin/default')}
+                  onSuccess={() => {
+                    // 사용자 메타데이터 로딩을 위해 페이지 새로고침과 함께 이동
+                    window.location.href = '/admin/default';
+                  }}
                 />
               )}
 

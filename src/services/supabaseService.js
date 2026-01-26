@@ -151,7 +151,7 @@ export const getAvailableAdvertisers = async (userData) => {
       throw uaError;
     }
 
-    const advertisers = (userAdvertisers || [])
+    let advertisers = (userAdvertisers || [])
       .map(ua => ua.advertisers)
       .filter(Boolean);
 
@@ -176,6 +176,44 @@ export const getAvailableAdvertisers = async (userData) => {
 
       console.log('[getAvailableAdvertisers] 조회 성공 (담당 브랜드 전체):', { count: orgAdvertisers?.length });
       return orgAdvertisers || [];
+    }
+
+    // 그룹 브랜드 확장: advertiser_group_id가 있으면 같은 그룹의 브랜드도 포함
+    if (advertisers.length > 0) {
+      const advertiserIds = advertisers.map(adv => adv.id);
+
+      // advertiser_group_id 조회
+      const { data: myAdvertisers } = await supabase
+        .from('advertisers')
+        .select('id, advertiser_group_id')
+        .in('id', advertiserIds);
+
+      const groupIds = [...new Set(
+        myAdvertisers?.map(adv => adv.advertiser_group_id).filter(Boolean) || []
+      )];
+
+      if (groupIds.length > 0) {
+        // 같은 그룹의 모든 브랜드 조회
+        const { data: groupBrands } = await supabase
+          .from('advertisers')
+          .select('*')
+          .in('advertiser_group_id', groupIds)
+          .is('deleted_at', null);
+
+        if (groupBrands && groupBrands.length > 0) {
+          // 기존 브랜드 + 그룹 브랜드 합치기
+          const allBrandIds = new Set(advertiserIds);
+          const additionalBrands = groupBrands.filter(brand => !allBrandIds.has(brand.id));
+
+          advertisers = [...advertisers, ...additionalBrands];
+
+          console.log('[getAvailableAdvertisers] 그룹 브랜드 추가:', {
+            original: advertiserIds.length,
+            groupBrands: groupBrands.length,
+            final: advertisers.length
+          });
+        }
+      }
     }
 
     console.log('[getAvailableAdvertisers] 조회 성공:', { role: userData.role, count: advertisers.length });
@@ -353,7 +391,9 @@ export const getUsers = async (currentUser) => {
     return usersWithAdvertisers;
 
   } else if (isAdvertiser) {
-    // Advertiser: user_advertisers를 통해 같은 브랜드에 접근 가능한 사용자
+    // Advertiser: 같은 advertiser_group_id를 가진 브랜드의 모든 사용자
+
+    // 1. 현재 사용자의 브랜드 ID 조회
     const { data: userAdvertisers, error: uaError } = await supabase
       .from('user_advertisers')
       .select('advertiser_id')
@@ -364,62 +404,93 @@ export const getUsers = async (currentUser) => {
       return [];
     }
 
-    const advertiserIds = userAdvertisers.map(ua => ua.advertiser_id);
+    const myAdvertiserIds = userAdvertisers.map(ua => ua.advertiser_id);
 
-    // 같은 브랜드에 접근 가능한 사용자 조회
+    // 2. 내 브랜드들의 advertiser_group_id 조회
+    const { data: myAdvertisers } = await supabase
+      .from('advertisers')
+      .select('id, advertiser_group_id')
+      .in('id', myAdvertiserIds);
+
+    const groupIds = [...new Set(
+      myAdvertisers
+        .map(adv => adv.advertiser_group_id)
+        .filter(Boolean) // null 제외
+    )];
+
+    // 3. 같은 그룹의 모든 브랜드 ID 조회
+    let allGroupAdvertiserIds = [...myAdvertiserIds]; // group이 없는 브랜드도 포함
+
+    if (groupIds.length > 0) {
+      const { data: groupAdvertisers } = await supabase
+        .from('advertisers')
+        .select('id')
+        .in('advertiser_group_id', groupIds);
+
+      allGroupAdvertiserIds = [
+        ...allGroupAdvertiserIds,
+        ...groupAdvertisers.map(adv => adv.id)
+      ];
+    }
+
+    // 중복 제거
+    allGroupAdvertiserIds = [...new Set(allGroupAdvertiserIds)];
+
+    // 4. 그룹 내 모든 브랜드에 접근하는 사용자 조회
     const { data: sameAdvertiserUsers, error: userError } = await supabase
       .from('user_advertisers')
       .select(`
         user_id,
-        users(
+        users!user_advertisers_user_id_fkey (
           *,
           organizations(id, name, type),
           advertisers(id, name)
         )
       `)
-      .in('advertiser_id', advertiserIds);
+      .in('advertiser_id', allGroupAdvertiserIds);
 
     if (userError) {
       console.error('[getUsers] 사용자 조회 실패:', userError);
       throw userError;
     }
 
-    // 중복 제거
-    const userMap = new Map();
-    (sameAdvertiserUsers || []).forEach(ua => {
-      if (ua.users && !userMap.has(ua.users.id)) {
-        userMap.set(ua.users.id, ua.users);
+    // 5. user_id로 그룹화하여 중복 제거
+    const uniqueUserMap = new Map();
+
+    for (const ua of sameAdvertiserUsers || []) {
+      const user = ua.users;
+      if (!user) continue;
+
+      if (!uniqueUserMap.has(user.id)) {
+        // accessible_advertisers 배열 생성
+        const userAdvs = (sameAdvertiserUsers || [])
+          .filter(item => item.user_id === user.id && item.advertisers)
+          .map(item => ({
+            id: item.advertisers.id,
+            name: item.advertisers.name
+          }));
+
+        uniqueUserMap.set(user.id, {
+          ...user,
+          accessible_advertisers: userAdvs,
+        });
       }
-    });
+    }
 
-    // 각 사용자의 접근 가능한 브랜드 목록 추가
-    const usersWithAdvertisers = await Promise.all(
-      Array.from(userMap.values()).map(async (user) => {
-        const { data: userAdvertisers } = await supabase
-          .from('user_advertisers')
-          .select(`
-            advertisers(id, name)
-          `)
-          .eq('user_id', user.id);
+    // Map을 배열로 변환
+    const users = Array.from(uniqueUserMap.values());
 
-        user.accessible_advertisers = (userAdvertisers || [])
-          .map(ua => ua.advertisers)
-          .filter(Boolean);
-
-        return user;
-      })
-    );
-
-    // 브랜드 관련 역할만 필터링
+    // 역할 필터링 (브랜드 관련 역할만)
     const BRAND_ROLES = ['viewer', 'editor', 'advertiser_admin', 'advertiser_staff'];
-    const filteredUsers = usersWithAdvertisers.filter(user =>
+    const filteredUsers = users.filter(user =>
       BRAND_ROLES.includes(user.role)
     );
 
     console.log('[getUsers] 조회 성공 (advertiser):', {
       count: filteredUsers.length,
-      totalBeforeFilter: usersWithAdvertisers.length,
-      filtered: usersWithAdvertisers.length - filteredUsers.length
+      myAdvertiserIds: myAdvertiserIds.length,
+      groupIds: groupIds.length,
+      allGroupAdvertiserIds: allGroupAdvertiserIds.length,
     });
     return filteredUsers;
   }
@@ -750,6 +821,32 @@ export const createInviteCode = async (inviteData) => {
   const expiresAt = new Date();
   expiresAt.setDate(expiresAt.getDate() + 7); // 7일 후 만료
 
+  // 브랜드 이름 조회 (RLS 문제 해결: 초대 코드에 이름 저장)
+  let advertiserNames = null;
+  if (inviteData.advertiserIds && inviteData.advertiserIds.length > 0) {
+    const { data: brandsData } = await supabase
+      .from('advertisers')
+      .select('id, name')
+      .in('id', inviteData.advertiserIds);
+
+    if (brandsData) {
+      // advertiserIds 순서대로 이름 배열 생성
+      const brandsMap = new Map(brandsData.map(b => [b.id, b.name]));
+      advertiserNames = inviteData.advertiserIds.map(id => brandsMap.get(id) || '알 수 없는 브랜드');
+    }
+  } else if (inviteData.advertiserId) {
+    // 단일 브랜드인 경우
+    const { data: brandData } = await supabase
+      .from('advertisers')
+      .select('name')
+      .eq('id', inviteData.advertiserId)
+      .single();
+
+    if (brandData) {
+      advertiserNames = [brandData.name];
+    }
+  }
+
   const { data, error } = await supabase
     .from('invitation_codes')
     .insert({
@@ -757,11 +854,13 @@ export const createInviteCode = async (inviteData) => {
       organization_id: inviteData.organizationId || null,
       advertiser_id: inviteData.advertiserId || null,
       advertiser_ids: inviteData.advertiserIds || null, // 복수 브랜드 지원
+      advertiser_names: advertiserNames, // 브랜드 이름 배열 저장
       invited_email: inviteData.email,
       role: inviteData.role,
       created_by: inviteData.createdBy,
       expires_at: expiresAt.toISOString(),
       invite_type: inviteData.inviteType || 'existing_member',
+      parent_advertiser_id: inviteData.parentAdvertiserId || null, // NEW: 부모 브랜드 ID
     })
     .select()
     .single();
@@ -2644,8 +2743,30 @@ export const getBoardPosts = async (
   let data = [];
 
   if (boardType === 'brand' && advertiserId) {
-    // 브랜드 게시판: 두 종류의 게시글을 조회
-    // 1. board_type='brand' AND advertiser_id=현재브랜드 (브랜드 전용)
+    // 브랜드 게시판: advertiser_group_id를 고려한 그룹 공유
+
+    // 1. 현재 브랜드의 advertiser_group_id 조회
+    const { data: currentAdvertiser } = await supabase
+      .from('advertisers')
+      .select('advertiser_group_id')
+      .eq('id', advertiserId)
+      .single();
+
+    const groupId = currentAdvertiser?.advertiser_group_id;
+    let allGroupBrandIds = [advertiserId];
+
+    // 2. 같은 그룹의 모든 브랜드 ID 조회
+    if (groupId) {
+      const { data: groupBrands } = await supabase
+        .from('advertisers')
+        .select('id')
+        .eq('advertiser_group_id', groupId);
+
+      allGroupBrandIds = [...allGroupBrandIds, ...(groupBrands || []).map(adv => adv.id)];
+      allGroupBrandIds = [...new Set(allGroupBrandIds)];
+    }
+
+    // 3. 브랜드 게시글 조회 (그룹 내 모든 브랜드의 게시글)
     const { data: brandPosts, error: brandError } = await supabase
       .from('board_posts')
       .select(`
@@ -2653,12 +2774,12 @@ export const getBoardPosts = async (
         users!board_posts_created_by_fkey(name, email, role)
       `)
       .eq('board_type', 'brand')
-      .eq('advertiser_id', advertiserId)
+      .in('advertiser_id', allGroupBrandIds)
       .is('deleted_at', null);
 
     if (brandError) throw brandError;
 
-    // 2. board_type='admin' (슈퍼어드민이 작성한 글 - 클라이언트 사이드에서 필터링)
+    // 4. admin 게시글 조회
     const { data: adminPosts, error: adminError } = await supabase
       .from('board_posts')
       .select(`
@@ -2670,14 +2791,14 @@ export const getBoardPosts = async (
 
     if (adminError) throw adminError;
 
-    // admin 게시글 중 현재 브랜드 대상인 것만 필터링
+    // admin 게시글 중 그룹 내 브랜드 대상인 것만 필터링
     const filteredAdminPosts = (adminPosts || []).filter(post => {
       // target_advertiser_ids가 null이면 모든 사용자 대상 (표시)
       if (!post.target_advertiser_ids || post.target_advertiser_ids.length === 0) {
         return true;
       }
-      // target_advertiser_ids에 현재 브랜드 ID가 포함되어 있는지 확인
-      return post.target_advertiser_ids.includes(advertiserId);
+      // target_advertiser_ids에 그룹 내 브랜드 ID가 포함되어 있는지 확인
+      return post.target_advertiser_ids.some(id => allGroupBrandIds.includes(id));
     });
 
     // 두 목록을 합치고 날짜순 정렬
@@ -2760,6 +2881,19 @@ export const getBoardPosts = async (
 export const createBoardPost = async (postData) => {
   console.log('[createBoardPost] 호출됨:', postData);
 
+  // advertiser_group_id 조회
+  let groupId = null;
+
+  if (postData.advertiserId) {
+    const { data: advertiser } = await supabase
+      .from('advertisers')
+      .select('advertiser_group_id')
+      .eq('id', postData.advertiserId)
+      .single();
+
+    groupId = advertiser?.advertiser_group_id;
+  }
+
   const insertData = {
     title: postData.title,
     content: postData.content,
@@ -2767,12 +2901,13 @@ export const createBoardPost = async (postData) => {
     advertiser_id: postData.advertiserId || null,
     target_roles: postData.targets,
     target_advertiser_ids: postData.targetAdvertiserIds || null,
+    advertiser_group_id: groupId, // NEW: 그룹 ID 설정
     created_by: postData.createdBy,
   };
 
   console.log('[createBoardPost] INSERT 데이터:', insertData);
 
-  const { data, error } = await supabase
+  const { data, error} = await supabase
     .from('board_posts')
     .insert([insertData])
     .select()

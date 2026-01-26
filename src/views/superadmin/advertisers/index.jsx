@@ -57,7 +57,8 @@ export default function AdvertisersManagement() {
             contact_phone,
             meta_conversion_type,
             created_at,
-            organization_id
+            organization_id,
+            advertiser_group_id
           )
         `);
 

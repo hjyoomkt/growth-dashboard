@@ -136,7 +136,6 @@ export default function Dashboard(props) {
             float="right"
             minHeight="100vh"
             height="100%"
-            overflow="auto"
             position="relative"
             maxHeight="100%"
             w={{ base: '100%', xl: 'calc( 100% - 290px )' }}
