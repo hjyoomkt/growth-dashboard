@@ -33,27 +33,44 @@ serve(async (req) => {
     const yesterdayStr = getKSTYesterday()
     console.log(`[Daily Scheduler] Collecting data for date (KST yesterday): ${yesterdayStr}`)
 
-    // active integrations 조회 (토큰이 있는 것만)
-    const { data: integrations, error: fetchError } = await supabase
+    // active integrations 조회 (플랫폼별 토큰 타입에 맞게)
+    let query = supabase
       .from('integrations')
-      .select('id, oauth_refresh_token_encrypted')
+      .select('id, oauth_refresh_token_encrypted, access_token_encrypted')
       .eq('status', 'active')
       .eq('platform', platform)
       .is('deleted_at', null)
-      .not('oauth_refresh_token_encrypted', 'is', null)
+
+    // 플랫폼별 토큰 타입 필터링
+    if (platform === 'Google Ads') {
+      // OAuth refresh token 필요
+      query = query.not('oauth_refresh_token_encrypted', 'is', null)
+    } else if (platform === 'Meta Ads') {
+      // Access token 필요
+      query = query.not('access_token_encrypted', 'is', null)
+    } else if (platform === 'Naver Ads') {
+      // Organization-level credentials 사용, integration-level 토큰 불필요
+      // 기본 필터(status, platform, deleted_at)만 적용
+    } else {
+      // 기타 플랫폼: 어떤 형태의 토큰이라도 있으면 처리
+      query = query.or('oauth_refresh_token_encrypted.not.is.null,access_token_encrypted.not.is.null')
+    }
+
+    const { data: integrations, error: fetchError } = await query
 
     if (fetchError) {
       throw fetchError
     }
 
     if (!integrations || integrations.length === 0) {
-      console.log(`No active integrations for ${platform}`)
+      console.warn(`[Daily Scheduler] No active integrations found for ${platform}. Check: status='active', deleted_at IS NULL, platform='${platform}'`)
       return new Response(
         JSON.stringify({ message: `No active integrations for ${platform}`, count: 0 }),
         { headers: { 'Content-Type': 'application/json' } }
       )
     }
 
+    console.info(`[Daily Scheduler] Found ${integrations.length} active integrations for ${platform}`)
     console.log(`Processing ${integrations.length} integrations for ${platform} ${collection_type}`)
 
     let processedCount = 0
