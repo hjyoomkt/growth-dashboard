@@ -60,6 +60,7 @@ import * as React from 'react';
 import { MdEdit, MdDelete, MdAdd, MdSearch, MdLink, MdCheckCircle, MdOutlineError, MdSchedule, MdSync, MdKeyboardArrowDown } from 'react-icons/md';
 import { useAuth } from 'contexts/AuthContext';
 import { checkYesterdayData, getYesterdayDate, isAfter10AM } from 'utils/dataCollectionChecker';
+import { getKSTYesterday, getKSTDaysAgo, getKSTToday } from 'utils/dateUtils';
 import { supabase, createApiToken, updateApiToken } from 'services/supabaseService';
 import PlatformLoginFlow from './PlatformLoginFlow';
 
@@ -1113,35 +1114,24 @@ export default function APITokenTable(props) {
         return;
       }
 
-      // 2. 날짜 계산
+      // 2. 날짜 계산 (KST 기준)
       let startDate, endDate;
-      const today = new Date();
 
       switch (syncConfig.dateRange) {
         case 'yesterday':
-          const yesterday = new Date(today);
-          yesterday.setDate(yesterday.getDate() - 1);
-          startDate = endDate = yesterday.toISOString().split('T')[0];
+          startDate = endDate = getKSTYesterday();
           break;
         case 'lastWeek':
-          const weekAgo = new Date(today);
-          weekAgo.setDate(weekAgo.getDate() - 7);
-          startDate = weekAgo.toISOString().split('T')[0];
-          endDate = new Date(today).toISOString().split('T')[0];
+          startDate = getKSTDaysAgo(7);
+          endDate = getKSTToday();
           break;
         case 'lastMonth':
-          const monthAgo = new Date(today);
-          monthAgo.setDate(monthAgo.getDate() - 30);
-          startDate = monthAgo.toISOString().split('T')[0];
-          endDate = new Date(today).toISOString().split('T')[0];
+          startDate = getKSTDaysAgo(30);
+          endDate = getKSTToday();
           break;
         case 'all':
-          const oneYearAgoAll = new Date(today);
-          oneYearAgoAll.setFullYear(oneYearAgoAll.getFullYear() - 1);
-          const yesterdayAll = new Date(today);
-          yesterdayAll.setDate(yesterdayAll.getDate() - 1);
-          startDate = oneYearAgoAll.toISOString().split('T')[0];
-          endDate = yesterdayAll.toISOString().split('T')[0];
+          startDate = getKSTDaysAgo(365);
+          endDate = getKSTYesterday();
           break;
         case 'custom':
           startDate = syncConfig.startDate;
@@ -1150,8 +1140,8 @@ export default function APITokenTable(props) {
           // 날짜 검증
           const syncStart = new Date(startDate);
           const syncEnd = new Date(endDate);
-          const twoYearsAgoSync = new Date(today);
-          twoYearsAgoSync.setFullYear(today.getFullYear() - 2);
+          const twoYearsAgoStr = getKSTDaysAgo(730);
+          const twoYearsAgoSync = new Date(twoYearsAgoStr);
 
           // 최대 2년 전까지 제한
           if (syncStart < twoYearsAgoSync) {
@@ -1228,36 +1218,26 @@ export default function APITokenTable(props) {
   // 초기 수집 트리거 함수
   const triggerInitialCollection = async (integrationId, formData) => {
     try {
-      // 날짜 범위 계산
+      // 날짜 범위 계산 (KST 기준)
       let startDate, endDate;
-      const today = new Date();
-      const yesterday = new Date(today);
-      yesterday.setDate(yesterday.getDate() - 1);
-      const yesterdayStr = yesterday.toISOString().split('T')[0];
-
-      const twoYearsAgo = new Date(today);
-      twoYearsAgo.setFullYear(today.getFullYear() - 2);
+      const yesterdayStr = getKSTYesterday();
+      const twoYearsAgoStr = getKSTDaysAgo(730);
+      const twoYearsAgo = new Date(twoYearsAgoStr);
 
       switch (formData.initialCollectionRange) {
         case 'yesterday':
           startDate = endDate = yesterdayStr;
           break;
         case 'lastWeek':
-          const weekAgo = new Date(today);
-          weekAgo.setDate(weekAgo.getDate() - 7);
-          startDate = weekAgo.toISOString().split('T')[0];
+          startDate = getKSTDaysAgo(7);
           endDate = yesterdayStr;
           break;
         case 'lastMonth':
-          const monthAgo = new Date(today);
-          monthAgo.setDate(monthAgo.getDate() - 30);
-          startDate = monthAgo.toISOString().split('T')[0];
+          startDate = getKSTDaysAgo(30);
           endDate = yesterdayStr;
           break;
         case 'maxRange':
-          const oneYearAgo = new Date(today);
-          oneYearAgo.setFullYear(today.getFullYear() - 1);
-          startDate = oneYearAgo.toISOString().split('T')[0];
+          startDate = getKSTDaysAgo(365);
           endDate = yesterdayStr;
           break;
         case 'custom':
@@ -1276,7 +1256,8 @@ export default function APITokenTable(props) {
             return false;
           }
 
-          if (customEnd > yesterday) {
+          const yesterdayDate = new Date(yesterdayStr);
+          if (customEnd > yesterdayDate) {
             toast({
               title: '날짜 범위 오류',
               description: '어제까지의 날짜만 선택할 수 있습니다.',
@@ -2654,16 +2635,8 @@ export default function APITokenTable(props) {
                       onChange={(e) => setSyncConfig({ ...syncConfig, startDate: e.target.value })}
                       fontSize="sm"
                       h="44px"
-                      max={(() => {
-                        const yesterday = new Date();
-                        yesterday.setDate(yesterday.getDate() - 1);
-                        return yesterday.toISOString().split('T')[0];
-                      })()}
-                      min={(() => {
-                        const twoYearsAgo = new Date();
-                        twoYearsAgo.setFullYear(twoYearsAgo.getFullYear() - 2);
-                        return twoYearsAgo.toISOString().split('T')[0];
-                      })()}
+                      max={getKSTYesterday()}
+                      min={getKSTDaysAgo(730)}
                     />
                   </FormControl>
                   <FormControl>
@@ -2676,16 +2649,8 @@ export default function APITokenTable(props) {
                       onChange={(e) => setSyncConfig({ ...syncConfig, endDate: e.target.value })}
                       fontSize="sm"
                       h="44px"
-                      max={(() => {
-                        const yesterday = new Date();
-                        yesterday.setDate(yesterday.getDate() - 1);
-                        return yesterday.toISOString().split('T')[0];
-                      })()}
-                      min={syncConfig.startDate || (() => {
-                        const twoYearsAgo = new Date();
-                        twoYearsAgo.setFullYear(twoYearsAgo.getFullYear() - 2);
-                        return twoYearsAgo.toISOString().split('T')[0];
-                      })()}
+                      max={getKSTYesterday()}
+                      min={syncConfig.startDate || getKSTDaysAgo(730)}
                     />
                   </FormControl>
                 </HStack>
@@ -2916,12 +2881,8 @@ export default function APITokenTable(props) {
                     _placeholder={{ color: 'secondaryGray.600', fontWeight: '400' }}
                     h='44px'
                     borderRadius='12px'
-                    max={(() => {
-                      const yesterday = new Date();
-                      yesterday.setDate(yesterday.getDate() - 1);
-                      return yesterday.toISOString().split('T')[0];
-                    })()}
-                    min={new Date(new Date().setFullYear(new Date().getFullYear() - 2)).toISOString().split('T')[0]}
+                    max={getKSTYesterday()}
+                    min={getKSTDaysAgo(730)}
                   />
                   <Text alignSelf="center" fontSize="sm" color="gray.500">~</Text>
                   <Input
@@ -2938,12 +2899,8 @@ export default function APITokenTable(props) {
                     _placeholder={{ color: 'secondaryGray.600', fontWeight: '400' }}
                     h='44px'
                     borderRadius='12px'
-                    max={(() => {
-                      const yesterday = new Date();
-                      yesterday.setDate(yesterday.getDate() - 1);
-                      return yesterday.toISOString().split('T')[0];
-                    })()}
-                    min={formData.customStartDate || new Date(new Date().setFullYear(new Date().getFullYear() - 2)).toISOString().split('T')[0]}
+                    max={getKSTYesterday()}
+                    min={formData.customStartDate || getKSTDaysAgo(730)}
                   />
                 </Flex>
               </FormControl>

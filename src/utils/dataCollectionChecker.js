@@ -2,6 +2,7 @@
  * 데이터 수집 상태 체크 유틸리티
  *
  * 오전 10시를 기준으로 전일(D-1) 데이터의 수집 상태를 판별합니다.
+ * 모든 날짜 계산은 KST(한국 표준시, UTC+9) 기준으로 수행됩니다.
  *
  * TODO: Supabase Edge Function으로 마이그레이션 필요
  * - Supabase의 pg_cron을 사용하여 매일 오전 10시에 자동 실행
@@ -10,24 +11,19 @@
  * - api_tokens 테이블의 dataCollectionStatus 필드 업데이트
  */
 
-/**
- * 현재 시각이 오전 10시 이후인지 확인
- * @returns {boolean} 오전 10시 이후면 true
- */
-export const isAfter10AM = () => {
-  const now = new Date();
-  return now.getHours() >= 10;
-};
+import { getKSTYesterday, isAfter10AMKST } from './dateUtils';
 
 /**
- * 전일 날짜를 YYYY-MM-DD 형식으로 반환
- * @returns {string} 전일 날짜 (예: "2024-12-29")
+ * KST 기준 현재 시각이 오전 10시 이후인지 확인
+ * @returns {boolean} 오전 10시 이후면 true
  */
-export const getYesterdayDate = () => {
-  const yesterday = new Date();
-  yesterday.setDate(yesterday.getDate() - 1);
-  return yesterday.toISOString().split('T')[0];
-};
+export { isAfter10AMKST as isAfter10AM } from './dateUtils';
+
+/**
+ * KST 기준 전일 날짜를 YYYY-MM-DD 형식으로 반환
+ * @returns {string} 전일 날짜 (예: "2026-01-25")
+ */
+export { getKSTYesterday as getYesterdayDate } from './dateUtils';
 
 /**
  * 전일자 데이터 수집 상태 체크
@@ -54,8 +50,8 @@ export const getYesterdayDate = () => {
  *      WHERE advertiser_id = ? AND platform = ?
  */
 export const checkYesterdayData = async (advertiserId, platform) => {
-  const yesterday = getYesterdayDate();
-  const isAfter10 = isAfter10AM();
+  const yesterday = getKSTYesterday();
+  const isAfter10 = isAfter10AMKST();
 
   // Supabase 동적 import (순환 참조 방지)
   const { supabase } = await import('../config/supabase');

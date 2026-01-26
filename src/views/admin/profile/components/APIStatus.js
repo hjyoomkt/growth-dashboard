@@ -17,6 +17,7 @@ import React, { useState, useEffect } from "react";
 import { MdCheckCircle, MdOutlineError, MdSchedule } from "react-icons/md";
 import { useAuth } from "contexts/AuthContext";
 import { isAfter10AM } from "utils/dataCollectionChecker";
+import { getKSTToday, getKSTYesterday } from "utils/dateUtils";
 import { getApiTokens } from "services/supabaseService";
 
 export default function APIStatus(props) {
@@ -49,8 +50,8 @@ export default function APIStatus(props) {
     const errorTokens = apiTokens.filter(token => token.dataCollectionStatus === 'error');
 
     errorTokens.forEach(token => {
-      // 중복 알림 방지를 위해 오늘 날짜 + advertiser + platform으로 체크
-      const today = new Date().toISOString().split('T')[0];
+      // 중복 알림 방지를 위해 오늘 날짜 + advertiser + platform으로 체크 (KST 기준)
+      const today = getKSTToday();
       const notificationKey = `api-error-${today}-${token.advertiser}-${token.platform}`;
 
       // localStorage에 이미 알림을 보낸 기록이 있는지 확인
@@ -76,10 +77,8 @@ export default function APIStatus(props) {
     const timeUntilMidnight = tomorrow.getTime() - now.getTime();
 
     const midnightTimer = setTimeout(() => {
-      // 어제 날짜의 알림 기록 삭제
-      const yesterday = new Date(now);
-      yesterday.setDate(yesterday.getDate() - 1);
-      const yesterdayKey = yesterday.toISOString().split('T')[0];
+      // 어제 날짜의 알림 기록 삭제 (KST 기준)
+      const yesterdayKey = getKSTYesterday();
 
       Object.keys(localStorage).forEach(key => {
         if (key.startsWith('api-error-') && key.includes(yesterdayKey)) {

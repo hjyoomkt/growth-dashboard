@@ -213,15 +213,19 @@ function CreativeCard({ creative, rankBadge, textColor, textColorSecondary }) {
         {/* 이미지/영상 영역 */}
         <Box mb={{ base: "20px", "2xl": "20px" }} position='relative'>
           {creative.isVideo && creative.videoUrl ? (
-            <Box w={{ base: "100%", "3xl": "100%" }} h={{ base: "100%", "3xl": "100%" }} borderRadius='20px' overflow='hidden'>
-              <iframe
-                src={creative.videoUrl}
-                width='100%'
-                height='100%'
-                style={{ border: 'none', minHeight: '200px' }}
-                title={creative.adName}
-              />
-            </Box>
+            <video
+              src={creative.videoUrl}
+              style={{
+                width: '100%',
+                maxHeight: '200px',
+                objectFit: 'cover',
+                borderRadius: '20px',
+                display: 'block'
+              }}
+              title={creative.adName}
+              controls
+              preload='metadata'
+            />
           ) : creative.imageUrl ? (
             <Image
               src={creative.imageUrl}

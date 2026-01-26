@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState } from 'react';
+import { getKSTNow, getKSTYesterday, getKSTDaysAgo, formatDateToYYYYMMDD } from 'utils/dateUtils';
 
 const DateRangeContext = createContext();
 
@@ -11,23 +12,12 @@ export const useDateRange = () => {
 };
 
 export const DateRangeProvider = ({ children }) => {
-  // 기본값: 최근 30일 (종료일 = 어제)
+  // 기본값: 최근 30일 (종료일 = 어제, KST 기준)
   const getDefaultRange = () => {
-    const today = new Date();
-    const yesterday = new Date(today.getFullYear(), today.getMonth(), today.getDate() - 1);
-    const thirtyDaysAgo = new Date(today.getFullYear(), today.getMonth(), today.getDate() - 30);
-
     return {
-      start: formatDate(thirtyDaysAgo),
-      end: formatDate(yesterday),
+      start: getKSTDaysAgo(30),
+      end: getKSTYesterday(),
     };
-  };
-
-  const formatDate = (date) => {
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, '0');
-    const day = String(date.getDate()).padStart(2, '0');
-    return `${year}-${month}-${day}`;
   };
 
   const defaultRange = getDefaultRange();
@@ -36,44 +26,49 @@ export const DateRangeProvider = ({ children }) => {
   const [endDate, setEndDate] = useState(defaultRange.end);
   const [selectedPreset, setSelectedPreset] = useState('최근 30일');
 
-  // 날짜 범위 계산 유틸리티 함수
+  // 날짜 범위 계산 유틸리티 함수 (KST 기준)
   const getDateRange = (preset) => {
-    const today = new Date();
-    const year = today.getFullYear();
-    const month = today.getMonth();
-    const day = today.getDate();
-    const dayOfWeek = today.getDay();
-    const yesterday = new Date(year, month, day - 1);
+    const kstNow = getKSTNow();
+    const year = kstNow.getFullYear();
+    const month = kstNow.getMonth();
+    const day = kstNow.getDate();
+    const dayOfWeek = kstNow.getDay();
 
     let start, end;
 
     switch (preset) {
       case '어제':
-        start = new Date(year, month, day - 1);
-        end = new Date(year, month, day - 1);
-        break;
+        return {
+          start: getKSTYesterday(),
+          end: getKSTYesterday(),
+        };
 
       case '최근 7일':
-        start = new Date(year, month, day - 7);
-        end = yesterday;
-        break;
+        return {
+          start: getKSTDaysAgo(7),
+          end: getKSTYesterday(),
+        };
 
       case '최근 14일':
-        start = new Date(year, month, day - 14);
-        end = yesterday;
-        break;
+        return {
+          start: getKSTDaysAgo(14),
+          end: getKSTYesterday(),
+        };
 
       case '최근 30일':
-        start = new Date(year, month, day - 30);
-        end = yesterday;
-        break;
+        return {
+          start: getKSTDaysAgo(30),
+          end: getKSTYesterday(),
+        };
 
       case '이번 주':
         // 월요일 기준
         const mondayOffset = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
         start = new Date(year, month, day + mondayOffset);
-        end = yesterday;
-        break;
+        return {
+          start: formatDateToYYYYMMDD(start),
+          end: getKSTYesterday(),
+        };
 
       case '지난주':
         // 지난 주 월요일~일요일
@@ -81,26 +76,29 @@ export const DateRangeProvider = ({ children }) => {
         const lastSundayOffset = dayOfWeek === 0 ? -7 : -dayOfWeek;
         start = new Date(year, month, day + lastMondayOffset);
         end = new Date(year, month, day + lastSundayOffset);
-        break;
+        return {
+          start: formatDateToYYYYMMDD(start),
+          end: formatDateToYYYYMMDD(end),
+        };
 
       case '이번 달':
         start = new Date(year, month, 1);
-        end = yesterday;
-        break;
+        return {
+          start: formatDateToYYYYMMDD(start),
+          end: getKSTYesterday(),
+        };
 
       case '지난달':
         start = new Date(year, month - 1, 1);
         end = new Date(year, month, 0);
-        break;
+        return {
+          start: formatDateToYYYYMMDD(start),
+          end: formatDateToYYYYMMDD(end),
+        };
 
       default:
         return null;
     }
-
-    return {
-      start: formatDate(start),
-      end: formatDate(end),
-    };
   };
 
   const updateDateRange = (preset) => {
