@@ -6,6 +6,73 @@ interface DeleteUserRequest {
   new_owner_id?: string | null;
 }
 
+// 역할 계층 구조
+const roleHierarchy: Record<string, number> = {
+  master: 10,
+  agency_admin: 7,
+  agency_manager: 6,
+  agency_staff: 5,
+  advertiser_admin: 4,
+  advertiser_staff: 3,
+  viewer: 2,
+  editor: 1,
+};
+
+async function canDeleteUser(
+  supabaseAdmin: any,
+  adminUserId: string,
+  targetUserId: string
+): Promise<{ allowed: boolean; reason?: string }> {
+  // 본인 삭제는 항상 허용
+  if (adminUserId === targetUserId) {
+    return { allowed: true };
+  }
+
+  // 관리자 정보 조회
+  const { data: admin, error: adminError } = await supabaseAdmin
+    .from('users')
+    .select('role, organization_id, advertiser_id')
+    .eq('id', adminUserId)
+    .single();
+
+  if (adminError || !admin) {
+    return { allowed: false, reason: 'Admin user not found' };
+  }
+
+  // 대상 사용자 정보 조회
+  const { data: target, error: targetError } = await supabaseAdmin
+    .from('users')
+    .select('role, organization_id, advertiser_id')
+    .eq('id', targetUserId)
+    .single();
+
+  if (targetError || !target) {
+    return { allowed: false, reason: 'Target user not found' };
+  }
+
+  // Master는 다른 Master를 제외한 모든 사용자 삭제 가능
+  if (admin.role === 'master') {
+    if (target.role === 'master') {
+      return { allowed: false, reason: 'Cannot delete another master account' };
+    }
+    return { allowed: true };
+  }
+
+  // agency_admin은 자신보다 낮은 권한의 사용자만 삭제 가능
+  if (admin.role === 'agency_admin') {
+    const adminLevel = roleHierarchy[admin.role] || 0;
+    const targetLevel = roleHierarchy[target.role] || 0;
+
+    if (targetLevel >= adminLevel) {
+      return { allowed: false, reason: 'Cannot delete user with equal or higher role' };
+    }
+    return { allowed: true };
+  }
+
+  // 그 외 역할은 다른 사용자 삭제 불가
+  return { allowed: false, reason: 'Insufficient permissions' };
+}
+
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
@@ -62,10 +129,12 @@ Deno.serve(async (req) => {
       );
     }
 
-    // 본인만 탈퇴 가능 (보안 체크)
-    if (currentUser.id !== user_id) {
+    // 본인 삭제 또는 권한 있는 관리자만 가능
+    const authCheck = await canDeleteUser(supabaseAdmin, currentUser.id, user_id);
+
+    if (!authCheck.allowed) {
       return new Response(
-        JSON.stringify({ error: 'Can only delete your own account' }),
+        JSON.stringify({ error: authCheck.reason || 'Unauthorized to delete this user' }),
         { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
@@ -173,10 +242,13 @@ Deno.serve(async (req) => {
         deleted_user_id: user_id,
         deleted_user_email: userData.email,
         deleted_user_name: userData.name,
+        deleted_by_user_id: currentUser.id,
         advertiser_id: userData.advertiser_id,
         organization_id: userData.organization_id,
         new_advertiser_admin_id: new_owner_id || null,
-        deletion_reason: isAdvertiserAdmin ? 'Brand owner with transfer' : 'Regular user deletion',
+        deletion_reason: currentUser.id === user_id
+          ? 'Self-deletion'
+          : 'Admin-initiated deletion',
         data_snapshot: userData
       });
 

@@ -35,6 +35,7 @@ import { useAuth } from 'contexts/AuthContext';
 import { getUsers, updateUserRole, updateUserStatus } from 'services/supabaseService';
 import EditUserModal from './EditUserModal';
 import BrandListModal from './BrandListModal';
+import AdminDeleteUserModal from './AdminDeleteUserModal';
 
 const columnHelper = createColumnHelper();
 
@@ -45,6 +46,8 @@ export default function UserTable(props) {
   const [selectedUser, setSelectedUser] = React.useState(null);
   const [brandListModalOpen, setBrandListModalOpen] = React.useState(false);
   const [selectedBrandUser, setSelectedBrandUser] = React.useState(null);
+  const [deleteModalOpen, setDeleteModalOpen] = React.useState(false);
+  const [userToDelete, setUserToDelete] = React.useState(null);
   const textColor = useColorModeValue('secondaryGray.900', 'white');
   const borderColor = useColorModeValue('gray.200', 'whiteAlpha.100');
   const { user, isAgency, role, organizationId, advertiserId, organizationType, isMaster } = useAuth();
@@ -243,6 +246,17 @@ export default function UserTable(props) {
     }
   };
 
+  const handleDeleteUser = (targetUser) => {
+    setUserToDelete(targetUser);
+    setDeleteModalOpen(true);
+  };
+
+  const handleDeleteSuccess = () => {
+    setDeleteModalOpen(false);
+    setUserToDelete(null);
+    fetchUsers();
+  };
+
   const getRoleBadge = (role) => {
     const roleConfig = {
       master: { label: '마스터', color: 'red' },
@@ -434,6 +448,15 @@ export default function UserTable(props) {
                 <MenuItem color="red.500" onClick={() => handleDeactivateUser(row)}>
                   비활성화
                 </MenuItem>
+                {(role === 'master' || role === 'agency_admin') && (
+                  <MenuItem
+                    color="red.600"
+                    onClick={() => handleDeleteUser(row)}
+                    isDisabled={row.role === 'master' || row.id === user.id}
+                  >
+                    회원삭제
+                  </MenuItem>
+                )}
               </MenuList>
             </Menu>
           );
@@ -600,6 +623,16 @@ export default function UserTable(props) {
       onClose={() => setBrandListModalOpen(false)}
       userName={selectedBrandUser?.name}
       brands={selectedBrandUser?.clients}
+    />
+
+    <AdminDeleteUserModal
+      isOpen={deleteModalOpen}
+      onClose={() => {
+        setDeleteModalOpen(false);
+        setUserToDelete(null);
+      }}
+      targetUser={userToDelete}
+      onDeleteSuccess={handleDeleteSuccess}
     />
     </>
   );
