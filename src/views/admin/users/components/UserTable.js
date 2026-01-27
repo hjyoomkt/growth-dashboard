@@ -32,7 +32,7 @@ import Card from 'components/card/Card';
 import * as React from 'react';
 import { MdMoreVert } from 'react-icons/md';
 import { useAuth } from 'contexts/AuthContext';
-import { getUsers, updateUserRole, updateUserStatus } from 'services/supabaseService';
+import { getUsers, updateUserRole, updateUserStatus, logChangelog } from 'services/supabaseService';
 import EditUserModal from './EditUserModal';
 import BrandListModal from './BrandListModal';
 import AdminDeleteUserModal from './AdminDeleteUserModal';
@@ -130,8 +130,28 @@ export default function UserTable(props) {
         advertiser_id: advertiserId,
       };
 
+      // 대상 사용자 정보 조회
+      const targetUser = data.find(u => u.id === userId);
+
       // Supabase에서 액세스 권한 업데이트 (권한 검증 포함)
       await updateUserStatus(userId, newStatus, currentUser);
+
+      // 변경 로그 기록
+      if (targetUser) {
+        await logChangelog({
+          targetType: 'access',
+          targetId: userId,
+          targetName: targetUser.name || targetUser.email,
+          actionType: 'update',
+          actionDetail: `${targetUser.name || targetUser.email}의 액세스 상태 변경: ${currentAccess ? '허용' : '차단'} → ${newStatus === 'active' ? '허용' : '차단'}`,
+          advertiserId: targetUser.advertiser_id,
+          advertiserName: targetUser.advertiser_name,
+          organizationId: targetUser.organization_id,
+          organizationName: targetUser.organization_name,
+          oldValue: { status: currentAccess ? 'active' : 'inactive' },
+          newValue: { status: newStatus },
+        });
+      }
 
       // UI 업데이트
       setData(prevData =>

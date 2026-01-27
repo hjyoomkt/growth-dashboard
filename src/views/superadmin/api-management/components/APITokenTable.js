@@ -61,7 +61,7 @@ import { MdEdit, MdDelete, MdAdd, MdSearch, MdLink, MdCheckCircle, MdOutlineErro
 import { useAuth } from 'contexts/AuthContext';
 import { checkYesterdayData, getYesterdayDate, isAfter10AM } from 'utils/dataCollectionChecker';
 import { getKSTYesterday, getKSTDaysAgo, getKSTToday } from 'utils/dateUtils';
-import { supabase, createApiToken, updateApiToken } from 'services/supabaseService';
+import { supabase, createApiToken, updateApiToken, logChangelog } from 'services/supabaseService';
 import PlatformLoginFlow from './PlatformLoginFlow';
 
 const columnHelper = createColumnHelper();
@@ -1347,12 +1347,44 @@ export default function APITokenTable(props) {
 
   const handleDelete = async (tokenId) => {
     try {
+      // 삭제 전 토큰 정보 조회 (로그 기록용 - 실패해도 삭제는 진행)
+      let tokenData = null;
+      try {
+        const { data, error: fetchError } = await supabase
+          .from('integrations')
+          .select('*, advertisers(id, name, organization_id), organizations(id, name)')
+          .eq('id', tokenId)
+          .single();
+
+        if (!fetchError) {
+          tokenData = data;
+        }
+      } catch (err) {
+        console.warn('[API Token] 토큰 정보 조회 실패 (로그 기록 제한됨):', err);
+      }
+
+      // 토큰 삭제
       const { error } = await supabase
         .from('integrations')
         .delete()
         .eq('id', tokenId);
 
       if (error) throw error;
+
+      // 변경 로그 기록 (tokenData가 있을 때만)
+      if (tokenData) {
+        await logChangelog({
+          targetType: 'token',
+          targetId: tokenId,
+          targetName: `${tokenData.platform} - ${tokenData.account_description || tokenData.account_id || tokenData.customer_id}`,
+          actionType: 'delete',
+          actionDetail: `API 토큰 삭제: ${tokenData.platform} (계정: ${tokenData.account_description || tokenData.account_id || tokenData.customer_id})`,
+          advertiserId: tokenData.advertiser_id,
+          advertiserName: tokenData.advertisers?.name,
+          organizationId: tokenData.advertisers?.organization_id,
+          organizationName: tokenData.organizations?.name,
+        });
+      }
 
       toast({
         title: 'API 토큰 삭제 완료',
@@ -1473,6 +1505,20 @@ export default function APITokenTable(props) {
         // 신규 추가 모드: 토큰 저장 후 초기 수집 모달로 이동
         const result = await createApiToken(tokenData);
         setSavedIntegrationId(result?.id);
+
+        // 변경 로그 기록
+        const advertiserData = availableAdvertisers?.find(a => a.id === formData.advertiserId);
+        await logChangelog({
+          targetType: 'token',
+          targetId: result?.id,
+          targetName: `${formData.platform} - ${formData.accountDescription || formData.accountId || formData.customerId}`,
+          actionType: 'create',
+          actionDetail: `API 토큰 추가: ${formData.platform} (계정: ${formData.accountDescription || formData.accountId || formData.customerId})`,
+          advertiserId: formData.advertiserId,
+          advertiserName: advertiserData?.name,
+          organizationId: organizationId,
+          organizationName: advertiserData?.organization_name,
+        });
 
         toast({
           title: 'API 토큰 추가 완료',

@@ -10,6 +10,7 @@ import {
   MdBusiness,
   MdAnnouncement,
   MdStorefront,
+  MdHistory,
 } from 'react-icons/md';
 
 // Superadmin Imports
@@ -21,6 +22,7 @@ import OrganizationManagement from 'views/superadmin/organizations';
 import AdvertisersManagement from 'views/superadmin/advertisers';
 import BrandsManagement from 'views/clientadmin/brands';
 import Board from 'views/shared/board';
+import ChangelogManagement from 'views/superadmin/changelog';
 
 const superadminRoutes = [
   {
@@ -90,6 +92,13 @@ const superadminRoutes = [
     path: '/board',
     icon: <Icon as={MdAnnouncement} width="20px" height="20px" color="inherit" />,
     component: <Board />,
+  },
+  {
+    name: '변경 이력',
+    layout: '/superadmin',
+    path: '/changelog',
+    icon: <Icon as={MdHistory} width="20px" height="20px" color="inherit" />,
+    component: <ChangelogManagement />,
   },
 ];
 

@@ -49,7 +49,7 @@ npx supabase functions deploy 함수명 --project-ref 프로젝트ref --no-verif
 
 #### save-organization-meta
 ```bash
-export SUPABASE_ACCESS_TOKEN=sbp_507568768c17cc2b90937e8261913753809b6d39
+export SUPABASE_ACCESS_TOKEN=
 cd "c:\Users\REON\Desktop\새 폴더\growth-dashboard"
 npx supabase functions deploy save-organization-meta --project-ref qdzdyoqtzkfpcogecyar --no-verify-jwt
 ```

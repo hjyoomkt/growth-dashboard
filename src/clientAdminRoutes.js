@@ -8,6 +8,7 @@ import {
   MdDashboard,
   MdBusiness,
   MdAnnouncement,
+  MdHistory,
 } from 'react-icons/md';
 
 // Client Admin Imports
@@ -16,6 +17,7 @@ import UserManagement from 'views/admin/users';
 import BrandManagement from 'views/clientadmin/brands';
 import APIManagement from 'views/superadmin/api-management';
 import Board from 'views/shared/board';
+import ChangelogManagement from 'views/brandadmin/changelog';
 
 const clientAdminRoutes = [
   {
@@ -53,6 +55,7 @@ const clientAdminRoutes = [
     path: '/api-management',
     icon: <Icon as={MdVpnKey} width="20px" height="20px" color="inherit" />,
     component: <APIManagement />,
+    masterOnly: true, // 마스터만 접근 가능
   },
   {
     name: '게시판',
@@ -60,6 +63,13 @@ const clientAdminRoutes = [
     path: '/board',
     icon: <Icon as={MdAnnouncement} width="20px" height="20px" color="inherit" />,
     component: <Board />,
+  },
+  {
+    name: '변경 이력',
+    layout: '/brandadmin',
+    path: '/changelog',
+    icon: <Icon as={MdHistory} width="20px" height="20px" color="inherit" />,
+    component: <ChangelogManagement />,
   },
 ];
 

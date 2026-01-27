@@ -3304,3 +3304,100 @@ export const canDeleteBrand = async (userId, brandId) => {
     throw error;
   }
 };
+
+// ============================================================================
+// Changelog 관련 함수
+// ============================================================================
+
+/**
+ * 변경 로그 기록
+ * @param {Object} logData - 로그 데이터
+ * @param {string} logData.targetType - 'user', 'token', 'brand', 'access', 'role'
+ * @param {string} logData.targetId - 대상 엔티티 ID
+ * @param {string} logData.targetName - 대상 이름
+ * @param {string} logData.actionType - 'create', 'delete', 'update', 'invite'
+ * @param {string} logData.actionDetail - 구체적인 변경 내용
+ * @param {string} logData.advertiserId - 브랜드 ID (선택)
+ * @param {string} logData.advertiserName - 브랜드 이름 (선택)
+ * @param {string} logData.organizationId - 조직 ID (선택)
+ * @param {string} logData.organizationName - 조직 이름 (선택)
+ * @param {Object} logData.oldValue - 변경 전 값 (선택)
+ * @param {Object} logData.newValue - 변경 후 값 (선택)
+ */
+export async function logChangelog(logData) {
+  try {
+    const { data, error } = await supabase.rpc('log_changelog', {
+      p_target_type: logData.targetType,
+      p_target_id: logData.targetId || null,
+      p_target_name: logData.targetName,
+      p_action_type: logData.actionType,
+      p_action_detail: logData.actionDetail,
+      p_advertiser_id: logData.advertiserId || null,
+      p_advertiser_name: logData.advertiserName || null,
+      p_organization_id: logData.organizationId || null,
+      p_organization_name: logData.organizationName || null,
+      p_old_value: logData.oldValue || null,
+      p_new_value: logData.newValue || null,
+    });
+
+    if (error) throw error;
+    return data;
+  } catch (error) {
+    console.error('[logChangelog] Error:', error);
+    // 로그 기록 실패는 메인 작업을 중단시키지 않음
+    return null;
+  }
+}
+
+/**
+ * 변경 로그 조회 (권한별 자동 필터링)
+ * @param {Object} filters - 필터 옵션
+ * @param {number} filters.limit - 조회 개수 (기본: 100)
+ * @param {number} filters.offset - 오프셋 (기본: 0)
+ * @param {string} filters.targetType - 대상 타입 필터 (선택)
+ * @param {string} filters.actionType - 작업 타입 필터 (선택)
+ * @param {string} filters.startDate - 시작일 (선택)
+ * @param {string} filters.endDate - 종료일 (선택)
+ */
+export async function getChangelogs(filters = {}) {
+  try {
+    let query = supabase
+      .from('changelog')
+      .select('*', { count: 'exact' })
+      .order('created_at', { ascending: false });
+
+    // 필터 적용
+    if (filters.targetType) {
+      query = query.eq('target_type', filters.targetType);
+    }
+
+    if (filters.actionType) {
+      query = query.eq('action_type', filters.actionType);
+    }
+
+    if (filters.startDate) {
+      query = query.gte('created_at', filters.startDate);
+    }
+
+    if (filters.endDate) {
+      query = query.lte('created_at', filters.endDate);
+    }
+
+    // 페이지네이션
+    const limit = filters.limit || 100;
+    const offset = filters.offset || 0;
+    query = query.range(offset, offset + limit - 1);
+
+    const { data, error, count } = await query;
+
+    if (error) throw error;
+
+    return {
+      changelogs: data || [],
+      totalCount: count || 0,
+    };
+  } catch (error) {
+    console.error('[getChangelogs] Error:', error);
+    throw error;
+  }
+}

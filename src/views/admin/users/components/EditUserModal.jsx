@@ -29,7 +29,7 @@ import {
 } from "@chakra-ui/react";
 import { useAuth } from "contexts/AuthContext";
 import { MdKeyboardArrowDown } from "react-icons/md";
-import { updateUserRoleAndAdvertisers } from "services/supabaseService";
+import { updateUserRoleAndAdvertisers, logChangelog } from "services/supabaseService";
 import { supabase } from "config/supabase";
 
 export default function EditUserModal({ isOpen, onClose, user, onUpdate }) {
@@ -227,6 +227,21 @@ export default function EditUserModal({ isOpen, onClose, user, onUpdate }) {
       );
 
       console.log("사용자 정보 업데이트 성공:", updatedUser);
+
+      // 변경 로그 기록
+      await logChangelog({
+        targetType: 'role',
+        targetId: user.id,
+        targetName: user.name || user.email,
+        actionType: 'update',
+        actionDetail: `${user.name || user.email}의 권한 변경: ${getRoleLabel(user.role)} → ${getRoleLabel(formData.role)}`,
+        advertiserId: user.advertiser_id,
+        advertiserName: user.advertiser_name,
+        organizationId: user.organization_id,
+        organizationName: user.organization_name,
+        oldValue: { role: user.role },
+        newValue: { role: formData.role },
+      });
 
       toast({
         title: "업데이트 완료",

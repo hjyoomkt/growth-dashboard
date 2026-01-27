@@ -30,7 +30,7 @@ import {
 } from "@chakra-ui/react";
 import { useAuth } from "contexts/AuthContext";
 import { MdKeyboardArrowDown, MdContentCopy } from "react-icons/md";
-import { createInviteCode, getAdvertiserOrganizations } from "services/supabaseService";
+import { createInviteCode, getAdvertiserOrganizations, logChangelog } from "services/supabaseService";
 import { supabase } from "config/supabase";
 
 export default function InviteUserModal({ isOpen, onClose }) {
@@ -313,6 +313,25 @@ export default function InviteUserModal({ isOpen, onClose }) {
 
       const result = await createInviteCode(inviteData);
       setInviteCode(result.code);
+
+      // 변경 로그 기록
+      const advertiserData = availableAdvertisers?.find(a => a.id === (targetAdvId || formData.advertiserIds[0]));
+      await logChangelog({
+        targetType: 'user',
+        targetId: null,
+        targetName: formData.email,
+        actionType: 'invite',
+        actionDetail: `사용자 초대: ${formData.email} (권한: ${formData.role})`,
+        advertiserId: targetAdvId || (formData.advertiserIds.length > 0 ? formData.advertiserIds[0] : null),
+        advertiserName: advertiserData?.name,
+        organizationId: targetOrgId,
+        organizationName: organizationName,
+        newValue: {
+          email: formData.email,
+          role: formData.role,
+          advertiserIds: formData.advertiserIds
+        },
+      });
 
       toast({
         title: '초대 코드 생성 완료',

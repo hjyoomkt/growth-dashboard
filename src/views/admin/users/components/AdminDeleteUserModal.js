@@ -25,7 +25,7 @@ import {
   Spinner,
   Divider,
 } from '@chakra-ui/react';
-import { deleteUserAccount, getBrandUsersForTransfer } from 'services/supabaseService';
+import { deleteUserAccount, getBrandUsersForTransfer, logChangelog } from 'services/supabaseService';
 
 export default function AdminDeleteUserModal({
   isOpen,
@@ -126,6 +126,19 @@ export default function AdminDeleteUserModal({
 
       // 계정 삭제 API 호출
       await deleteUserAccount(targetUser.id, newOwnerId || null);
+
+      // 변경 로그 기록
+      await logChangelog({
+        targetType: 'user',
+        targetId: targetUser.id,
+        targetName: targetUser.name || targetUser.email,
+        actionType: 'delete',
+        actionDetail: `사용자 삭제: ${targetUser.name || targetUser.email} (${targetUser.email})`,
+        advertiserId: targetUser.advertiser_id,
+        advertiserName: targetUser.advertiser_name,
+        organizationId: targetUser.organization_id,
+        organizationName: targetUser.organization_name,
+      });
 
       toast({
         title: '회원삭제 완료',

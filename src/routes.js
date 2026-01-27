@@ -58,6 +58,7 @@ const routes = [
     path: '/roas-analyzer',
     icon: <Icon as={MdTrendingUp} width="20px" height="20px" color="inherit" />,
     component: <ROASAnalyzer />,
+    masterOnly: true, // 마스터만 접근 가능
   },
   {
     name: 'NFT Marketplace',
@@ -73,6 +74,7 @@ const routes = [
     ),
     component: <NFTMarketplace />,
     secondary: true,
+    masterOnly: true, // 마스터만 접근 가능
   },
   {
     name: 'Profile',
