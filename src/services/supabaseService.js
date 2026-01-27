@@ -32,13 +32,46 @@ export const signUp = async (email, password, metadata = {}) => {
  * 이메일로 로그인
  */
 export const signIn = async (email, password) => {
+  // 1. Supabase Auth로 인증
   const { data, error } = await supabase.auth.signInWithPassword({
     email,
     password,
   });
 
   if (error) throw error;
-  return data;
+
+  // 2. users 테이블에서 사용자 상태 확인
+  const { data: userData, error: userError } = await supabase
+    .from('users')
+    .select('id, email, name, role, status, deleted_at')
+    .eq('id', data.user.id)
+    .single();
+
+  if (userError) {
+    console.error('[signIn] 사용자 정보 조회 실패:', {
+      error: userError,
+      message: userError?.message,
+      details: userError?.details,
+      hint: userError?.hint,
+      code: userError?.code
+    });
+    await supabase.auth.signOut();
+    throw new Error(`사용자 정보를 찾을 수 없습니다: ${userError?.message || userError}`);
+  }
+
+  // 3. 삭제된 계정 체크
+  if (userData.deleted_at !== null) {
+    await supabase.auth.signOut();
+    throw new Error('삭제된 계정입니다. 관리자에게 문의하세요.');
+  }
+
+  // 4. 비활성 상태 체크
+  if (userData.status !== 'active') {
+    await supabase.auth.signOut();
+    throw new Error('비활성화된 계정입니다. 관리자에게 문의하세요.');
+  }
+
+  return { ...data, userData };
 };
 
 /**
@@ -1005,6 +1038,8 @@ export const getWeeklyConversions = async ({ advertiserId, availableAdvertiserId
     query = query.eq('advertiser_id', advertiserId);
   } else if (availableAdvertiserIds && availableAdvertiserIds.length > 0) {
     query = query.in('advertiser_id', availableAdvertiserIds);
+  } else {
+    query = query.eq('advertiser_id', '00000000-0000-0000-0000-000000000000');
   }
   if (startDate) query = query.gte('date', startDate);
   if (endDate) query = query.lte('date', endDate);
@@ -1155,6 +1190,8 @@ export const getKPIData = async ({ advertiserId, availableAdvertiserIds, startDa
   } else if (availableAdvertiserIds && availableAdvertiserIds.length > 0) {
     // "전체 브랜드" 선택 시 접근 가능한 광고주만 필터링
     query = query.in('advertiser_id', availableAdvertiserIds);
+  } else {
+    query = query.eq('advertiser_id', '00000000-0000-0000-0000-000000000000');
   }
 
   // 날짜 필터
@@ -1223,6 +1260,8 @@ export const getDailyAdCost = async ({ advertiserId, availableAdvertiserIds, sta
     query = query.eq('advertiser_id', advertiserId);
   } else if (availableAdvertiserIds && availableAdvertiserIds.length > 0) {
     query = query.in('advertiser_id', availableAdvertiserIds);
+  } else {
+    query = query.eq('advertiser_id', '00000000-0000-0000-0000-000000000000');
   }
   if (startDate) {
     query = query.gte('date', startDate);
@@ -1266,6 +1305,8 @@ export const getMediaAdCost = async ({ advertiserId, availableAdvertiserIds, sta
     query = query.eq('advertiser_id', advertiserId);
   } else if (availableAdvertiserIds && availableAdvertiserIds.length > 0) {
     query = query.in('advertiser_id', availableAdvertiserIds);
+  } else {
+    query = query.eq('advertiser_id', '00000000-0000-0000-0000-000000000000');
   }
   if (startDate) {
     query = query.gte('date', startDate);
@@ -1311,6 +1352,8 @@ export const getDailyRevenue = async ({ advertiserId, availableAdvertiserIds, st
   } else if (availableAdvertiserIds && availableAdvertiserIds.length > 0) {
     // "전체 브랜드" 선택 시 접근 가능한 광고주만 필터링
     query = query.in('advertiser_id', availableAdvertiserIds);
+  } else {
+    query = query.eq('advertiser_id', '00000000-0000-0000-0000-000000000000');
   }
   if (startDate) {
     query = query.gte('date', startDate);
@@ -1356,6 +1399,8 @@ export const getMediaRevenue = async ({ advertiserId, availableAdvertiserIds, st
   } else if (availableAdvertiserIds && availableAdvertiserIds.length > 0) {
     // "전체 브랜드" 선택 시 접근 가능한 광고주만 필터링
     query = query.in('advertiser_id', availableAdvertiserIds);
+  } else {
+    query = query.eq('advertiser_id', '00000000-0000-0000-0000-000000000000');
   }
   if (startDate) {
     query = query.gte('date', startDate);
@@ -1415,6 +1460,8 @@ export const getMediaAdSummary = async ({ advertiserId, availableAdvertiserIds, 
   } else if (availableAdvertiserIds && availableAdvertiserIds.length > 0) {
     // "전체 브랜드" 선택 시 접근 가능한 광고주만 필터링
     query = query.in('advertiser_id', availableAdvertiserIds);
+  } else {
+    query = query.eq('advertiser_id', '00000000-0000-0000-0000-000000000000');
   }
   if (startDate) {
     query = query.gte('date', startDate);
@@ -1499,6 +1546,8 @@ export const getCampaignAdSummary = async ({ advertiserId, availableAdvertiserId
   } else if (availableAdvertiserIds && availableAdvertiserIds.length > 0) {
     // "전체 브랜드" 선택 시 접근 가능한 광고주만 필터링
     query = query.in('advertiser_id', availableAdvertiserIds);
+  } else {
+    query = query.eq('advertiser_id', '00000000-0000-0000-0000-000000000000');
   }
   if (startDate) {
     query = query.gte('date', startDate);
@@ -1584,6 +1633,8 @@ export const getAdGroupAdSummary = async ({ advertiserId, availableAdvertiserIds
     query = query.eq('advertiser_id', advertiserId);
   } else if (availableAdvertiserIds && availableAdvertiserIds.length > 0) {
     query = query.in('advertiser_id', availableAdvertiserIds);
+  } else {
+    query = query.eq('advertiser_id', '00000000-0000-0000-0000-000000000000');
   }
 
   // 날짜 필터
@@ -1671,6 +1722,8 @@ export const getAdAdSummary = async ({ advertiserId, availableAdvertiserIds, sta
     query = query.eq('advertiser_id', advertiserId);
   } else if (availableAdvertiserIds && availableAdvertiserIds.length > 0) {
     query = query.in('advertiser_id', availableAdvertiserIds);
+  } else {
+    query = query.eq('advertiser_id', '00000000-0000-0000-0000-000000000000');
   }
 
   // 날짜 필터
@@ -1762,6 +1815,8 @@ export const getDailyAdSummary = async ({ advertiserId, availableAdvertiserIds, 
   } else if (availableAdvertiserIds && availableAdvertiserIds.length > 0) {
     // "전체 브랜드" 선택 시 접근 가능한 광고주만 필터링
     query = query.in('advertiser_id', availableAdvertiserIds);
+  } else {
+    query = query.eq('advertiser_id', '00000000-0000-0000-0000-000000000000');
   }
   if (startDate) {
     query = query.gte('date', startDate);
@@ -1846,6 +1901,8 @@ export const getWeeklyAdSummary = async ({ advertiserId, availableAdvertiserIds,
   } else if (availableAdvertiserIds && availableAdvertiserIds.length > 0) {
     // "전체 브랜드" 선택 시 접근 가능한 광고주만 필터링
     query = query.in('advertiser_id', availableAdvertiserIds);
+  } else {
+    query = query.eq('advertiser_id', '00000000-0000-0000-0000-000000000000');
   }
   if (startDate) {
     query = query.gte('date', startDate);
@@ -1941,6 +1998,8 @@ export const getMonthlyAdSummary = async ({ advertiserId, availableAdvertiserIds
   } else if (availableAdvertiserIds && availableAdvertiserIds.length > 0) {
     // "전체 브랜드" 선택 시 접근 가능한 광고주만 필터링
     query = query.in('advertiser_id', availableAdvertiserIds);
+  } else {
+    query = query.eq('advertiser_id', '00000000-0000-0000-0000-000000000000');
   }
   if (startDate) {
     query = query.gte('date', startDate);
@@ -2017,6 +2076,8 @@ export const getMediaROASAnalysis = async ({ advertiserId, availableAdvertiserId
     query = query.eq('advertiser_id', advertiserId);
   } else if (availableAdvertiserIds && availableAdvertiserIds.length > 0) {
     query = query.in('advertiser_id', availableAdvertiserIds);
+  } else {
+    query = query.eq('advertiser_id', '00000000-0000-0000-0000-000000000000');
   }
 
   if (startDate) {
@@ -2092,6 +2153,8 @@ export const getDailyROASAndCost = async ({ advertiserId, availableAdvertiserIds
   } else if (availableAdvertiserIds && availableAdvertiserIds.length > 0) {
     // "전체 브랜드" 선택 시 접근 가능한 광고주만 필터링
     query = query.in('advertiser_id', availableAdvertiserIds);
+  } else {
+    query = query.eq('advertiser_id', '00000000-0000-0000-0000-000000000000');
   }
   if (startDate) {
     query = query.gte('date', startDate);
@@ -2167,6 +2230,8 @@ export const getBestCreatives = async ({ advertiserId, availableAdvertiserIds, s
   } else if (availableAdvertiserIds && availableAdvertiserIds.length > 0) {
     // "전체 브랜드" 선택 시 접근 가능한 광고주만 필터링
     performanceQuery = performanceQuery.in('advertiser_id', availableAdvertiserIds);
+  } else {
+    performanceQuery = performanceQuery.eq('advertiser_id', '00000000-0000-0000-0000-000000000000');
   }
   if (startDate) {
     performanceQuery = performanceQuery.gte('date', startDate);
@@ -2232,8 +2297,18 @@ export const getBestCreatives = async ({ advertiserId, availableAdvertiserIds, s
 
   if (creativesError) throw creativesError;
 
-  // 4. 성과 + 크리에이티브 JOIN 및 계산
-  const joinedData = (creativesData || []).map(creative => {
+  // 4. ad_id 기준 중복 제거 (동일 광고에 여러 크리에이티브가 있을 수 있음)
+  const uniqueCreatives = Object.values(
+    (creativesData || []).reduce((acc, creative) => {
+      if (!acc[creative.ad_id]) {
+        acc[creative.ad_id] = creative;
+      }
+      return acc;
+    }, {})
+  );
+
+  // 5. 성과 + 크리에이티브 JOIN 및 계산
+  const joinedData = uniqueCreatives.map(creative => {
     const performance = aggregatedPerformance[creative.ad_id] || {};
     const cost = performance.cost || 0;
     const impressions = performance.impressions || 0;
@@ -2269,7 +2344,7 @@ export const getBestCreatives = async ({ advertiserId, availableAdvertiserIds, s
     };
   });
 
-  // 5. 전환수 순으로 정렬 (내림차순) 및 상위 N개 선택
+  // 6. 전환수 순으로 정렬 (내림차순) 및 상위 N개 선택
   const sorted = joinedData.sort((a, b) => b.conversions - a.conversions);
   return sorted.slice(0, limit);
 };
@@ -2306,6 +2381,8 @@ export const getAllCreatives = async ({ advertiserId, availableAdvertiserIds, st
   } else if (availableAdvertiserIds && availableAdvertiserIds.length > 0) {
     // "전체 브랜드" 선택 시 접근 가능한 광고주만 필터링
     performanceQuery = performanceQuery.in('advertiser_id', availableAdvertiserIds);
+  } else {
+    performanceQuery = performanceQuery.eq('advertiser_id', '00000000-0000-0000-0000-000000000000');
   }
   if (startDate) {
     performanceQuery = performanceQuery.gte('date', startDate);
@@ -2824,15 +2901,35 @@ export const getBoardPosts = async (
 
   // admin 게시판에서 advertiserId가 있으면 필터링
   let filteredData = data;
-  if (boardType === 'admin' && advertiserId) {
-    filteredData = data.filter(post => {
-      // target_advertiser_ids가 null이면 모든 사용자 대상 (표시)
-      if (!post.target_advertiser_ids || post.target_advertiser_ids.length === 0) {
-        return true;
-      }
-      // target_advertiser_ids에 현재 브랜드 ID가 포함되어 있는지 확인
-      return post.target_advertiser_ids.includes(advertiserId);
-    });
+  if (boardType === 'admin') {
+    if (advertiserId) {
+      // 특정 브랜드 선택 시
+      filteredData = data.filter(post => {
+        // target_advertiser_ids가 null이면 모든 사용자 대상 (표시)
+        if (!post.target_advertiser_ids || post.target_advertiser_ids.length === 0) {
+          return true;
+        }
+        // target_advertiser_ids에 현재 브랜드 ID가 포함되어 있는지 확인
+        return post.target_advertiser_ids.includes(advertiserId);
+      });
+    } else if (availableAdvertisers && availableAdvertisers.length > 0) {
+      // 전체 브랜드 선택 시 (접근 가능한 브랜드 있음)
+      const availableIds = availableAdvertisers.map(adv => adv.id);
+      filteredData = data.filter(post => {
+        // target_advertiser_ids가 null이면 모든 사용자 대상 (표시)
+        if (!post.target_advertiser_ids || post.target_advertiser_ids.length === 0) {
+          return true;
+        }
+        // target_advertiser_ids에 접근 가능한 브랜드가 하나라도 포함되어 있는지 확인
+        return post.target_advertiser_ids.some(id => availableIds.includes(id));
+      });
+    } else {
+      // 접근 가능한 브랜드가 없는 경우 (빈 배열)
+      filteredData = data.filter(post => {
+        // target_advertiser_ids가 null인 것만 표시 (모든 사용자 대상)
+        return !post.target_advertiser_ids || post.target_advertiser_ids.length === 0;
+      });
+    }
   }
 
   // 읽음 상태 조회
@@ -3219,6 +3316,17 @@ export const deleteBrand = async (brandId, brandName) => {
 
     if (nullifyError) {
       console.warn('[deleteBrand] advertiser_id NULL 변경 실패:', nullifyError);
+      // 경고만 하고 계속 진행
+    }
+
+    // 5.5. invitation_codes 삭제 (foreign key constraint 해결)
+    const { error: invitationError } = await supabase
+      .from('invitation_codes')
+      .delete()
+      .eq('parent_advertiser_id', brandId);
+
+    if (invitationError) {
+      console.warn('[deleteBrand] invitation_codes 삭제 실패:', invitationError);
       // 경고만 하고 계속 진행
     }
 

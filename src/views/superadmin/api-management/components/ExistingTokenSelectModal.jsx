@@ -71,7 +71,7 @@ export default function ExistingTokenSelectModal({
                 borderRadius="md"
                 borderColor={borderColor}
                 _hover={{ bg: bgHover, cursor: 'pointer' }}
-                onClick={() => onSelectToken(token.integration_id)}
+                onClick={() => onSelectToken(token)}
               >
                 <HStack justify="space-between">
                   <VStack align="start" spacing={1}>

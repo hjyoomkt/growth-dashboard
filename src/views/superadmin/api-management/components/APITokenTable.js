@@ -352,29 +352,11 @@ export default function APITokenTable(props) {
       gcpSource,
     });
 
-    // GCP 정보 결정
-    let clientId = formData.clientId;
-    let clientSecret = formData.clientSecret;
-    let developerToken = formData.developerToken;
-
-    if (gcpSource === 'organization') {
-      clientId = organizationGcp.clientId;
-      clientSecret = organizationGcp.clientSecret;
-      developerToken = organizationGcp.developerToken || formData.developerToken;
-    }
-
-    console.log('[Conversion Action] 사용할 GCP:', {
-      gcpSource,
-      clientId: clientId || '비어있음',
-      clientSecret: clientSecret ? '있음' : '비어있음',
-      developerToken: developerToken || '비어있음',
-    });
-
     // 필수 필드 확인
-    if (!formData.customerId || !developerToken || !formData.refreshToken || !clientId || !clientSecret) {
+    if (!formData.customerId || !selectedIntegrationId) {
       toast({
         title: '필수 정보 누락',
-        description: '전환 액션 조회를 위해 Customer ID, Developer Token, Refresh Token, Client ID, Client Secret을 먼저 입력해주세요.',
+        description: '전환 액션 조회를 위해 Customer ID를 먼저 입력해주세요.',
         status: 'warning',
         duration: 4000,
         isClosable: true,
@@ -392,21 +374,19 @@ export default function APITokenTable(props) {
 
       console.log('[Conversion Action] Edge Function 호출 시작');
 
+      const accessToken = (await supabase.auth.getSession()).data.session?.access_token;
+
       const response = await fetch(
         `${process.env.REACT_APP_SUPABASE_URL}/functions/v1/google-conversion-actions`,
         {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'Authorization': `Bearer ${process.env.REACT_APP_SUPABASE_ANON_KEY}`,
+            'Authorization': `Bearer ${accessToken}`,
           },
           body: JSON.stringify({
+            integration_id: selectedIntegrationId,
             customer_id: formData.customerId,
-            developer_token: developerToken,
-            manager_account_id: formData.managerAccountId || organizationGcp.mccId,
-            refresh_token: formData.refreshToken,
-            client_id: clientId,
-            client_secret: clientSecret,
           }),
         }
       );
@@ -865,6 +845,45 @@ export default function APITokenTable(props) {
     }
   };
 
+  // 기존 integration을 복사하여 새 브랜드용 integration 생성
+  const copyIntegrationForNewBrand = async (sourceIntegrationId, targetBrandId) => {
+    console.log('[Copy Integration] Copying from', sourceIntegrationId, 'to brand', targetBrandId);
+
+    // 원본 integration 조회 (암호화된 토큰 포함)
+    const { data: source, error: fetchError } = await supabase
+      .from('integrations')
+      .select('*')
+      .eq('id', sourceIntegrationId)
+      .single();
+
+    if (fetchError) throw new Error('Failed to fetch source integration');
+
+    // 새 integration 생성 (암호화된 토큰 복사)
+    const { data: newIntegration, error: insertError } = await supabase
+      .from('integrations')
+      .insert({
+        advertiser_id: targetBrandId,
+        platform: source.platform,
+        integration_type: source.integration_type,
+        is_organization_shared: true,
+        // 암호화된 토큰 복사 (같은 refresh_token 공유)
+        oauth_refresh_token_encrypted: source.oauth_refresh_token_encrypted,
+        oauth_access_token_encrypted: source.oauth_access_token_encrypted,
+        client_secret_encrypted: source.client_secret_encrypted,
+        legacy_client_id: source.legacy_client_id,
+        google_account_email: source.google_account_email,
+        oauth_token_expires_at: source.oauth_token_expires_at,
+        data_collection_status: 'pending',
+      })
+      .select()
+      .single();
+
+    if (insertError) throw new Error('Failed to create new integration');
+
+    console.log('[Copy Integration] Success, new ID:', newIntegration.id);
+    return newIntegration;
+  };
+
   // 매체 로그인 플로우 완료 처리
   const handlePlatformLoginComplete = async (data) => {
     setPlatformLoginData(data);
@@ -1001,21 +1020,60 @@ export default function APITokenTable(props) {
     }
 
     // Google Ads 처리
-    setFormData(prev => ({
-      ...prev,
-      advertiser: availableAdvertisers.find(adv => adv.id === data.brandId)?.name || '',
-      advertiserId: data.brandId,
-      platform: data.platform,
-      refreshToken: data.refreshToken,
-      customerId: data.customerId,
-    }));
+    let targetIntegrationId = data.integrationId;
 
-    setSelectedIntegrationId(data.integrationId);
-    setGcpSource('organization');
+    try {
 
-    // 조직 GCP 정보가 없으면 먼저 가져오기
-    if (!organizationGcp.clientId) {
-      await fetchOrganizationGcp();
+      // 토큰 재사용 + 다른 브랜드인 경우 새 integration 생성
+      if (data.sourceIntegrationId && data.brandId && !data.integrationId) {
+        console.log('[Platform Login] Detected token reuse for different brand');
+
+        toast({
+          title: '브랜드용 통합 생성 중',
+          description: '선택한 브랜드에 새로운 통합을 생성하고 있습니다...',
+          status: 'info',
+          duration: 2000,
+          isClosable: true,
+        });
+
+        // 암호화된 토큰 복사하여 새 integration 생성
+        const newIntegration = await copyIntegrationForNewBrand(
+          data.sourceIntegrationId,
+          data.brandId
+        );
+
+        targetIntegrationId = newIntegration.id;
+
+        toast({
+          title: '통합 생성 완료',
+          description: '고객 계정 정보를 설정합니다.',
+          status: 'success',
+          duration: 2000,
+          isClosable: true,
+        });
+      }
+
+      setFormData(prev => ({
+        ...prev,
+        advertiser: availableAdvertisers.find(adv => adv.id === data.brandId)?.name || '',
+        advertiserId: data.brandId,
+        platform: data.platform,
+        refreshToken: data.refreshToken,
+        customerId: data.customerId,
+      }));
+
+      setSelectedIntegrationId(targetIntegrationId);
+      setGcpSource('organization');
+    } catch (error) {
+      console.error('[Platform Login] Failed to create integration:', error);
+      toast({
+        title: '통합 생성 실패',
+        description: error.message,
+        status: 'error',
+        duration: 4000,
+        isClosable: true,
+      });
+      return;
     }
 
     // Google Ads 전환 액션 조회 실행
@@ -1028,21 +1086,19 @@ export default function APITokenTable(props) {
 
       console.log('[Platform Login] 전환 액션 조회 시작');
 
+      const accessToken = (await supabase.auth.getSession()).data.session?.access_token;
+
       const response = await fetch(
         `${process.env.REACT_APP_SUPABASE_URL}/functions/v1/google-conversion-actions`,
         {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'Authorization': `Bearer ${process.env.REACT_APP_SUPABASE_ANON_KEY}`,
+            'Authorization': `Bearer ${accessToken}`,
           },
           body: JSON.stringify({
+            integration_id: targetIntegrationId,
             customer_id: data.customerId,
-            developer_token: organizationGcp.developerToken,
-            manager_account_id: organizationGcp.mccId,
-            refresh_token: data.refreshToken,
-            client_id: organizationGcp.clientId,
-            client_secret: organizationGcp.clientSecret,
           }),
         }
       );

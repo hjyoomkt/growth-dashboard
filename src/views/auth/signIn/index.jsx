@@ -40,6 +40,13 @@ import {
   useColorModeValue,
   Image,
   useToast,
+  Modal,
+  ModalOverlay,
+  ModalContent,
+  ModalHeader,
+  ModalBody,
+  ModalFooter,
+  useDisclosure,
 } from "@chakra-ui/react";
 // Assets
 import illustration from "assets/img/auth/lemon.jpg";
@@ -69,9 +76,17 @@ function SignIn() {
   const [email, setEmail] = React.useState("");
   const [password, setPassword] = React.useState("");
   const [loading, setLoading] = React.useState(false);
-  const { signIn } = useAuth();
+  const { signIn, accountError, clearAccountError } = useAuth();
   const navigate = useNavigate();
   const toast = useToast();
+  const { isOpen, onOpen, onClose } = useDisclosure();
+
+  // accountError 감지하여 모달 표시
+  React.useEffect(() => {
+    if (accountError) {
+      onOpen();
+    }
+  }, [accountError, onOpen]);
 
   const handleSignIn = async () => {
     if (!email || !password) {
@@ -332,6 +347,35 @@ function SignIn() {
         />
       </Box>
     </Flex>
+
+    {/* 계정 상태 에러 모달 */}
+    <Modal
+      isOpen={isOpen}
+      onClose={() => {
+        clearAccountError();
+        onClose();
+      }}
+      isCentered
+    >
+      <ModalOverlay />
+      <ModalContent>
+        <ModalHeader>로그인 불가</ModalHeader>
+        <ModalBody>
+          {accountError}
+        </ModalBody>
+        <ModalFooter>
+          <Button
+            colorScheme="brand"
+            onClick={() => {
+              clearAccountError();
+              onClose();
+            }}
+          >
+            확인
+          </Button>
+        </ModalFooter>
+      </ModalContent>
+    </Modal>
     </>
   );
 }

@@ -58,7 +58,8 @@ export default function Footer() {
           <Link
             fontWeight='500'
             color={textColor}
-            href='mailto:hello@simmmple.com'>
+            href='https://www.zestdot.com/'
+            target='_blank'>
             Support
           </Link>
         </ListItem>
@@ -70,7 +71,8 @@ export default function Footer() {
           <Link
             fontWeight='500'
             color={textColor}
-            href='https://www.simmmple.com/licenses?ref=horizon-chakra-free'>
+            href='https://www.zestdot.com/auth/terms-of-service'
+            target='_blank'>
             License
           </Link>
         </ListItem>
@@ -82,7 +84,8 @@ export default function Footer() {
           <Link
             fontWeight='500'
             color={textColor}
-            href='https://simmmple.com/terms-of-service?ref=horizon-chakra-free'>
+            href='https://www.zestdot.com/auth/terms-of-service'
+            target='_blank'>
             Terms of Use
           </Link>
         </ListItem>
@@ -90,7 +93,8 @@ export default function Footer() {
           <Link
             fontWeight='500'
             color={textColor}
-            href='https://www.blog.simmmple.com/?ref=horizon-chakra-free'>
+            href='https://blog.naver.com/archive_reon'
+            target='_blank'>
             Blog
           </Link>
         </ListItem>

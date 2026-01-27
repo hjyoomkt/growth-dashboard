@@ -21,6 +21,7 @@ export const AuthProvider = ({ children }) => {
   const [role, setRole] = useState(null);
   const [organizationType, setOrganizationType] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [accountError, setAccountError] = useState(null); // 계정 상태 에러
 
   // 브랜드 전환 기능
   const [availableAdvertisers, setAvailableAdvertisers] = useState([]); // 접근 가능한 브랜드 목록
@@ -166,6 +167,21 @@ export const AuthProvider = ({ children }) => {
       const userData = await getUserMetadata(userId);
       console.log('✅ 사용자 메타데이터:', userData);
 
+      // ⚠️ 추가: 사용자 상태 검증
+      if (userData.deleted_at !== null) {
+        setAccountError('삭제된 계정입니다.');
+        await signOut();
+        setLoading(false);
+        return;
+      }
+
+      if (userData.status !== 'active') {
+        setAccountError('비활성화된 계정입니다. 관리자에게 문의하세요.');
+        await signOut();
+        setLoading(false);
+        return;
+      }
+
       setUserName(userData.name);
       setOrganizationId(userData.organization_id);
       setAdvertiserId(userData.advertiser_id);
@@ -233,8 +249,14 @@ export const AuthProvider = ({ children }) => {
 
       setLoading(false);
     } catch (error) {
-      console.error('메타데이터 조회 실패:', error);
+      // 에러를 조용히 처리 (콘솔 에러 제거)
       setLoading(false);
+
+      const errorMessage = error?.message || String(error);
+      if (errorMessage.includes('비활성') || errorMessage.includes('삭제')) {
+        setAccountError(errorMessage);
+        await signOut();
+      }
     }
   };
 
@@ -309,6 +331,11 @@ export const AuthProvider = ({ children }) => {
     }
 
     console.log('Switched to advertiser:', advertiserId || 'All');
+  };
+
+  // 계정 에러 초기화 함수
+  const clearAccountError = () => {
+    setAccountError(null);
   };
 
   // API 알림 추가 함수
@@ -399,6 +426,8 @@ export const AuthProvider = ({ children }) => {
     role,
     organizationType,
     loading,
+    accountError,
+    clearAccountError,
     signIn,
     signUp,
     signOut,

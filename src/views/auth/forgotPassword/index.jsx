@@ -15,7 +15,7 @@ import {
   AlertIcon,
   AlertDescription,
 } from "@chakra-ui/react";
-import illustration from "assets/img/auth/auth.png";
+import illustration from "assets/img/auth/lemon.jpg";
 import { supabase } from "config/supabase";
 
 function ForgotPassword() {

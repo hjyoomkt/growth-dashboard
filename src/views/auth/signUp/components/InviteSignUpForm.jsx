@@ -710,7 +710,7 @@ function InviteSignUpForm({ initialCode, onSuccess }) {
               isRequired
               variant="auth"
               fontSize="sm"
-              placeholder={inviteData?.isNewAgency ? "예: 부밍 대행사" : "예: 페퍼스"}
+              placeholder={inviteData?.isNewAgency ? "예: 제스트닷" : "예: 페퍼스"}
               size="lg"
               borderRadius="10px"
             />

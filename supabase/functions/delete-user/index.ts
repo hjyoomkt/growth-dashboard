@@ -257,7 +257,37 @@ Deno.serve(async (req) => {
       // 계속 진행 (치명적이지 않음)
     }
 
-    // 5. auth.users에서 삭제
+    // 5. 이메일 익명화 (재가입 가능하도록 원본 이메일 해제)
+    const anonymizedEmail = `deleted-${user_id}@deleted.local`;
+    console.log(`Anonymizing emails: ${userData.email} -> ${anonymizedEmail}`);
+
+    // 5-1. users 테이블 이메일 익명화
+    const { error: usersUpdateError } = await supabaseAdmin
+      .from('users')
+      .update({ email: anonymizedEmail })
+      .eq('id', user_id);
+
+    if (usersUpdateError) {
+      console.error('Failed to anonymize users table email:', usersUpdateError);
+      // 계속 진행
+    } else {
+      console.log('✅ Users table email anonymized');
+    }
+
+    // 5-2. auth.users 이메일 익명화
+    const { error: authUpdateError } = await supabaseAdmin.auth.admin.updateUserById(
+      user_id,
+      { email: anonymizedEmail }
+    );
+
+    if (authUpdateError) {
+      console.error('Failed to anonymize auth email:', authUpdateError);
+      // 계속 진행
+    } else {
+      console.log('✅ Auth email anonymized');
+    }
+
+    // 6. auth.users에서 삭제
     const { error: authDeleteError } = await supabaseAdmin.auth.admin.deleteUser(user_id);
 
     if (authDeleteError) {
@@ -268,9 +298,9 @@ Deno.serve(async (req) => {
       );
     }
 
-    console.log('Auth user deleted successfully');
+    console.log('✅ Auth user deleted successfully');
 
-    // 6. users 테이블에서 삭제 (CASCADE로 관련 데이터 자동 삭제)
+    // 7. users 테이블에서 삭제 (CASCADE로 관련 데이터 자동 삭제)
     const { error: userDeleteError } = await supabaseAdmin
       .from('users')
       .delete()

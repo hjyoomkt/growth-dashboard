@@ -19,6 +19,7 @@ export default function PlatformLoginFlow({
   const [selectedBrandId, setSelectedBrandId] = useState(null);
   const [refreshToken, setRefreshToken] = useState(null);
   const [integrationId, setIntegrationId] = useState(null);
+  const [originalIntegrationBrandId, setOriginalIntegrationBrandId] = useState(null);
   const [selectedCustomerId, setSelectedCustomerId] = useState(null);
   const [organizationTokens, setOrganizationTokens] = useState([]);
 
@@ -44,6 +45,7 @@ export default function PlatformLoginFlow({
     setSelectedBrandId(null);
     setRefreshToken(null);
     setIntegrationId(null);
+    setOriginalIntegrationBrandId(null);
     setSelectedCustomerId(null);
     setOrganizationTokens([]);
   };
@@ -204,11 +206,11 @@ export default function PlatformLoginFlow({
   };
 
   // 기존 토큰 선택
-  const handleSelectExistingToken = async (integrationId) => {
+  const handleSelectExistingToken = async (integration) => {
     try {
       // 토큰 복호화
       const { data: decryptedToken, error } = await supabase.rpc('get_decrypted_token', {
-        p_api_token_id: integrationId,
+        p_api_token_id: integration.integration_id,
         p_token_type: 'oauth_refresh_token',
       });
 
@@ -217,7 +219,8 @@ export default function PlatformLoginFlow({
       }
 
       setRefreshToken(decryptedToken);
-      setIntegrationId(integrationId);
+      setIntegrationId(integration.integration_id);
+      setOriginalIntegrationBrandId(integration.advertiser_id); // 원래 브랜드 ID 추적
       setCurrentStep('customer');
 
       toast({
@@ -249,12 +252,19 @@ export default function PlatformLoginFlow({
   const handleCustomerSelect = (customerId) => {
     setSelectedCustomerId(customerId);
 
+    // 기존 토큰을 다른 브랜드에서 재사용하는 경우 감지
+    const isDifferentBrand =
+      integrationId &&
+      originalIntegrationBrandId &&
+      originalIntegrationBrandId !== selectedBrandId;
+
     // 부모 컴포넌트(APITokenTable)로 데이터 전달하여 기존 전환 액션 모달 열기
     onComplete({
       platform: selectedPlatform,
       brandId: selectedBrandId,
       refreshToken: refreshToken,
-      integrationId: integrationId,
+      integrationId: isDifferentBrand ? null : integrationId, // 다른 브랜드면 null
+      sourceIntegrationId: isDifferentBrand ? integrationId : null, // 복사 원본 ID
       customerId: customerId,
     });
 

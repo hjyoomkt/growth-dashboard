@@ -7,12 +7,8 @@ const corsHeaders = {
 }
 
 interface ConversionActionRequest {
+  integration_id: string
   customer_id: string
-  developer_token: string
-  manager_account_id?: string
-  refresh_token: string
-  client_id: string
-  client_secret: string
 }
 
 interface ConversionAction {
@@ -33,47 +29,155 @@ serve(async (req) => {
     const body: ConversionActionRequest = await req.json()
 
     const {
-      customer_id,
-      developer_token,
-      manager_account_id,
-      refresh_token,
-      client_id,
-      client_secret
+      integration_id,
+      customer_id
     } = body
 
     // 필수 파라미터 체크
-    if (!customer_id || !developer_token || !refresh_token || !client_id || !client_secret) {
+    if (!integration_id || !customer_id) {
       return new Response(
-        JSON.stringify({ error: '필수 파라미터가 누락되었습니다.' }),
+        JSON.stringify({ error: 'integration_id and customer_id are required' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
 
-    // 1. Access Token 발급
-    const tokenResponse = await fetch('https://oauth2.googleapis.com/token', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({
-        client_id,
-        client_secret,
-        refresh_token,
-        grant_type: 'refresh_token'
-      })
-    })
+    // Supabase Client 초기화
+    const supabaseClient = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_ANON_KEY') ?? '',
+      {
+        global: {
+          headers: { Authorization: req.headers.get('Authorization')! },
+        },
+      }
+    )
 
-    const tokenData = await tokenResponse.json()
+    const supabaseServiceRole = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+    )
 
-    if (!tokenData.access_token) {
-      console.error('Access Token 발급 실패:', tokenData)
+    // 1. 사용자 인증 확인
+    const { data: { user }, error: authError } = await supabaseClient.auth.getUser()
+    if (authError || !user) {
       return new Response(
-        JSON.stringify({ error: 'Access Token 발급 실패', details: tokenData }),
+        JSON.stringify({ error: 'Unauthorized' }),
         { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
 
-    const accessToken = tokenData.access_token
+    // 2. Integration 조회 (RLS 적용으로 권한 검증)
+    const { data: integration, error: integrationError } = await supabaseClient
+      .from('integrations')
+      .select('id, platform, advertiser_id, legacy_client_id, legacy_manager_account_id, advertisers(organization_id)')
+      .eq('id', integration_id)
+      .single()
 
-    // 2. 전환 액션 목록 조회 (모든 상태 포함)
+    if (integrationError || !integration) {
+      return new Response(
+        JSON.stringify({ error: 'Integration not found or access denied' }),
+        { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
+    if (integration.platform !== 'Google Ads') {
+      return new Response(
+        JSON.stringify({ error: 'Only Google Ads integrations are supported' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
+    // 3. Refresh Token 복호화 (Service Role 사용)
+    const { data: refreshToken, error: tokenError } = await supabaseServiceRole.rpc(
+      'get_decrypted_token',
+      {
+        p_api_token_id: integration_id,
+        p_token_type: 'oauth_refresh_token',
+      }
+    )
+
+    if (tokenError || !refreshToken) {
+      return new Response(
+        JSON.stringify({ error: 'Failed to retrieve refresh token' }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
+    // 4. Client ID 조회
+    const clientId = integration.legacy_client_id
+
+    if (!clientId) {
+      return new Response(
+        JSON.stringify({ error: 'Client ID not found in integration' }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
+    // 5. Client Secret 복호화
+    const { data: clientSecret, error: clientSecretError } = await supabaseServiceRole.rpc(
+      'get_decrypted_token',
+      {
+        p_api_token_id: integration_id,
+        p_token_type: 'client_secret'
+      }
+    )
+
+    if (clientSecretError || !clientSecret) {
+      return new Response(
+        JSON.stringify({ error: 'Failed to retrieve client secret' }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
+    // 6. Developer Token 조회 (organization에서)
+    const organizationId = integration.advertisers?.organization_id
+    let developerToken = null
+
+    if (organizationId) {
+      const { data: gcpCredentials } = await supabaseServiceRole.rpc(
+        'get_organization_gcp_credentials',
+        { org_id: organizationId }
+      )
+
+      if (gcpCredentials && gcpCredentials.length > 0) {
+        developerToken = gcpCredentials[0].developer_token
+      }
+    }
+
+    if (!developerToken) {
+      return new Response(
+        JSON.stringify({ error: 'Developer token not found' }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
+    // 7. Manager Account ID 추출
+    const managerAccountId = integration.legacy_manager_account_id
+
+    // 8. Refresh Token으로 Access Token 발급
+    const tokenResponse = await fetch('https://oauth2.googleapis.com/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        client_id: clientId,
+        client_secret: clientSecret,
+        refresh_token: refreshToken,
+        grant_type: 'refresh_token',
+      }),
+    })
+
+    if (!tokenResponse.ok) {
+      const errorText = await tokenResponse.text()
+      console.error('Failed to refresh access token:', errorText)
+      return new Response(
+        JSON.stringify({ error: 'Failed to refresh access token', details: errorText }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
+    const { access_token: accessToken } = await tokenResponse.json()
+
+    // 9. 전환 액션 목록 조회
     const gaqlQuery = `
       SELECT
         conversion_action.id,
@@ -88,12 +192,12 @@ serve(async (req) => {
 
     const headers: Record<string, string> = {
       'Authorization': `Bearer ${accessToken}`,
-      'developer-token': developer_token,
+      'developer-token': developerToken,
       'Content-Type': 'application/json'
     }
 
-    if (manager_account_id) {
-      headers['login-customer-id'] = manager_account_id
+    if (managerAccountId) {
+      headers['login-customer-id'] = managerAccountId
     }
 
     const response = await fetch(url, {
