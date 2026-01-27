@@ -3149,3 +3149,158 @@ export const canDeleteUser = (user) => {
 
   return { canDelete: true };
 };
+
+/**
+ * 브랜드 삭제
+ * @param {string} brandId - 삭제할 브랜드 ID
+ * @param {string} brandName - 브랜드명 (로그 기록용)
+ * @returns {Promise<Object>} - 삭제 결과
+ */
+export const deleteBrand = async (brandId, brandName) => {
+  try {
+    console.log('[deleteBrand] 삭제 시작:', { brandId, brandName });
+
+    // 1. api_tokens에 deleted_advertiser_name 저장 (CASCADE 전)
+    const { error: updateError } = await supabase
+      .from('api_tokens')
+      .update({ deleted_advertiser_name: brandName })
+      .eq('advertiser_id', brandId);
+
+    if (updateError) {
+      console.warn('[deleteBrand] api_tokens 업데이트 실패:', updateError);
+      // 경고만 하고 계속 진행
+    }
+
+    // 2. 브랜드 전용 사용자만 조회 (에이전시 직원 제외)
+    const { data: usersToDelete, error: usersError } = await supabase
+      .from('users')
+      .select('id, email, name, role')
+      .eq('advertiser_id', brandId)
+      .not('role', 'in', '(master,agency_staff,agency_admin,agency_manager)');
+
+    if (usersError) {
+      console.error('[deleteBrand] 사용자 조회 실패:', usersError);
+      throw usersError;
+    }
+
+    console.log('[deleteBrand] 삭제할 사용자:', usersToDelete?.length || 0);
+
+    // 3. 브랜드 전용 사용자 삭제
+    if (usersToDelete && usersToDelete.length > 0) {
+      for (const user of usersToDelete) {
+        const { error: deleteUserError } = await supabase
+          .from('users')
+          .delete()
+          .eq('id', user.id);
+
+        if (deleteUserError) {
+          console.error('[deleteBrand] 사용자 삭제 실패:', user.email, deleteUserError);
+          // 계속 진행
+        }
+      }
+    }
+
+    // 4. user_advertisers 관계 제거 (모든 사용자)
+    const { error: relationError } = await supabase
+      .from('user_advertisers')
+      .delete()
+      .eq('advertiser_id', brandId);
+
+    if (relationError) {
+      console.warn('[deleteBrand] user_advertisers 삭제 실패:', relationError);
+      // 경고만 하고 계속 진행
+    }
+
+    // 5. 에이전시 직원의 advertiser_id NULL로 변경
+    const { error: nullifyError } = await supabase
+      .from('users')
+      .update({ advertiser_id: null })
+      .eq('advertiser_id', brandId);
+
+    if (nullifyError) {
+      console.warn('[deleteBrand] advertiser_id NULL 변경 실패:', nullifyError);
+      // 경고만 하고 계속 진행
+    }
+
+    // 6. 브랜드 삭제 (CASCADE로 관련 데이터 자동 삭제)
+    const { data, error } = await supabase
+      .from('advertisers')
+      .delete()
+      .eq('id', brandId);
+
+    if (error) {
+      console.error('[deleteBrand] 삭제 실패:', error);
+      throw error;
+    }
+
+    console.log('[deleteBrand] 삭제 완료:', data);
+    return { success: true, data };
+  } catch (error) {
+    console.error('[deleteBrand] 예외 발생:', error);
+    throw error;
+  }
+};
+
+/**
+ * 브랜드 삭제 가능 여부 확인
+ * @param {string} userId - 사용자 ID
+ * @param {string} brandId - 브랜드 ID
+ * @returns {Promise<Object>} - { canDelete: boolean, reason?: string }
+ */
+export const canDeleteBrand = async (userId, brandId) => {
+  try {
+    // 사용자 정보 조회
+    const { data: userData, error: userError } = await supabase
+      .from('users')
+      .select('role, advertiser_id, organization_id')
+      .eq('id', userId)
+      .single();
+
+    if (userError) throw userError;
+
+    // master는 무조건 삭제 가능
+    if (userData.role === 'master') {
+      return { canDelete: true };
+    }
+
+    // agency_admin: 자신의 조직에 속한 브랜드만
+    if (userData.role === 'agency_admin') {
+      const { data: brandData, error: brandError } = await supabase
+        .from('advertisers')
+        .select('organization_id')
+        .eq('id', brandId)
+        .single();
+
+      if (brandError) throw brandError;
+
+      if (brandData.organization_id === userData.organization_id) {
+        return { canDelete: true };
+      } else {
+        return {
+          canDelete: false,
+          reason: '다른 조직의 브랜드는 삭제할 수 없습니다.'
+        };
+      }
+    }
+
+    // advertiser_admin: 자신의 브랜드만
+    if (userData.role === 'advertiser_admin') {
+      if (userData.advertiser_id === brandId) {
+        return { canDelete: true };
+      } else {
+        return {
+          canDelete: false,
+          reason: '다른 브랜드는 삭제할 수 없습니다.'
+        };
+      }
+    }
+
+    return {
+      canDelete: false,
+      reason: '브랜드를 삭제할 권한이 없습니다.'
+    };
+  } catch (error) {
+    console.error('[canDeleteBrand] 권한 확인 실패:', error);
+    throw error;
+  }
+};

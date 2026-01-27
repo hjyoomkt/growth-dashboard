@@ -27,7 +27,8 @@ export default function OwnershipTransferModal({
   isOpen,
   onClose,
   onTransferComplete,
-  currentUser
+  currentUser,
+  onDeleteBrand
 }) {
   const toast = useToast();
   const [brandUsers, setBrandUsers] = useState([]);
@@ -104,6 +105,13 @@ export default function OwnershipTransferModal({
     }
   };
 
+  const handleDeleteBrand = () => {
+    onClose();
+    if (onDeleteBrand) {
+      onDeleteBrand();
+    }
+  };
+
   const handleClose = () => {
     setSelectedUserId('');
     onClose();
@@ -145,19 +153,18 @@ export default function OwnershipTransferModal({
                   브랜드를 삭제한 후 탈퇴할 수 있습니다.
                 </Text>
 
-                <Tooltip label="브랜드 삭제 기능은 곧 제공될 예정입니다">
-                  <Button
-                    colorScheme="red"
-                    variant="outline"
-                    size="sm"
-                    isDisabled={true}
-                  >
-                    브랜드 삭제 (곧 출시)
-                  </Button>
-                </Tooltip>
+                <Button
+                  colorScheme="red"
+                  variant="outline"
+                  size="sm"
+                  onClick={handleDeleteBrand}
+                  isDisabled={false}
+                >
+                  브랜드 삭제
+                </Button>
 
-                <Text fontSize="xs" color="gray.500" fontStyle="italic">
-                  * 브랜드 삭제 기능은 추후 구현 예정입니다.
+                <Text fontSize="xs" color="red.400">
+                  * 브랜드 삭제 시 모든 데이터가 영구 삭제됩니다.
                 </Text>
               </VStack>
             ) : (

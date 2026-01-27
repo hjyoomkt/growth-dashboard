@@ -18,6 +18,7 @@ import DeleteBrandModal from "./components/DeleteBrandModal";
 import InviteAgencyModal from "./components/InviteAgencyModal";
 import { supabase } from "config/supabase";
 import { useAuth } from "contexts/AuthContext";
+import { deleteBrand } from "services/supabaseService";
 
 export default function AdvertisersManagement() {
   const { isOpen, onOpen, onClose } = useDisclosure();
@@ -104,13 +105,8 @@ export default function AdvertisersManagement() {
     try {
       setIsDeleting(true);
 
-      // 브랜드 삭제 (CASCADE로 관련 데이터 자동 삭제)
-      const { error } = await supabase
-        .from('advertisers')
-        .delete()
-        .eq('id', brandId);
-
-      if (error) throw error;
+      // deleteBrand 함수 사용 (브랜드 전용 사용자 삭제 + 에이전시 직원 보호)
+      await deleteBrand(brandId, selectedBrand.name);
 
       toast({
         title: "브랜드 삭제 완료",

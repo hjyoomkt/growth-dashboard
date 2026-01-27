@@ -24,13 +24,17 @@ import {
   Tooltip,
 } from '@chakra-ui/react';
 import { MdCamera, MdDelete } from 'react-icons/md';
+import { useNavigate } from 'react-router-dom';
 import DeleteAccountConfirmModal from './DeleteAccountConfirmModal';
 import OwnershipTransferModal from './OwnershipTransferModal';
+import DeleteBrandModal from 'views/superadmin/advertisers/components/DeleteBrandModal';
 import { useAuth } from 'contexts/AuthContext';
+import { deleteBrand, canDeleteBrand } from 'services/supabaseService';
+import { supabase } from 'config/supabase';
 
 export default function ProfileEditModal({ isOpen, onClose, currentData }) {
   const toast = useToast();
-  const { user, role, advertiserId } = useAuth();
+  const { user, role, advertiserId, signOut } = useAuth();
   const [formData, setFormData] = useState({
     name: currentData?.name || '',
     job: currentData?.job || '',
@@ -52,7 +56,16 @@ export default function ProfileEditModal({ isOpen, onClose, currentData }) {
     onClose: onTransferClose
   } = useDisclosure();
 
+  const {
+    isOpen: isDeleteBrandOpen,
+    onOpen: onDeleteBrandOpen,
+    onClose: onDeleteBrandClose
+  } = useDisclosure();
+
   const [newOwnerId, setNewOwnerId] = useState(null);
+  const [currentBrand, setCurrentBrand] = useState(null);
+  const [isDeletingBrand, setIsDeletingBrand] = useState(false);
+  const navigate = useNavigate();
 
   const textColor = useColorModeValue('secondaryGray.900', 'white');
   const borderColor = useColorModeValue('gray.200', 'whiteAlpha.100');
@@ -90,6 +103,30 @@ export default function ProfileEditModal({ isOpen, onClose, currentData }) {
     });
   };
 
+  // 브랜드 정보 가져오기
+  React.useEffect(() => {
+    const fetchBrandInfo = async () => {
+      if (isAdvertiserAdmin && advertiserId) {
+        try {
+          const { data, error } = await supabase
+            .from('advertisers')
+            .select('id, name, business_number, website_url, contact_email, contact_phone')
+            .eq('id', advertiserId)
+            .single();
+
+          if (error) throw error;
+          setCurrentBrand(data);
+        } catch (error) {
+          console.error('[ProfileEditModal] 브랜드 정보 조회 실패:', error);
+        }
+      }
+    };
+
+    if (isOpen) {
+      fetchBrandInfo();
+    }
+  }, [isOpen, isAdvertiserAdmin, advertiserId]);
+
   const handleDeleteClick = () => {
     if (isAdvertiserAdmin) {
       // 브랜드 대표운영자는 소유권 이전 모달 먼저 표시
@@ -105,6 +142,70 @@ export default function ProfileEditModal({ isOpen, onClose, currentData }) {
     onTransferClose();
     // 소유권 이전 완료 후 삭제 확인 모달 표시
     onDeleteConfirmOpen();
+  };
+
+  // 브랜드 삭제 버튼 클릭
+  const handleDeleteBrandClick = () => {
+    if (!currentBrand) {
+      toast({
+        title: '오류',
+        description: '브랜드 정보를 불러올 수 없습니다.',
+        status: 'error',
+        duration: 3000,
+        isClosable: true,
+        position: 'top',
+      });
+      return;
+    }
+
+    onDeleteBrandOpen();
+  };
+
+  // 브랜드 삭제 확인
+  const confirmDeleteBrand = async (brandId) => {
+    try {
+      setIsDeletingBrand(true);
+
+      // 권한 확인
+      const permissionCheck = await canDeleteBrand(user.id, brandId);
+      if (!permissionCheck.canDelete) {
+        throw new Error(permissionCheck.reason);
+      }
+
+      // 브랜드 삭제
+      await deleteBrand(brandId, currentBrand.name);
+
+      toast({
+        title: '서비스 탈퇴 완료',
+        description: `${currentBrand.name} 브랜드와 관련된 모든 데이터가 삭제되었습니다.`,
+        status: 'success',
+        duration: 3000,
+        isClosable: true,
+        position: 'top',
+      });
+
+      // 모달 닫기
+      onDeleteBrandClose();
+      onClose();
+
+      // 로그아웃 및 리다이렉트
+      setTimeout(async () => {
+        await signOut();
+        navigate('/auth/sign-in');
+      }, 1000);
+    } catch (error) {
+      console.error('[ProfileEditModal] 브랜드 삭제 실패:', error);
+      toast({
+        title: '브랜드 삭제 실패',
+        description: error.message || '삭제 중 오류가 발생했습니다.',
+        status: 'error',
+        duration: 5000,
+        isClosable: true,
+        position: 'top',
+      });
+    } finally {
+      setIsDeletingBrand(false);
+    }
   };
 
   return (
@@ -287,7 +388,35 @@ export default function ProfileEditModal({ isOpen, onClose, currentData }) {
                   Master 계정은 삭제할 수 없습니다.
                 </Text>
               )}
+              {!isMaster && (
+                <Text fontSize="xs" color="gray.500">
+                  본인 계정만 삭제됩니다. 브랜드는 유지됩니다.
+                </Text>
+              )}
             </VStack>
+
+            {/* 브랜드 삭제 섹션 (advertiser_admin만) */}
+            {isAdvertiserAdmin && currentBrand && (
+              <>
+                <Divider my={2} />
+                <VStack align="stretch" spacing={2}>
+                  <Text fontSize="sm" fontWeight="500" color="red.600">
+                    서비스 탈퇴
+                  </Text>
+                  <Button
+                    leftIcon={<MdDelete />}
+                    colorScheme="red"
+                    size="sm"
+                    onClick={handleDeleteBrandClick}
+                  >
+                    서비스 탈퇴 (브랜드 삭제)
+                  </Button>
+                  <Text fontSize="xs" color="red.400">
+                    브랜드 및 소속된 모든 사용자, 데이터가 영구 삭제됩니다.
+                  </Text>
+                </VStack>
+              </>
+            )}
           </VStack>
         </ModalBody>
 
@@ -313,6 +442,7 @@ export default function ProfileEditModal({ isOpen, onClose, currentData }) {
           onClose={onTransferClose}
           onTransferComplete={handleTransferComplete}
           currentUser={{ ...user, advertiser_id: advertiserId }}
+          onDeleteBrand={handleDeleteBrandClick}
         />
       )}
 
@@ -323,6 +453,17 @@ export default function ProfileEditModal({ isOpen, onClose, currentData }) {
         user={user}
         newOwnerId={newOwnerId}
       />
+
+      {/* 브랜드 삭제 확인 모달 */}
+      {currentBrand && (
+        <DeleteBrandModal
+          isOpen={isDeleteBrandOpen}
+          onClose={onDeleteBrandClose}
+          brand={currentBrand}
+          onConfirm={confirmDeleteBrand}
+          isLoading={isDeletingBrand}
+        />
+      )}
     </Modal>
   );
 }
