@@ -53,26 +53,19 @@ export default function GenderPurchasePie(props) {
         metaConversionType = advertiserData?.meta_conversion_type || 'purchase';
       }
 
-      const { data, error } = await supabase
-        .from('ad_performance_demographics')
-        .select('gender, source, conversions, complete_registrations')
-        .in('advertiser_id', advertiserIds)
-        .gte('date', startDate)
-        .lte('date', endDate);
+      const { data, error } = await supabase.rpc('get_gender_aggregated', {
+        p_advertiser_id: (currentAdvertiserId && currentAdvertiserId !== 'all') ? currentAdvertiserId : null,
+        p_advertiser_ids: advertiserIds,
+        p_start_date: startDate,
+        p_end_date: endDate,
+        p_meta_conversion_type: metaConversionType
+      });
 
       if (error) throw error;
 
       const result = { male: 0, female: 0, unknown: 0 };
       (data || []).forEach(row => {
-        let conv = 0;
-        if (row.source === 'Meta') {
-          conv = metaConversionType === 'complete_registration'
-            ? parseFloat(row.complete_registrations) || 0
-            : parseFloat(row.conversions) || 0;
-        } else {
-          conv = parseFloat(row.conversions) || 0;
-        }
-
+        const conv = parseFloat(row.conversions) || 0;
         if (row.gender === 'male') result.male += conv;
         else if (row.gender === 'female') result.female += conv;
         else result.unknown += conv;

@@ -54,12 +54,13 @@ export default function AgeGenderPurchase(props) {
         metaConversionType = advertiserData?.meta_conversion_type || 'purchase';
       }
 
-      const { data, error } = await supabase
-        .from('ad_performance_demographics')
-        .select('gender, age, source, conversions, complete_registrations')
-        .in('advertiser_id', advertiserIds)
-        .gte('date', startDate)
-        .lte('date', endDate);
+      const { data, error } = await supabase.rpc('get_age_gender_aggregated', {
+        p_advertiser_id: (currentAdvertiserId && currentAdvertiserId !== 'all') ? currentAdvertiserId : null,
+        p_advertiser_ids: advertiserIds,
+        p_start_date: startDate,
+        p_end_date: endDate,
+        p_meta_conversion_type: metaConversionType
+      });
 
       if (error) throw error;
 
@@ -79,15 +80,7 @@ export default function AgeGenderPurchase(props) {
       };
 
       (data || []).forEach(row => {
-        let conv = 0;
-        if (row.source === 'Meta') {
-          conv = metaConversionType === 'complete_registration'
-            ? parseFloat(row.complete_registrations) || 0
-            : parseFloat(row.conversions) || 0;
-        } else {
-          conv = parseFloat(row.conversions) || 0;
-        }
-
+        const conv = parseFloat(row.conversions) || 0;
         const ageIdx = ageIndexMap[row.age];
         if (ageIdx === undefined) return;
 

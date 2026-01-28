@@ -302,7 +302,7 @@ const DateRangePicker = () => {
             borderRadius='12px'>
             {selectedPreset}
           </MenuButton>
-          <MenuList minW='auto' w='fit-content' px='8px' py='8px'>
+          <MenuList minW='auto' w='fit-content' px='8px' py='8px' zIndex={2000}>
             {presets.map((preset) => (
               <MenuItem
                 key={preset}
@@ -476,7 +476,7 @@ const DateRangePicker = () => {
                 borderRadius='12px'>
                 {comparisonPreset}
               </MenuButton>
-              <MenuList minW='auto' w='fit-content' px='8px' py='8px'>
+              <MenuList minW='auto' w='fit-content' px='8px' py='8px' zIndex={2000}>
                 {presets.map((preset) => (
                   <MenuItem
                     key={preset}
