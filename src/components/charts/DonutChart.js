@@ -24,7 +24,7 @@ class DonutChart extends React.Component {
       const hasValidData = this.props.chartData &&
                            Array.isArray(this.props.chartData) &&
                            this.props.chartData.length > 0 &&
-                           this.props.chartData.every(val => typeof val === 'number' && !Number.isNaN(val) && val > 0);
+                           this.props.chartData.every(val => typeof val === 'number' && !Number.isNaN(val) && val >= 0);
 
       if (hasValidData) {
         this.setState({

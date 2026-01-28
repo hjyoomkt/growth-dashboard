@@ -60,85 +60,90 @@ export default function WeeklyRevenue(props) {
     */
     return [];
   }, [mediaRevenueData, mediaData]);
-  const labels = data.map((item) => item.name);
-  const values = data.map((item) => item.value);
+  // 차트 데이터와 옵션을 useMemo로 메모이제이션
+  const { pieChartData, pieChartOptions } = useMemo(() => {
+    const labels = data.map((item) => item.name);
+    const values = data.map((item) => item.value);
 
-  // 매체별 색상 매핑
-  const getMediaColor = (name) => {
-    const colorMap = {
-      "Google": "#E31A1A",
-      "Naver": "#01B574",
-      "Meta": "#422AFB",
-      "Kakao": "#FFB547",
-      "Criteo": "#EE5D50",
-      "기타": "#A3AED0"
+    // 매체별 색상 매핑
+    const getMediaColor = (name) => {
+      const colorMap = {
+        "Google": "#E31A1A",
+        "Naver": "#01B574",
+        "Meta": "#422AFB",
+        "Kakao": "#FFB547",
+        "Criteo": "#EE5D50",
+        "기타": "#A3AED0"
+      };
+      return colorMap[name] || "#A3AED0";
     };
-    return colorMap[name] || "#A3AED0";
-  };
 
-  const colors = labels.map(label => getMediaColor(label));
+    const colors = labels.map(label => getMediaColor(label));
 
-  // 도넛차트 데이터 (매체별 매출)
-  const pieChartData = values;
-  const pieChartOptions = {
-    labels: labels,
-    colors: colors.slice(0, labels.length),
-    chart: {
-      type: 'donut',
-      height: 350,
-    },
-    states: {
-      hover: {
-        filter: {
-          type: "none",
-        },
+    // 도넛차트 데이터 (매체별 매출)
+    const chartData = values;
+    const chartOptions = {
+      labels: labels,
+      colors: colors.slice(0, labels.length),
+      chart: {
+        type: 'donut',
+        height: 350,
       },
-    },
-    legend: {
-      show: true,
-      position: "bottom",
-      fontSize: '14px',
-      fontFamily: 'DM Sans, sans-serif',
-      labels: {
-        colors: legendTextColor,
-      },
-      markers: {
-        width: 12,
-        height: 12,
-        radius: 12,
-      },
-      itemMargin: {
-        horizontal: 10,
-        vertical: 8,
-      },
-    },
-    dataLabels: {
-      enabled: false,
-    },
-    hover: { mode: null },
-    plotOptions: {
-      pie: {
-        donut: {
-          size: '70%',
-          labels: {
-            show: false,
+      states: {
+        hover: {
+          filter: {
+            type: "none",
           },
         },
       },
-    },
-    fill: {
-      colors: colors.slice(0, labels.length),
-    },
-    tooltip: {
-      enabled: true,
-      theme: "dark",
-      y: {
-        formatter: function (val) {
-          return '₩' + val.toLocaleString();
+      legend: {
+        show: true,
+        position: "bottom",
+        fontSize: '14px',
+        fontFamily: 'DM Sans, sans-serif',
+        labels: {
+          colors: legendTextColor,
+        },
+        markers: {
+          width: 12,
+          height: 12,
+          radius: 12,
+        },
+        itemMargin: {
+          horizontal: 10,
+          vertical: 8,
         },
       },
-    },
-  };
+      dataLabels: {
+        enabled: false,
+      },
+      hover: { mode: null },
+      plotOptions: {
+        pie: {
+          donut: {
+            size: '70%',
+            labels: {
+              show: false,
+            },
+          },
+        },
+      },
+      fill: {
+        colors: colors.slice(0, labels.length),
+      },
+      tooltip: {
+        enabled: true,
+        theme: "dark",
+        y: {
+          formatter: function (val) {
+            return '₩' + val.toLocaleString();
+          },
+        },
+      },
+    };
+
+    return { pieChartData: chartData, pieChartOptions: chartOptions };
+  }, [data, legendTextColor]);
 
   return (
     <Card align='center' direction='column' w='100%' {...rest}>
