@@ -1582,50 +1582,31 @@ export const getMonthlyAdSummary = async ({ advertiserId, availableAdvertiserIds
  * @param {string} params.endDate - 종료일 (YYYY-MM-DD)
  */
 export const getMediaROASAnalysis = async ({ advertiserId, availableAdvertiserIds, startDate, endDate }) => {
-  let query = supabase
-    .from('ad_performance')
-    .select('source, cost, conversion_value');
-
-  // 브랜드 필터링
-  if (advertiserId) {
-    query = query.eq('advertiser_id', advertiserId);
-  } else if (availableAdvertiserIds && availableAdvertiserIds.length > 0) {
-    query = query.in('advertiser_id', availableAdvertiserIds);
-  } else {
-    query = query.eq('advertiser_id', '00000000-0000-0000-0000-000000000000');
+  // 메타 전환 타입 조회 (단일 광고주인 경우)
+  let metaConversionType = 'purchase';
+  if (advertiserId && advertiserId !== 'all') {
+    const { data: advertiserData } = await supabase
+      .from('advertisers')
+      .select('meta_conversion_type')
+      .eq('id', advertiserId)
+      .single();
+    metaConversionType = advertiserData?.meta_conversion_type || 'purchase';
   }
 
-  if (startDate) {
-    query = query.gte('date', startDate);
-  }
-  if (endDate) {
-    query = query.lte('date', endDate);
-  }
+  const { data, error } = await supabase.rpc('get_media_aggregated', {
+    p_advertiser_id: (advertiserId && advertiserId !== 'all') ? advertiserId : null,
+    p_advertiser_ids: (availableAdvertiserIds && availableAdvertiserIds.length > 0) ? availableAdvertiserIds : null,
+    p_start_date: startDate || null,
+    p_end_date: endDate || null,
+    p_meta_conversion_type: metaConversionType
+  });
 
-  query = query.is('deleted_at', null);
-
-  const { data, error } = await query;
   if (error) throw error;
 
-  // 매체별로 그룹화하여 ROAS 계산
-  const groupedData = (data || []).reduce((acc, row) => {
-    const source = row.source;
-    if (!acc[source]) {
-      acc[source] = {
-        name: source,
-        cost: 0,
-        conversionValue: 0,
-      };
-    }
-    acc[source].cost += Number(row.cost) || 0;
-    acc[source].conversionValue += Number(row.conversion_value) || 0;
-    return acc;
-  }, {});
-
   // ROAS 계산 및 배열로 변환
-  const mediaArray = Object.values(groupedData).map(media => ({
-    name: media.name,
-    roas: media.cost > 0 ? Math.round((media.conversionValue / media.cost) * 100) : 0,
+  const mediaArray = (data || []).map(media => ({
+    name: media.source,
+    roas: media.cost > 0 ? Math.round((Number(media.conversion_value) / Number(media.cost)) * 100) : 0,
   }));
 
   // ROAS 높은 순으로 정렬
