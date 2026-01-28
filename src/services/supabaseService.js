@@ -2639,18 +2639,7 @@ export const deleteBrand = async (brandId, brandName) => {
   try {
     console.log('[deleteBrand] 삭제 시작:', { brandId, brandName });
 
-    // 1. api_tokens에 deleted_advertiser_name 저장 (CASCADE 전)
-    const { error: updateError } = await supabase
-      .from('api_tokens')
-      .update({ deleted_advertiser_name: brandName })
-      .eq('advertiser_id', brandId);
-
-    if (updateError) {
-      console.warn('[deleteBrand] api_tokens 업데이트 실패:', updateError);
-      // 경고만 하고 계속 진행
-    }
-
-    // 2. 브랜드 전용 사용자만 조회 (에이전시 직원 제외)
+    // 1. 브랜드 전용 사용자 목록 조회 (에이전시 직원 제외)
     const { data: usersToDelete, error: usersError } = await supabase
       .from('users')
       .select('id, email, name, role')
@@ -2662,69 +2651,99 @@ export const deleteBrand = async (brandId, brandName) => {
       throw usersError;
     }
 
-    console.log('[deleteBrand] 삭제할 사용자:', usersToDelete?.length || 0);
+    console.log('[deleteBrand] 삭제할 사용자:', usersToDelete?.length || 0, usersToDelete);
 
-    // 3. 브랜드 전용 사용자 삭제
-    if (usersToDelete && usersToDelete.length > 0) {
-      for (const user of usersToDelete) {
-        const { error: deleteUserError } = await supabase
-          .from('users')
-          .delete()
-          .eq('id', user.id);
-
-        if (deleteUserError) {
-          console.error('[deleteBrand] 사용자 삭제 실패:', user.email, deleteUserError);
-          // 계속 진행
-        }
-      }
-    }
-
-    // 4. user_advertisers 관계 제거 (모든 사용자)
-    const { error: relationError } = await supabase
-      .from('user_advertisers')
-      .delete()
+    // 2. api_tokens에 deleted_advertiser_name 저장
+    const { error: updateError } = await supabase
+      .from('api_tokens')
+      .update({ deleted_advertiser_name: brandName })
       .eq('advertiser_id', brandId);
 
-    if (relationError) {
-      console.warn('[deleteBrand] user_advertisers 삭제 실패:', relationError);
-      // 경고만 하고 계속 진행
+    if (updateError) {
+      console.warn('[deleteBrand] api_tokens 업데이트 실패 (비치명적):', updateError);
     }
 
-    // 5. 에이전시 직원의 advertiser_id NULL로 변경
-    const { error: nullifyError } = await supabase
-      .from('users')
-      .update({ advertiser_id: null })
-      .eq('advertiser_id', brandId);
-
-    if (nullifyError) {
-      console.warn('[deleteBrand] advertiser_id NULL 변경 실패:', nullifyError);
-      // 경고만 하고 계속 진행
-    }
-
-    // 5.5. invitation_codes 삭제 (foreign key constraint 해결)
-    const { error: invitationError } = await supabase
-      .from('invitation_codes')
-      .delete()
-      .eq('parent_advertiser_id', brandId);
-
-    if (invitationError) {
-      console.warn('[deleteBrand] invitation_codes 삭제 실패:', invitationError);
-      // 경고만 하고 계속 진행
-    }
-
-    // 6. 브랜드 삭제 (CASCADE로 관련 데이터 자동 삭제)
-    const { data, error } = await supabase
+    // 3. 브랜드 삭제 (RLS 정책 통과를 위해 사용자 삭제 전에!)
+    // RLS 정책: DELETE 시 auth.uid()에 해당하는 users 레코드 필요
+    const { data: deleteData, error: deleteError } = await supabase
       .from('advertisers')
       .delete()
       .eq('id', brandId);
 
-    if (error) {
-      console.error('[deleteBrand] 삭제 실패:', error);
-      throw error;
+    if (deleteError) {
+      console.error('[deleteBrand] ✗ 브랜드 삭제 실패:', deleteError);
+      throw new Error(`브랜드 삭제 실패: ${deleteError.message}`);
     }
 
-    console.log('[deleteBrand] 삭제 완료:', data);
-    return { success: true, data };
+    console.log('[deleteBrand] ✓ 브랜드 삭제 완료');
+
+    // 4. 사용자들 삭제 (delete-user Edge Function 사용)
+    const { data: { session } } = await supabase.auth.getSession();
+
+    let deletedUsers = [];
+    let failedUsers = [];
+
+    if (!session) {
+      console.warn('[deleteBrand] ⚠️ 세션 없음 - 사용자 삭제 건너뜀');
+    } else if (usersToDelete && usersToDelete.length > 0) {
+      const SUPABASE_URL = process.env.REACT_APP_SUPABASE_URL;
+      const functionUrl = `${SUPABASE_URL}/functions/v1/delete-user`;
+
+      // 현재 로그인한 사용자를 마지막에 삭제하기 위해 순서 조정
+      // (현재 사용자 삭제 시 JWT 토큰이 무효화되어 다음 요청 실패)
+      const currentUserId = session.user.id;
+      const otherUsers = usersToDelete.filter(u => u.id !== currentUserId);
+      const currentUser = usersToDelete.find(u => u.id === currentUserId);
+      const orderedUsers = currentUser ? [...otherUsers, currentUser] : usersToDelete;
+
+      console.log('[deleteBrand] 삭제 순서:', orderedUsers.map(u => `${u.email} ${u.id === currentUserId ? '(현재 사용자)' : ''}`));
+
+      for (const user of orderedUsers) {
+        try {
+          console.log(`[deleteBrand] 사용자 삭제 중: ${user.email}`);
+
+          const response = await fetch(functionUrl, {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${session.access_token}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              user_id: user.id,
+              is_brand_deletion: true
+            }),
+          });
+
+          const result = await response.json();
+
+          if (!response.ok) {
+            console.error(`[deleteBrand] ✗ ${user.email} 삭제 실패:`, result);
+            failedUsers.push(user.email);
+          } else {
+            console.log(`[deleteBrand] ✓ ${user.email} 삭제 완료`);
+            deletedUsers.push(user.email);
+          }
+        } catch (fetchError) {
+          console.error(`[deleteBrand] ✗ ${user.email} 삭제 실패:`, fetchError);
+          failedUsers.push(user.email);
+        }
+      }
+    }
+
+    console.log('[deleteBrand] 삭제 완료:', {
+      brand: brandName,
+      deletedUsers: deletedUsers.length,
+      users: deletedUsers,
+      failedUsers: failedUsers.length
+    });
+
+    return {
+      success: true,
+      data: deleteData,
+      deletedUsers: deletedUsers,
+      failedUsers: failedUsers
+    };
+
   } catch (error) {
     console.error('[deleteBrand] 예외 발생:', error);
     throw error;

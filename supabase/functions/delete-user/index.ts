@@ -4,6 +4,7 @@ import { createClient } from 'jsr:@supabase/supabase-js@2';
 interface DeleteUserRequest {
   user_id: string;
   new_owner_id?: string | null;
+  is_brand_deletion?: boolean;
 }
 
 // 역할 계층 구조
@@ -120,7 +121,7 @@ Deno.serve(async (req) => {
       );
     }
 
-    const { user_id, new_owner_id }: DeleteUserRequest = await req.json();
+    const { user_id, new_owner_id, is_brand_deletion }: DeleteUserRequest = await req.json();
 
     if (!user_id) {
       return new Response(
@@ -130,13 +131,16 @@ Deno.serve(async (req) => {
     }
 
     // 본인 삭제 또는 권한 있는 관리자만 가능
-    const authCheck = await canDeleteUser(supabaseAdmin, currentUser.id, user_id);
+    // 브랜드 삭제 시에는 권한 체크 건너뛰기
+    if (!is_brand_deletion) {
+      const authCheck = await canDeleteUser(supabaseAdmin, currentUser.id, user_id);
 
-    if (!authCheck.allowed) {
-      return new Response(
-        JSON.stringify({ error: authCheck.reason || 'Unauthorized to delete this user' }),
-        { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+      if (!authCheck.allowed) {
+        return new Response(
+          JSON.stringify({ error: authCheck.reason || 'Unauthorized to delete this user' }),
+          { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
     }
 
     console.log(`Starting account deletion for user: ${user_id}`);
@@ -176,10 +180,30 @@ Deno.serve(async (req) => {
       );
     }
 
+    // 브랜드 삭제 플래그가 있는 경우, 브랜드가 실제로 삭제되었는지 확인
+    if (is_brand_deletion && userData.advertiser_id) {
+      const { data: brandCheck } = await supabaseAdmin
+        .from('advertisers')
+        .select('id')
+        .eq('id', userData.advertiser_id)
+        .maybeSingle();
+
+      if (brandCheck) {
+        // 브랜드가 아직 존재함 - 보안 위험
+        console.error('Brand still exists - cannot use is_brand_deletion flag');
+        return new Response(
+          JSON.stringify({ error: 'Brand still exists - cannot use is_brand_deletion flag' }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+      console.log('Brand deletion confirmed - proceeding with user deletion');
+    }
+
     // 2. advertiser_admin인 경우 소유권 이전 처리
     const isAdvertiserAdmin = userData.role === 'advertiser_admin';
 
-    if (isAdvertiserAdmin) {
+    if (isAdvertiserAdmin && !is_brand_deletion) {
+      // 브랜드 삭제가 아닐 때만 소유권 이전 요구
       if (!new_owner_id) {
         return new Response(
           JSON.stringify({ error: 'Brand owner must transfer ownership before deletion (new_owner_id required)' }),

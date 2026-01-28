@@ -173,7 +173,14 @@ export default function ProfileEditModal({ isOpen, onClose, currentData }) {
       }
 
       // 브랜드 삭제
-      await deleteBrand(brandId, currentBrand.name);
+      const result = await deleteBrand(brandId, currentBrand.name);
+
+      // 성공 여부 명시적 확인
+      if (!result || !result.success) {
+        throw new Error('브랜드 삭제 실패');
+      }
+
+      console.log('[ProfileEditModal] 브랜드 삭제 성공:', result);
 
       toast({
         title: '서비스 탈퇴 완료',
@@ -197,9 +204,9 @@ export default function ProfileEditModal({ isOpen, onClose, currentData }) {
       console.error('[ProfileEditModal] 브랜드 삭제 실패:', error);
       toast({
         title: '브랜드 삭제 실패',
-        description: error.message || '삭제 중 오류가 발생했습니다.',
+        description: error.message || '삭제 중 오류가 발생했습니다. 브라우저 콘솔을 확인하거나 관리자에게 문의하세요.',
         status: 'error',
-        duration: 5000,
+        duration: 8000,
         isClosable: true,
         position: 'top',
       });
