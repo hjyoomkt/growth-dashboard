@@ -388,67 +388,69 @@ export default function HeaderLinks(props) {
         </MenuList>
       </Menu>
 
-      <Menu>
-        <MenuButton p="0px">
-          <Icon
-            mt="6px"
-            as={MdInfoOutline}
-            color={navbarIcon}
-            w="18px"
-            h="18px"
-            me="10px"
-          />
-        </MenuButton>
-        <MenuList
-          boxShadow={shadow}
-          p="20px"
-          me={{ base: '30px', md: 'unset' }}
-          borderRadius="20px"
-          bg={menuBg}
-          border="none"
-          mt="22px"
-          minW={{ base: 'unset' }}
-          maxW={{ base: '360px', md: 'unset' }}
-        >
-          <Image src={navImage} borderRadius="16px" mb="28px" />
-          <Flex flexDirection="column">
-            <Link w="100%" href="https://horizon-ui.com/pro">
-              <Button w="100%" h="44px" mb="10px" variant="brand">
-                Buy Horizon UI PRO
-              </Button>
-            </Link>
-            <Link
-              w="100%"
-              href="https://horizon-ui.com/documentation/docs/introduction"
-            >
-              <Button
+      {role === 'master' && (
+        <Menu>
+          <MenuButton p="0px">
+            <Icon
+              mt="6px"
+              as={MdInfoOutline}
+              color={navbarIcon}
+              w="18px"
+              h="18px"
+              me="10px"
+            />
+          </MenuButton>
+          <MenuList
+            boxShadow={shadow}
+            p="20px"
+            me={{ base: '30px', md: 'unset' }}
+            borderRadius="20px"
+            bg={menuBg}
+            border="none"
+            mt="22px"
+            minW={{ base: 'unset' }}
+            maxW={{ base: '360px', md: 'unset' }}
+          >
+            <Image src={navImage} borderRadius="16px" mb="28px" />
+            <Flex flexDirection="column">
+              <Link w="100%" href="https://horizon-ui.com/pro">
+                <Button w="100%" h="44px" mb="10px" variant="brand">
+                  Buy Horizon UI PRO
+                </Button>
+              </Link>
+              <Link
                 w="100%"
-                h="44px"
-                mb="10px"
-                border="1px solid"
-                bg="transparent"
-                borderColor={borderButton}
+                href="https://horizon-ui.com/documentation/docs/introduction"
               >
-                See Documentation
-              </Button>
-            </Link>
-            <Link
-              w="100%"
-              href="https://github.com/horizon-ui/horizon-ui-chakra-ts"
-            >
-              <Button
+                <Button
+                  w="100%"
+                  h="44px"
+                  mb="10px"
+                  border="1px solid"
+                  bg="transparent"
+                  borderColor={borderButton}
+                >
+                  See Documentation
+                </Button>
+              </Link>
+              <Link
                 w="100%"
-                h="44px"
-                variant="no-hover"
-                color={textColor}
-                bg="transparent"
+                href="https://github.com/horizon-ui/horizon-ui-chakra-ts"
               >
-                Try Horizon Free
-              </Button>
-            </Link>
-          </Flex>
-        </MenuList>
-      </Menu>
+                <Button
+                  w="100%"
+                  h="44px"
+                  variant="no-hover"
+                  color={textColor}
+                  bg="transparent"
+                >
+                  Try Horizon Free
+                </Button>
+              </Link>
+            </Flex>
+          </MenuList>
+        </Menu>
+      )}
 
       <Button
         variant="no-hover"
@@ -509,6 +511,7 @@ export default function HeaderLinks(props) {
               _focus={{ bg: 'none' }}
               borderRadius="8px"
               px="14px"
+              onClick={() => navigate('/admin/profile')}
             >
               <Text fontSize="sm">Profile Settings</Text>
             </MenuItem>
@@ -517,6 +520,7 @@ export default function HeaderLinks(props) {
               _focus={{ bg: 'none' }}
               borderRadius="8px"
               px="14px"
+              onClick={() => navigate('/admin/profile')}
             >
               <Text fontSize="sm">Newsletter Settings</Text>
             </MenuItem>
