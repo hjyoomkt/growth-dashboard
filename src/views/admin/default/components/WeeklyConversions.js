@@ -132,7 +132,11 @@ export default function WeeklyConversions(props) {
             colors: "#A3AED0",
             fontSize: "12px",
           },
+          formatter: function (val) {
+            return Math.floor(val);
+          },
         },
+        forceNiceScale: true,
       },
       tooltip: {
         theme: "dark",

@@ -298,7 +298,7 @@ export default function TotalAdSummary() {
                   </Td>
                   <Td fontSize={{ sm: '14px' }} minW={{ sm: '150px', md: '200px', lg: 'auto' }} borderColor={borderColor} py={rowHeight === 'compact' ? '8px' : '12px'}>
                     <Text fontSize='sm' fontWeight='700' color={textColor}>
-                      {row.conversions}
+                      {Math.round(row.conversions)}
                     </Text>
                   </Td>
                   <Td fontSize={{ sm: '14px' }} minW={{ sm: '150px', md: '200px', lg: 'auto' }} borderColor={borderColor} py={rowHeight === 'compact' ? '8px' : '12px'}>

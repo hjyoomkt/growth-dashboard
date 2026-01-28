@@ -758,7 +758,7 @@ export default function HierarchicalAdSummary() {
                       </Flex>
                     ) : (
                       <Text fontSize='sm' fontWeight={rowStyle.fontWeight} color={rowStyle.color}>
-                        {row.conversions}
+                        {Math.round(row.conversions)}
                       </Text>
                     )}
                   </Td>

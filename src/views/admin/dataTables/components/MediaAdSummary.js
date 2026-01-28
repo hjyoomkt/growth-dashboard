@@ -488,7 +488,7 @@ export default function MediaAdSummary() {
                         </Flex>
                       ) : (
                         <Text fontSize='sm' fontWeight={rowStyle.fontWeight} color={rowStyle.color}>
-                          {row.conversions}
+                          {Math.round(row.conversions)}
                         </Text>
                       )}
                     </Td>
