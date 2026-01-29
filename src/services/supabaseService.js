@@ -2438,7 +2438,7 @@ export const markPostAsRead = async (postId, userId) => {
 };
 
 /**
- * 게시글 삭제 (soft delete)
+ * 게시글 삭제 (hard delete)
  * @param {string} postId - 게시글 ID
  */
 export const deleteBoardPost = async (postId) => {
@@ -2446,7 +2446,7 @@ export const deleteBoardPost = async (postId) => {
 
   const { data, error } = await supabase
     .from('board_posts')
-    .update({ deleted_at: new Date().toISOString() })
+    .delete()
     .eq('id', postId)
     .select();
 
