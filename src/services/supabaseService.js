@@ -786,9 +786,16 @@ export const updateUserRoleAndAdvertisers = async (userId, newRole, advertiserId
   }
 
   // 4. 역할 업데이트
+  // specialist로 변경 시 organization_id와 advertiser_id를 null로 설정
+  const updateData = { role: newRole };
+  if (newRole === 'specialist') {
+    updateData.organization_id = null;
+    updateData.advertiser_id = null;
+  }
+
   const { error: roleError } = await supabase
     .from('users')
-    .update({ role: newRole })
+    .update(updateData)
     .eq('id', userId);
 
   if (roleError) throw roleError;

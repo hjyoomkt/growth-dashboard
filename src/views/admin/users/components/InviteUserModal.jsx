@@ -113,6 +113,7 @@ export default function InviteUserModal({ isOpen, onClose }) {
   // 권한 계층 구조 정의
   const roleHierarchy = {
     master: 8,               // 마스터 (시스템 관리자)
+    specialist: 7.5,         // 스페셜리스트
     agency_admin: 7,         // 에이전시 대표
     agency_manager: 6,       // 에이전시 관리자
     agency_staff: 5,         // 에이전시 직원
@@ -124,6 +125,11 @@ export default function InviteUserModal({ isOpen, onClose }) {
 
   // 현재 사용자보다 낮거나 같은 권한만 부여 가능
   const canAssignRole = (targetRole) => {
+    // specialist는 master만 초대 가능
+    if (targetRole === 'specialist') {
+      return isMaster();
+    }
+
     // agency_admin은 절대 초대 불가 (master만 생성 가능)
     if (targetRole === 'agency_admin') {
       return false;
@@ -256,6 +262,7 @@ export default function InviteUserModal({ isOpen, onClose }) {
       agency_staff: '에이전시 직원',
       agency_manager: '에이전시 관리자',
       agency_admin: '에이전시 대표',
+      specialist: '스페셜리스트',
     };
     return roleLabels[role] || role;
   };
@@ -681,6 +688,31 @@ export default function InviteUserModal({ isOpen, onClose }) {
                         <Box>
                           <Text fontWeight="600">브랜드 대표운영자</Text>
                           <Text fontSize="xs" opacity="0.8">브랜드 어드민 접근, 전체 관리 권한</Text>
+                        </Box>
+                      </MenuItem>
+                    )}
+
+                    {/* 스페셜리스트 권한 (마스터만) */}
+                    {isMaster() && (
+                      <MenuItem
+                        onClick={() => canAssignRole('specialist') && handleRoleChange('specialist')}
+                        bg={formData.role === 'specialist' ? brandColor : 'transparent'}
+                        color={formData.role === 'specialist' ? 'white' : textColor}
+                        _hover={{
+                          bg: formData.role === 'specialist' ? brandColor : bgHover,
+                        }}
+                        fontWeight={formData.role === 'specialist' ? '600' : '500'}
+                        fontSize='sm'
+                        px='12px'
+                        py='10px'
+                        borderRadius='8px'
+                        mt='4px'
+                        isDisabled={!canAssignRole('specialist')}
+                        opacity={!canAssignRole('specialist') ? 0.4 : 1}
+                      >
+                        <Box>
+                          <Text fontWeight="600">스페셜리스트</Text>
+                          <Text fontSize="xs" opacity="0.8">모든 데이터 조회 가능 (제한된 페이지 접근)</Text>
                         </Box>
                       </MenuItem>
                     )}

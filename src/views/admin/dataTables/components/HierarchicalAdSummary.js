@@ -22,8 +22,15 @@ import {
   MenuItem,
   MenuList,
   Icon,
+  Modal,
+  ModalOverlay,
+  ModalContent,
+  ModalHeader,
+  ModalBody,
+  ModalCloseButton,
+  useDisclosure,
 } from "@chakra-ui/react";
-import { MdChevronLeft, MdChevronRight, MdKeyboardArrowDown, MdTrendingUp, MdArrowUpward, MdArrowDownward } from "react-icons/md";
+import { MdChevronLeft, MdChevronRight, MdKeyboardArrowDown, MdTrendingUp, MdArrowUpward, MdArrowDownward, MdZoomOutMap } from "react-icons/md";
 import Card from "components/card/Card.js";
 import { useDateRange } from "contexts/DateRangeContext";
 import { useAuth } from "contexts/AuthContext";
@@ -49,6 +56,7 @@ export default function HierarchicalAdSummary() {
   const [error, setError] = useState(null);
   const [selectedMedia, setSelectedMedia] = useState("all");
   const itemsPerPage = 30;
+  const { isOpen, onOpen, onClose } = useDisclosure();
 
   const textColor = useColorModeValue("secondaryGray.900", "white");
   const borderColor = useColorModeValue("gray.200", "whiteAlpha.100");
@@ -308,6 +316,431 @@ export default function HierarchicalAdSummary() {
   const currentTab = tabs.find(t => t.id === activeTab);
   const columnHeader = currentTab?.columnHeader || "이름";
 
+  // 테이블 렌더링 함수 (일반 화면과 모달에서 공통 사용)
+  const renderTable = () => (
+    <Table variant='simple' color='gray.500' mb='24px' mt='12px'>
+      <Thead position='sticky' top='0' bg={tableHeaderBg} zIndex='1'>
+        <Tr>
+          <Th pe='10px' borderColor={borderColor}>
+            <Flex justifyContent='space-between' align='center' fontSize={{ sm: '10px', lg: '12px' }} color='gray.400'>
+              매체
+            </Flex>
+          </Th>
+          <Th pe='10px' borderColor={borderColor}>
+            <Flex justifyContent='space-between' align='center' fontSize={{ sm: '10px', lg: '12px' }} color='gray.400'>
+              {columnHeader}
+            </Flex>
+          </Th>
+          <Th pe='10px' borderColor={borderColor}>
+            <Flex justifyContent='space-between' align='center' fontSize={{ sm: '10px', lg: '12px' }} color='gray.400'>
+              지출액
+            </Flex>
+          </Th>
+          <Th pe='10px' borderColor={borderColor}>
+            <Flex justifyContent='space-between' align='center' fontSize={{ sm: '10px', lg: '12px' }} color='gray.400'>
+              노출수
+            </Flex>
+          </Th>
+          <Th pe='10px' borderColor={borderColor}>
+            <Flex justifyContent='space-between' align='center' fontSize={{ sm: '10px', lg: '12px' }} color='gray.400'>
+              클릭수
+            </Flex>
+          </Th>
+          <Th pe='10px' borderColor={borderColor}>
+            <Flex justifyContent='space-between' align='center' fontSize={{ sm: '10px', lg: '12px' }} color='gray.400'>
+              CTR
+            </Flex>
+          </Th>
+          <Th pe='10px' borderColor={borderColor}>
+            <Flex justifyContent='space-between' align='center' fontSize={{ sm: '10px', lg: '12px' }} color='gray.400'>
+              CPC
+            </Flex>
+          </Th>
+          <Th pe='10px' borderColor={borderColor}>
+            <Flex justifyContent='space-between' align='center' fontSize={{ sm: '10px', lg: '12px' }} color='gray.400'>
+              전환수
+            </Flex>
+          </Th>
+          <Th pe='10px' borderColor={borderColor}>
+            <Flex justifyContent='space-between' align='center' fontSize={{ sm: '10px', lg: '12px' }} color='gray.400'>
+              전환가치
+            </Flex>
+          </Th>
+          <Th pe='10px' borderColor={borderColor}>
+            <Flex justifyContent='space-between' align='center' fontSize={{ sm: '10px', lg: '12px' }} color='gray.400'>
+              ROAS
+            </Flex>
+          </Th>
+          <Th pe='10px' borderColor={borderColor}>
+            <Flex justifyContent='space-between' align='center' fontSize={{ sm: '10px', lg: '12px' }} color='gray.400'>
+              CVR
+            </Flex>
+          </Th>
+        </Tr>
+      </Thead>
+      <Tbody>
+        {paginatedData.map((row, index) => {
+          // rowType에 따른 스타일링
+          const getRowStyle = () => {
+            if (row.rowType === 'current') {
+              return {
+                fontWeight: '700',
+                color: textColor,
+                bg: 'transparent',
+              };
+            } else if (row.rowType === 'comparison') {
+              return {
+                fontWeight: '500',
+                color: comparisonTextColor,
+                bg: comparisonBg,
+              };
+            } else if (row.rowType === 'difference') {
+              return {
+                fontWeight: '700',
+                color: textColor,
+                bg: differenceBg,
+              };
+            }
+            return { fontWeight: '700', color: textColor, bg: 'transparent' };
+          };
+
+          const rowStyle = getRowStyle();
+
+          // 지표별 색상 결정 함수
+          const getMetricColor = (value, metricType) => {
+            if (row.noData) return 'gray.400';
+            if (value === 0) return textColor;
+
+            if (metricType === 'cost') {
+              return value > 0 ? 'red.500' : 'green.500';
+            }
+            if (metricType === 'performance') {
+              return value > 0 ? 'green.500' : 'red.500';
+            }
+            return value > 0 ? 'blue.500' : 'blue.500';
+          };
+
+          // 백분율 변화 계산
+          const calculatePercentageChange = (current, previous) => {
+            if (previous === 0) return current > 0 ? 100 : 0;
+            return ((current - previous) / previous) * 100;
+          };
+
+          // 지표 계산
+          const ctr = row.rowType === 'difference'
+            ? null
+            : calculateMetric(row.clicks, row.impressions);
+          const cpc = row.rowType === 'difference'
+            ? null
+            : calculateMetric(row.cost, row.clicks, false);
+          const roas = row.rowType === 'difference'
+            ? null
+            : calculateMetric(row.conversionValue, row.cost);
+          const cvr = row.rowType === 'difference'
+            ? null
+            : calculateMetric(row.conversions, row.clicks);
+
+          // 증감률 계산 (difference 행용)
+          const ctrChange = row.rowType === 'difference' && row.currentCtr !== undefined
+            ? calculatePercentageChange(row.currentCtr, row.comparisonCtr)
+            : null;
+          const cpcChange = row.rowType === 'difference' && row.currentCpc !== undefined
+            ? calculatePercentageChange(row.currentCpc, row.comparisonCpc)
+            : null;
+          const roasChange = row.rowType === 'difference' && row.currentRoas !== undefined
+            ? calculatePercentageChange(row.currentRoas, row.comparisonRoas)
+            : null;
+          const cvrChange = row.rowType === 'difference' && row.currentCvr !== undefined
+            ? calculatePercentageChange(row.currentCvr, row.comparisonCvr)
+            : null;
+
+          const rowHeight = filteredData.length > 30 ? 'compact' : 'normal';
+
+          return (
+            <Tr key={index} h={rowHeight === 'compact' ? '36px' : 'auto'} bg={rowStyle.bg}>
+              {/* 매체 컬럼 */}
+              <Td fontSize={{ sm: '14px' }} minW={{ sm: '100px', md: '120px', lg: 'auto' }} borderColor={borderColor} py={rowHeight === 'compact' ? '8px' : '12px'}>
+                {row.media ? (
+                  <Flex align='center' gap='8px'>
+                    <Text fontSize='sm' fontWeight={rowStyle.fontWeight} color={rowStyle.color}>
+                      {row.media}
+                    </Text>
+                    {row.rowType === 'current' && comparisonMode && (
+                      <Badge colorScheme='blue' fontSize='10px'>현재</Badge>
+                    )}
+                  </Flex>
+                ) : row.rowType === 'comparison' ? (
+                  <Text fontSize='xs' color='gray.400' pl='20px'>비교 기간</Text>
+                ) : row.rowType === 'difference' ? (
+                  <Flex align='center' gap='4px' pl='20px'>
+                    <Icon as={MdTrendingUp} w='14px' h='14px' color='blue.500' />
+                    <Text fontSize='xs' fontWeight='600' color='blue.500'>증감</Text>
+                  </Flex>
+                ) : null}
+              </Td>
+
+              {/* 캠페인명/광고그룹명/광고명 컬럼 */}
+              <Td fontSize={{ sm: '14px' }} minW={{ sm: '150px', md: '200px', lg: 'auto' }} borderColor={borderColor} py={rowHeight === 'compact' ? '8px' : '12px'}>
+                {row.key ? (
+                  <Flex align="center" gap="8px">
+                    <Text fontSize='sm' fontWeight={rowStyle.fontWeight} color={rowStyle.color}>
+                      {row.key}
+                    </Text>
+                    {activeTab === "ad" && !row.hasAdData && row.rowType === 'current' && (
+                      <Badge colorScheme="gray" fontSize="10px">
+                        광고명 없음
+                      </Badge>
+                    )}
+                  </Flex>
+                ) : null}
+              </Td>
+
+              {/* 지출액 */}
+              <Td fontSize={{ sm: '14px' }} minW={{ sm: '150px', md: '200px', lg: 'auto' }} borderColor={borderColor} py={rowHeight === 'compact' ? '8px' : '12px'}>
+                {row.noData ? (
+                  <Text fontSize='sm' color='gray.400'>-</Text>
+                ) : row.rowType === 'difference' ? (
+                  <Flex align='center' gap='4px'>
+                    <Text fontSize='sm' fontWeight='700' color={getMetricColor(row.cost, 'cost')}>
+                      {(() => {
+                        const change = calculatePercentageChange(row.currentCost || 0, row.comparisonCost || 1);
+                        return `${change >= 0 ? '+' : ''}${change.toFixed(2)}%`;
+                      })()}
+                    </Text>
+                    {row.cost !== 0 && (
+                      <Icon
+                        as={row.cost >= 0 ? MdArrowUpward : MdArrowDownward}
+                        w='14px'
+                        h='14px'
+                        color={getMetricColor(row.cost, 'cost')}
+                      />
+                    )}
+                  </Flex>
+                ) : (
+                  <Text fontSize='sm' fontWeight={rowStyle.fontWeight} color={rowStyle.color}>
+                    ₩{formatNumber(row.cost)}
+                  </Text>
+                )}
+              </Td>
+
+              {/* 노출수 */}
+              <Td fontSize={{ sm: '14px' }} minW={{ sm: '150px', md: '200px', lg: 'auto' }} borderColor={borderColor} py={rowHeight === 'compact' ? '8px' : '12px'}>
+                {row.noData ? (
+                  <Text fontSize='sm' color='gray.400'>-</Text>
+                ) : row.rowType === 'difference' ? (
+                  <Flex align='center' gap='4px'>
+                    <Text fontSize='sm' fontWeight='700' color={getMetricColor(row.impressions, 'neutral')}>
+                      {(() => {
+                        const change = calculatePercentageChange(row.currentImpressions || 0, row.comparisonImpressions || 1);
+                        return `${change >= 0 ? '+' : ''}${change.toFixed(2)}%`;
+                      })()}
+                    </Text>
+                    {row.impressions !== 0 && (
+                      <Icon
+                        as={row.impressions >= 0 ? MdArrowUpward : MdArrowDownward}
+                        w='14px'
+                        h='14px'
+                        color={getMetricColor(row.impressions, 'neutral')}
+                      />
+                    )}
+                  </Flex>
+                ) : (
+                  <Text fontSize='sm' fontWeight={rowStyle.fontWeight} color={rowStyle.color}>
+                    {formatNumber(row.impressions)}
+                  </Text>
+                )}
+              </Td>
+
+              {/* 클릭수 */}
+              <Td fontSize={{ sm: '14px' }} minW={{ sm: '150px', md: '200px', lg: 'auto' }} borderColor={borderColor} py={rowHeight === 'compact' ? '8px' : '12px'}>
+                {row.noData ? (
+                  <Text fontSize='sm' color='gray.400'>-</Text>
+                ) : row.rowType === 'difference' ? (
+                  <Flex align='center' gap='4px'>
+                    <Text fontSize='sm' fontWeight='700' color={getMetricColor(row.clicks, 'neutral')}>
+                      {(() => {
+                        const change = calculatePercentageChange(row.currentClicks || 0, row.comparisonClicks || 1);
+                        return `${change >= 0 ? '+' : ''}${change.toFixed(2)}%`;
+                      })()}
+                    </Text>
+                    {row.clicks !== 0 && (
+                      <Icon
+                        as={row.clicks >= 0 ? MdArrowUpward : MdArrowDownward}
+                        w='14px'
+                        h='14px'
+                        color={getMetricColor(row.clicks, 'neutral')}
+                      />
+                    )}
+                  </Flex>
+                ) : (
+                  <Text fontSize='sm' fontWeight={rowStyle.fontWeight} color={rowStyle.color}>
+                    {formatNumber(row.clicks)}
+                  </Text>
+                )}
+              </Td>
+
+              {/* CTR */}
+              <Td fontSize={{ sm: '14px' }} minW={{ sm: '150px', md: '200px', lg: 'auto' }} borderColor={borderColor} py={rowHeight === 'compact' ? '8px' : '12px'}>
+                {row.noData ? (
+                  <Text fontSize='sm' color='gray.400'>-</Text>
+                ) : row.rowType === 'difference' && ctrChange !== null ? (
+                  <Flex align='center' gap='4px'>
+                    <Text fontSize='sm' fontWeight='700' color={getMetricColor(ctrChange, 'neutral')}>
+                      {ctrChange >= 0 ? '+' : ''}{ctrChange.toFixed(2)}%p
+                    </Text>
+                    {ctrChange !== 0 && (
+                      <Icon
+                        as={ctrChange >= 0 ? MdArrowUpward : MdArrowDownward}
+                        w='14px'
+                        h='14px'
+                        color={getMetricColor(ctrChange, 'neutral')}
+                      />
+                    )}
+                  </Flex>
+                ) : (
+                  <Text fontSize='sm' fontWeight={rowStyle.fontWeight} color={rowStyle.color}>
+                    {ctr}%
+                  </Text>
+                )}
+              </Td>
+
+              {/* CPC */}
+              <Td fontSize={{ sm: '14px' }} minW={{ sm: '150px', md: '200px', lg: 'auto' }} borderColor={borderColor} py={rowHeight === 'compact' ? '8px' : '12px'}>
+                {row.noData ? (
+                  <Text fontSize='sm' color='gray.400'>-</Text>
+                ) : row.rowType === 'difference' && cpcChange !== null ? (
+                  <Flex align='center' gap='4px'>
+                    <Text fontSize='sm' fontWeight='700' color={getMetricColor(cpcChange, 'cost')}>
+                      {cpcChange >= 0 ? '+' : ''}{cpcChange.toFixed(2)}%p
+                    </Text>
+                    {cpcChange !== 0 && (
+                      <Icon
+                        as={cpcChange >= 0 ? MdArrowUpward : MdArrowDownward}
+                        w='14px'
+                        h='14px'
+                        color={getMetricColor(cpcChange, 'cost')}
+                      />
+                    )}
+                  </Flex>
+                ) : (
+                  <Text fontSize='sm' fontWeight={rowStyle.fontWeight} color={rowStyle.color}>
+                    ₩{formatNumber(cpc)}
+                  </Text>
+                )}
+              </Td>
+
+              {/* 전환수 */}
+              <Td fontSize={{ sm: '14px' }} minW={{ sm: '150px', md: '200px', lg: 'auto' }} borderColor={borderColor} py={rowHeight === 'compact' ? '8px' : '12px'}>
+                {row.noData ? (
+                  <Text fontSize='sm' color='gray.400'>-</Text>
+                ) : row.rowType === 'difference' ? (
+                  <Flex align='center' gap='4px'>
+                    <Text fontSize='sm' fontWeight='700' color={getMetricColor(row.conversions, 'performance')}>
+                      {(() => {
+                        const change = calculatePercentageChange(row.currentConversions || 0, row.comparisonConversions || 1);
+                        return `${change >= 0 ? '+' : ''}${change.toFixed(2)}%`;
+                      })()}
+                    </Text>
+                    {row.conversions !== 0 && (
+                      <Icon
+                        as={row.conversions >= 0 ? MdArrowUpward : MdArrowDownward}
+                        w='14px'
+                        h='14px'
+                        color={getMetricColor(row.conversions, 'performance')}
+                      />
+                    )}
+                  </Flex>
+                ) : (
+                  <Text fontSize='sm' fontWeight={rowStyle.fontWeight} color={rowStyle.color}>
+                    {Math.round(row.conversions)}
+                  </Text>
+                )}
+              </Td>
+
+              {/* 전환가치 */}
+              <Td fontSize={{ sm: '14px' }} minW={{ sm: '150px', md: '200px', lg: 'auto' }} borderColor={borderColor} py={rowHeight === 'compact' ? '8px' : '12px'}>
+                {row.noData ? (
+                  <Text fontSize='sm' color='gray.400'>-</Text>
+                ) : row.rowType === 'difference' ? (
+                  <Flex align='center' gap='4px'>
+                    <Text fontSize='sm' fontWeight='700' color={getMetricColor(row.conversionValue, 'performance')}>
+                      {(() => {
+                        const change = calculatePercentageChange(row.currentConversionValue || 0, row.comparisonConversionValue || 1);
+                        return `${change >= 0 ? '+' : ''}${change.toFixed(2)}%`;
+                      })()}
+                    </Text>
+                    {row.conversionValue !== 0 && (
+                      <Icon
+                        as={row.conversionValue >= 0 ? MdArrowUpward : MdArrowDownward}
+                        w='14px'
+                        h='14px'
+                        color={getMetricColor(row.conversionValue, 'performance')}
+                      />
+                    )}
+                  </Flex>
+                ) : (
+                  <Text fontSize='sm' fontWeight={rowStyle.fontWeight} color={rowStyle.color}>
+                    ₩{formatNumber(row.conversionValue)}
+                  </Text>
+                )}
+              </Td>
+
+              {/* ROAS */}
+              <Td fontSize={{ sm: '14px' }} minW={{ sm: '150px', md: '200px', lg: 'auto' }} borderColor={borderColor} py={rowHeight === 'compact' ? '8px' : '12px'}>
+                {row.noData ? (
+                  <Text fontSize='sm' color='gray.400'>-</Text>
+                ) : row.rowType === 'difference' && roasChange !== null ? (
+                  <Flex align='center' gap='4px'>
+                    <Text fontSize='sm' fontWeight='700' color={getMetricColor(roasChange, 'performance')}>
+                      {roasChange >= 0 ? '+' : ''}{roasChange.toFixed(2)}%p
+                    </Text>
+                    {roasChange !== 0 && (
+                      <Icon
+                        as={roasChange >= 0 ? MdArrowUpward : MdArrowDownward}
+                        w='14px'
+                        h='14px'
+                        color={getMetricColor(roasChange, 'performance')}
+                      />
+                    )}
+                  </Flex>
+                ) : (
+                  <Text fontSize='sm' fontWeight={rowStyle.fontWeight} color={rowStyle.color}>
+                    {roas}%
+                  </Text>
+                )}
+              </Td>
+
+              {/* CVR */}
+              <Td fontSize={{ sm: '14px' }} minW={{ sm: '150px', md: '200px', lg: 'auto' }} borderColor={borderColor} py={rowHeight === 'compact' ? '8px' : '12px'}>
+                {row.noData ? (
+                  <Text fontSize='sm' color='gray.400'>-</Text>
+                ) : row.rowType === 'difference' && cvrChange !== null ? (
+                  <Flex align='center' gap='4px'>
+                    <Text fontSize='sm' fontWeight='700' color={getMetricColor(cvrChange, 'neutral')}>
+                      {cvrChange >= 0 ? '+' : ''}{cvrChange.toFixed(2)}%p
+                    </Text>
+                    {cvrChange !== 0 && (
+                      <Icon
+                        as={cvrChange >= 0 ? MdArrowUpward : MdArrowDownward}
+                        w='14px'
+                        h='14px'
+                        color={getMetricColor(cvrChange, 'neutral')}
+                      />
+                    )}
+                  </Flex>
+                ) : (
+                  <Text fontSize='sm' fontWeight={rowStyle.fontWeight} color={rowStyle.color}>
+                    {cvr}%
+                  </Text>
+                )}
+              </Td>
+            </Tr>
+          );
+        })}
+      </Tbody>
+    </Table>
+  );
+
   return (
     <Card flexDirection='column' w='100%' px='0px' overflowX='auto' mb='20px' h='auto' maxH='650px'>
       <Flex px='25px' mb='8px' justifyContent='space-between' align='center'>
@@ -315,6 +748,21 @@ export default function HierarchicalAdSummary() {
           계층별 광고 요약
         </Text>
         <Flex gap='12px' align='center'>
+          {/* 확대 버튼 */}
+          <IconButton
+            icon={<MdZoomOutMap />}
+            aria-label="확대"
+            bg={inputBg}
+            border='1px solid'
+            borderColor={borderColor}
+            color={textColor}
+            _hover={{ bg: bgHover }}
+            _active={{ bg: bgHover }}
+            h='36px'
+            borderRadius='12px'
+            onClick={onOpen}
+          />
+
           {/* 매체 필터 */}
           <Menu closeOnSelect={true}>
             <MenuButton
@@ -424,428 +872,8 @@ export default function HierarchicalAdSummary() {
       ) : (
         <>
           <Box flex='1' overflowY='auto' maxH='500px'>
-        <Table variant='simple' color='gray.500' mb='24px' mt='12px'>
-          <Thead position='sticky' top='0' bg={tableHeaderBg} zIndex='1'>
-            <Tr>
-              <Th pe='10px' borderColor={borderColor}>
-                <Flex justifyContent='space-between' align='center' fontSize={{ sm: '10px', lg: '12px' }} color='gray.400'>
-                  매체
-                </Flex>
-              </Th>
-              <Th pe='10px' borderColor={borderColor}>
-                <Flex justifyContent='space-between' align='center' fontSize={{ sm: '10px', lg: '12px' }} color='gray.400'>
-                  {columnHeader}
-                </Flex>
-              </Th>
-              <Th pe='10px' borderColor={borderColor}>
-                <Flex justifyContent='space-between' align='center' fontSize={{ sm: '10px', lg: '12px' }} color='gray.400'>
-                  지출액
-                </Flex>
-              </Th>
-              <Th pe='10px' borderColor={borderColor}>
-                <Flex justifyContent='space-between' align='center' fontSize={{ sm: '10px', lg: '12px' }} color='gray.400'>
-                  노출수
-                </Flex>
-              </Th>
-              <Th pe='10px' borderColor={borderColor}>
-                <Flex justifyContent='space-between' align='center' fontSize={{ sm: '10px', lg: '12px' }} color='gray.400'>
-                  클릭수
-                </Flex>
-              </Th>
-              <Th pe='10px' borderColor={borderColor}>
-                <Flex justifyContent='space-between' align='center' fontSize={{ sm: '10px', lg: '12px' }} color='gray.400'>
-                  CTR
-                </Flex>
-              </Th>
-              <Th pe='10px' borderColor={borderColor}>
-                <Flex justifyContent='space-between' align='center' fontSize={{ sm: '10px', lg: '12px' }} color='gray.400'>
-                  CPC
-                </Flex>
-              </Th>
-              <Th pe='10px' borderColor={borderColor}>
-                <Flex justifyContent='space-between' align='center' fontSize={{ sm: '10px', lg: '12px' }} color='gray.400'>
-                  전환수
-                </Flex>
-              </Th>
-              <Th pe='10px' borderColor={borderColor}>
-                <Flex justifyContent='space-between' align='center' fontSize={{ sm: '10px', lg: '12px' }} color='gray.400'>
-                  전환가치
-                </Flex>
-              </Th>
-              <Th pe='10px' borderColor={borderColor}>
-                <Flex justifyContent='space-between' align='center' fontSize={{ sm: '10px', lg: '12px' }} color='gray.400'>
-                  ROAS
-                </Flex>
-              </Th>
-              <Th pe='10px' borderColor={borderColor}>
-                <Flex justifyContent='space-between' align='center' fontSize={{ sm: '10px', lg: '12px' }} color='gray.400'>
-                  CVR
-                </Flex>
-              </Th>
-            </Tr>
-          </Thead>
-          <Tbody>
-            {paginatedData.map((row, index) => {
-              // rowType에 따른 스타일링
-              const getRowStyle = () => {
-                if (row.rowType === 'current') {
-                  return {
-                    fontWeight: '700',
-                    color: textColor,
-                    bg: 'transparent',
-                  };
-                } else if (row.rowType === 'comparison') {
-                  return {
-                    fontWeight: '500',
-                    color: comparisonTextColor,
-                    bg: comparisonBg,
-                  };
-                } else if (row.rowType === 'difference') {
-                  return {
-                    fontWeight: '700',
-                    color: textColor,
-                    bg: differenceBg,
-                  };
-                }
-                return { fontWeight: '700', color: textColor, bg: 'transparent' };
-              };
-
-              const rowStyle = getRowStyle();
-
-              // 지표별 색상 결정 함수
-              const getMetricColor = (value, metricType) => {
-                if (row.noData) return 'gray.400';
-                if (value === 0) return textColor;
-
-                if (metricType === 'cost') {
-                  return value > 0 ? 'red.500' : 'green.500';
-                }
-                if (metricType === 'performance') {
-                  return value > 0 ? 'green.500' : 'red.500';
-                }
-                return value > 0 ? 'blue.500' : 'blue.500';
-              };
-
-              // 백분율 변화 계산
-              const calculatePercentageChange = (current, previous) => {
-                if (previous === 0) return current > 0 ? 100 : 0;
-                return ((current - previous) / previous) * 100;
-              };
-
-              // 지표 계산
-              const ctr = row.rowType === 'difference'
-                ? null
-                : calculateMetric(row.clicks, row.impressions);
-              const cpc = row.rowType === 'difference'
-                ? null
-                : calculateMetric(row.cost, row.clicks, false);
-              const roas = row.rowType === 'difference'
-                ? null
-                : calculateMetric(row.conversionValue, row.cost);
-              const cvr = row.rowType === 'difference'
-                ? null
-                : calculateMetric(row.conversions, row.clicks);
-
-              // 증감률 계산 (difference 행용)
-              const ctrChange = row.rowType === 'difference' && row.currentCtr !== undefined
-                ? calculatePercentageChange(row.currentCtr, row.comparisonCtr)
-                : null;
-              const cpcChange = row.rowType === 'difference' && row.currentCpc !== undefined
-                ? calculatePercentageChange(row.currentCpc, row.comparisonCpc)
-                : null;
-              const roasChange = row.rowType === 'difference' && row.currentRoas !== undefined
-                ? calculatePercentageChange(row.currentRoas, row.comparisonRoas)
-                : null;
-              const cvrChange = row.rowType === 'difference' && row.currentCvr !== undefined
-                ? calculatePercentageChange(row.currentCvr, row.comparisonCvr)
-                : null;
-
-              const rowHeight = filteredData.length > 30 ? 'compact' : 'normal';
-
-              return (
-                <Tr key={index} h={rowHeight === 'compact' ? '36px' : 'auto'} bg={rowStyle.bg}>
-                  {/* 매체 컬럼 */}
-                  <Td fontSize={{ sm: '14px' }} minW={{ sm: '100px', md: '120px', lg: 'auto' }} borderColor={borderColor} py={rowHeight === 'compact' ? '8px' : '12px'}>
-                    {row.media ? (
-                      <Flex align='center' gap='8px'>
-                        <Text fontSize='sm' fontWeight={rowStyle.fontWeight} color={rowStyle.color}>
-                          {row.media}
-                        </Text>
-                        {row.rowType === 'current' && comparisonMode && (
-                          <Badge colorScheme='blue' fontSize='10px'>현재</Badge>
-                        )}
-                      </Flex>
-                    ) : row.rowType === 'comparison' ? (
-                      <Text fontSize='xs' color='gray.400' pl='20px'>비교 기간</Text>
-                    ) : row.rowType === 'difference' ? (
-                      <Flex align='center' gap='4px' pl='20px'>
-                        <Icon as={MdTrendingUp} w='14px' h='14px' color='blue.500' />
-                        <Text fontSize='xs' fontWeight='600' color='blue.500'>증감</Text>
-                      </Flex>
-                    ) : null}
-                  </Td>
-
-                  {/* 캠페인명/광고그룹명/광고명 컬럼 */}
-                  <Td fontSize={{ sm: '14px' }} minW={{ sm: '150px', md: '200px', lg: 'auto' }} borderColor={borderColor} py={rowHeight === 'compact' ? '8px' : '12px'}>
-                    {row.key ? (
-                      <Flex align="center" gap="8px">
-                        <Text fontSize='sm' fontWeight={rowStyle.fontWeight} color={rowStyle.color}>
-                          {row.key}
-                        </Text>
-                        {activeTab === "ad" && !row.hasAdData && row.rowType === 'current' && (
-                          <Badge colorScheme="gray" fontSize="10px">
-                            광고명 없음
-                          </Badge>
-                        )}
-                      </Flex>
-                    ) : null}
-                  </Td>
-
-                  {/* 지출액 */}
-                  <Td fontSize={{ sm: '14px' }} minW={{ sm: '150px', md: '200px', lg: 'auto' }} borderColor={borderColor} py={rowHeight === 'compact' ? '8px' : '12px'}>
-                    {row.noData ? (
-                      <Text fontSize='sm' color='gray.400'>-</Text>
-                    ) : row.rowType === 'difference' ? (
-                      <Flex align='center' gap='4px'>
-                        <Text fontSize='sm' fontWeight='700' color={getMetricColor(row.cost, 'cost')}>
-                          {(() => {
-                            const change = calculatePercentageChange(row.currentCost || 0, row.comparisonCost || 1);
-                            return `${change >= 0 ? '+' : ''}${change.toFixed(2)}%`;
-                          })()}
-                        </Text>
-                        {row.cost !== 0 && (
-                          <Icon
-                            as={row.cost >= 0 ? MdArrowUpward : MdArrowDownward}
-                            w='14px'
-                            h='14px'
-                            color={getMetricColor(row.cost, 'cost')}
-                          />
-                        )}
-                      </Flex>
-                    ) : (
-                      <Text fontSize='sm' fontWeight={rowStyle.fontWeight} color={rowStyle.color}>
-                        ₩{formatNumber(row.cost)}
-                      </Text>
-                    )}
-                  </Td>
-
-                  {/* 노출수 */}
-                  <Td fontSize={{ sm: '14px' }} minW={{ sm: '150px', md: '200px', lg: 'auto' }} borderColor={borderColor} py={rowHeight === 'compact' ? '8px' : '12px'}>
-                    {row.noData ? (
-                      <Text fontSize='sm' color='gray.400'>-</Text>
-                    ) : row.rowType === 'difference' ? (
-                      <Flex align='center' gap='4px'>
-                        <Text fontSize='sm' fontWeight='700' color={getMetricColor(row.impressions, 'neutral')}>
-                          {(() => {
-                            const change = calculatePercentageChange(row.currentImpressions || 0, row.comparisonImpressions || 1);
-                            return `${change >= 0 ? '+' : ''}${change.toFixed(2)}%`;
-                          })()}
-                        </Text>
-                        {row.impressions !== 0 && (
-                          <Icon
-                            as={row.impressions >= 0 ? MdArrowUpward : MdArrowDownward}
-                            w='14px'
-                            h='14px'
-                            color={getMetricColor(row.impressions, 'neutral')}
-                          />
-                        )}
-                      </Flex>
-                    ) : (
-                      <Text fontSize='sm' fontWeight={rowStyle.fontWeight} color={rowStyle.color}>
-                        {formatNumber(row.impressions)}
-                      </Text>
-                    )}
-                  </Td>
-
-                  {/* 클릭수 */}
-                  <Td fontSize={{ sm: '14px' }} minW={{ sm: '150px', md: '200px', lg: 'auto' }} borderColor={borderColor} py={rowHeight === 'compact' ? '8px' : '12px'}>
-                    {row.noData ? (
-                      <Text fontSize='sm' color='gray.400'>-</Text>
-                    ) : row.rowType === 'difference' ? (
-                      <Flex align='center' gap='4px'>
-                        <Text fontSize='sm' fontWeight='700' color={getMetricColor(row.clicks, 'neutral')}>
-                          {(() => {
-                            const change = calculatePercentageChange(row.currentClicks || 0, row.comparisonClicks || 1);
-                            return `${change >= 0 ? '+' : ''}${change.toFixed(2)}%`;
-                          })()}
-                        </Text>
-                        {row.clicks !== 0 && (
-                          <Icon
-                            as={row.clicks >= 0 ? MdArrowUpward : MdArrowDownward}
-                            w='14px'
-                            h='14px'
-                            color={getMetricColor(row.clicks, 'neutral')}
-                          />
-                        )}
-                      </Flex>
-                    ) : (
-                      <Text fontSize='sm' fontWeight={rowStyle.fontWeight} color={rowStyle.color}>
-                        {formatNumber(row.clicks)}
-                      </Text>
-                    )}
-                  </Td>
-
-                  {/* CTR */}
-                  <Td fontSize={{ sm: '14px' }} minW={{ sm: '150px', md: '200px', lg: 'auto' }} borderColor={borderColor} py={rowHeight === 'compact' ? '8px' : '12px'}>
-                    {row.noData ? (
-                      <Text fontSize='sm' color='gray.400'>-</Text>
-                    ) : row.rowType === 'difference' && ctrChange !== null ? (
-                      <Flex align='center' gap='4px'>
-                        <Text fontSize='sm' fontWeight='700' color={getMetricColor(ctrChange, 'neutral')}>
-                          {ctrChange >= 0 ? '+' : ''}{ctrChange.toFixed(2)}%p
-                        </Text>
-                        {ctrChange !== 0 && (
-                          <Icon
-                            as={ctrChange >= 0 ? MdArrowUpward : MdArrowDownward}
-                            w='14px'
-                            h='14px'
-                            color={getMetricColor(ctrChange, 'neutral')}
-                          />
-                        )}
-                      </Flex>
-                    ) : (
-                      <Text fontSize='sm' fontWeight={rowStyle.fontWeight} color={rowStyle.color}>
-                        {ctr}%
-                      </Text>
-                    )}
-                  </Td>
-
-                  {/* CPC */}
-                  <Td fontSize={{ sm: '14px' }} minW={{ sm: '150px', md: '200px', lg: 'auto' }} borderColor={borderColor} py={rowHeight === 'compact' ? '8px' : '12px'}>
-                    {row.noData ? (
-                      <Text fontSize='sm' color='gray.400'>-</Text>
-                    ) : row.rowType === 'difference' && cpcChange !== null ? (
-                      <Flex align='center' gap='4px'>
-                        <Text fontSize='sm' fontWeight='700' color={getMetricColor(cpcChange, 'cost')}>
-                          {cpcChange >= 0 ? '+' : ''}{cpcChange.toFixed(2)}%p
-                        </Text>
-                        {cpcChange !== 0 && (
-                          <Icon
-                            as={cpcChange >= 0 ? MdArrowUpward : MdArrowDownward}
-                            w='14px'
-                            h='14px'
-                            color={getMetricColor(cpcChange, 'cost')}
-                          />
-                        )}
-                      </Flex>
-                    ) : (
-                      <Text fontSize='sm' fontWeight={rowStyle.fontWeight} color={rowStyle.color}>
-                        ₩{formatNumber(cpc)}
-                      </Text>
-                    )}
-                  </Td>
-
-                  {/* 전환수 */}
-                  <Td fontSize={{ sm: '14px' }} minW={{ sm: '150px', md: '200px', lg: 'auto' }} borderColor={borderColor} py={rowHeight === 'compact' ? '8px' : '12px'}>
-                    {row.noData ? (
-                      <Text fontSize='sm' color='gray.400'>-</Text>
-                    ) : row.rowType === 'difference' ? (
-                      <Flex align='center' gap='4px'>
-                        <Text fontSize='sm' fontWeight='700' color={getMetricColor(row.conversions, 'performance')}>
-                          {(() => {
-                            const change = calculatePercentageChange(row.currentConversions || 0, row.comparisonConversions || 1);
-                            return `${change >= 0 ? '+' : ''}${change.toFixed(2)}%`;
-                          })()}
-                        </Text>
-                        {row.conversions !== 0 && (
-                          <Icon
-                            as={row.conversions >= 0 ? MdArrowUpward : MdArrowDownward}
-                            w='14px'
-                            h='14px'
-                            color={getMetricColor(row.conversions, 'performance')}
-                          />
-                        )}
-                      </Flex>
-                    ) : (
-                      <Text fontSize='sm' fontWeight={rowStyle.fontWeight} color={rowStyle.color}>
-                        {Math.round(row.conversions)}
-                      </Text>
-                    )}
-                  </Td>
-
-                  {/* 전환가치 */}
-                  <Td fontSize={{ sm: '14px' }} minW={{ sm: '150px', md: '200px', lg: 'auto' }} borderColor={borderColor} py={rowHeight === 'compact' ? '8px' : '12px'}>
-                    {row.noData ? (
-                      <Text fontSize='sm' color='gray.400'>-</Text>
-                    ) : row.rowType === 'difference' ? (
-                      <Flex align='center' gap='4px'>
-                        <Text fontSize='sm' fontWeight='700' color={getMetricColor(row.conversionValue, 'performance')}>
-                          {(() => {
-                            const change = calculatePercentageChange(row.currentConversionValue || 0, row.comparisonConversionValue || 1);
-                            return `${change >= 0 ? '+' : ''}${change.toFixed(2)}%`;
-                          })()}
-                        </Text>
-                        {row.conversionValue !== 0 && (
-                          <Icon
-                            as={row.conversionValue >= 0 ? MdArrowUpward : MdArrowDownward}
-                            w='14px'
-                            h='14px'
-                            color={getMetricColor(row.conversionValue, 'performance')}
-                          />
-                        )}
-                      </Flex>
-                    ) : (
-                      <Text fontSize='sm' fontWeight={rowStyle.fontWeight} color={rowStyle.color}>
-                        ₩{formatNumber(row.conversionValue)}
-                      </Text>
-                    )}
-                  </Td>
-
-                  {/* ROAS */}
-                  <Td fontSize={{ sm: '14px' }} minW={{ sm: '150px', md: '200px', lg: 'auto' }} borderColor={borderColor} py={rowHeight === 'compact' ? '8px' : '12px'}>
-                    {row.noData ? (
-                      <Text fontSize='sm' color='gray.400'>-</Text>
-                    ) : row.rowType === 'difference' && roasChange !== null ? (
-                      <Flex align='center' gap='4px'>
-                        <Text fontSize='sm' fontWeight='700' color={getMetricColor(roasChange, 'performance')}>
-                          {roasChange >= 0 ? '+' : ''}{roasChange.toFixed(2)}%p
-                        </Text>
-                        {roasChange !== 0 && (
-                          <Icon
-                            as={roasChange >= 0 ? MdArrowUpward : MdArrowDownward}
-                            w='14px'
-                            h='14px'
-                            color={getMetricColor(roasChange, 'performance')}
-                          />
-                        )}
-                      </Flex>
-                    ) : (
-                      <Text fontSize='sm' fontWeight={rowStyle.fontWeight} color={rowStyle.color}>
-                        {roas}%
-                      </Text>
-                    )}
-                  </Td>
-
-                  {/* CVR */}
-                  <Td fontSize={{ sm: '14px' }} minW={{ sm: '150px', md: '200px', lg: 'auto' }} borderColor={borderColor} py={rowHeight === 'compact' ? '8px' : '12px'}>
-                    {row.noData ? (
-                      <Text fontSize='sm' color='gray.400'>-</Text>
-                    ) : row.rowType === 'difference' && cvrChange !== null ? (
-                      <Flex align='center' gap='4px'>
-                        <Text fontSize='sm' fontWeight='700' color={getMetricColor(cvrChange, 'neutral')}>
-                          {cvrChange >= 0 ? '+' : ''}{cvrChange.toFixed(2)}%p
-                        </Text>
-                        {cvrChange !== 0 && (
-                          <Icon
-                            as={cvrChange >= 0 ? MdArrowUpward : MdArrowDownward}
-                            w='14px'
-                            h='14px'
-                            color={getMetricColor(cvrChange, 'neutral')}
-                          />
-                        )}
-                      </Flex>
-                    ) : (
-                      <Text fontSize='sm' fontWeight={rowStyle.fontWeight} color={rowStyle.color}>
-                        {cvr}%
-                      </Text>
-                    )}
-                  </Td>
-                </Tr>
-              );
-            })}
-          </Tbody>
-        </Table>
-      </Box>
+            {renderTable()}
+          </Box>
 
       {totalPages > 1 && (
         <Flex justify='center' align='center' px='25px' pb='20px' gap='8px'>
@@ -908,6 +936,194 @@ export default function HierarchicalAdSummary() {
       )}
         </>
       )}
+
+      {/* 확대 모달 */}
+      <Modal isOpen={isOpen} onClose={onClose} size="full">
+        <ModalOverlay />
+        <ModalContent bg={useColorModeValue('white', 'navy.800')} m='20px'>
+          <ModalHeader>
+            <Flex justifyContent='space-between' align='center'>
+              <Text color={textColor} fontSize='24px' fontWeight='700'>
+                계층별 광고 요약 - {currentTab?.label}
+              </Text>
+              <Flex gap='12px' align='center' mr='40px'>
+                {/* 매체 필터 (모달용) */}
+                <Menu closeOnSelect={true}>
+                  <MenuButton
+                    as={Button}
+                    rightIcon={<MdKeyboardArrowDown />}
+                    bg={inputBg}
+                    border='1px solid'
+                    borderColor={borderColor}
+                    color={textColor}
+                    fontWeight='500'
+                    fontSize='sm'
+                    _hover={{ bg: bgHover }}
+                    _active={{ bg: bgHover }}
+                    px='16px'
+                    h='36px'
+                    borderRadius='12px'>
+                    {selectedMedia === "all" ? "전체" : selectedMedia}
+                  </MenuButton>
+                  <MenuList minW='auto' w='fit-content' px='8px' py='8px' zIndex='10'>
+                    <MenuItem
+                      onClick={(e) => {
+                        e.preventDefault();
+                        setSelectedMedia("all");
+                      }}
+                      bg={selectedMedia === "all" ? brandColor : 'transparent'}
+                      color={selectedMedia === "all" ? 'white' : textColor}
+                      _hover={{
+                        bg: selectedMedia === "all" ? brandColor : bgHover,
+                      }}
+                      fontWeight={selectedMedia === "all" ? '600' : '500'}
+                      fontSize='sm'
+                      borderRadius='8px'
+                      mb='4px'>
+                      전체
+                    </MenuItem>
+                    {availableMedias.map((media) => (
+                      <MenuItem
+                        key={media}
+                        onClick={(e) => {
+                          e.preventDefault();
+                          setSelectedMedia(media);
+                        }}
+                        bg={selectedMedia === media ? brandColor : 'transparent'}
+                        color={selectedMedia === media ? 'white' : textColor}
+                        _hover={{
+                          bg: selectedMedia === media ? brandColor : bgHover,
+                        }}
+                        fontWeight={selectedMedia === media ? '600' : '500'}
+                        fontSize='sm'
+                        borderRadius='8px'
+                        mb='4px'>
+                        {media}
+                      </MenuItem>
+                    ))}
+                  </MenuList>
+                </Menu>
+
+                {/* 탭 버튼들 (모달용) */}
+                <Flex gap='8px'>
+                  {tabs.map((tab) => (
+                    <Button
+                      key={tab.id}
+                      size='sm'
+                      bg={activeTab === tab.id ? tabActiveBg : tabBg}
+                      color={activeTab === tab.id ? tabActiveColor : tabInactiveColor}
+                      fontWeight={activeTab === tab.id ? '600' : '500'}
+                      _hover={{
+                        bg: activeTab === tab.id ? tabActiveBg : tabBg,
+                      }}
+                      borderRadius='6px'
+                      onClick={() => setActiveTab(tab.id)}>
+                      {tab.label}
+                    </Button>
+                  ))}
+                </Flex>
+              </Flex>
+            </Flex>
+          </ModalHeader>
+          <ModalCloseButton />
+          <ModalBody>
+            {activeTab === "ad" && (
+              <Alert status="info" mb="12px" borderRadius="8px">
+                <AlertIcon />
+                <Text fontSize="sm">
+                  Google Ads와 Naver는 광고 단위 데이터를 제공하지 않습니다.
+                  광고그룹 단위로 집계된 데이터가 "N/A"로 표시됩니다.
+                </Text>
+              </Alert>
+            )}
+
+            {isLoading ? (
+              <Flex justify='center' align='center' minH='400px'>
+                <Spinner size='xl' color='brand.500' />
+              </Flex>
+            ) : error ? (
+              <Alert status='error' mb='20px'>
+                <AlertIcon />
+                {error}
+              </Alert>
+            ) : filteredData.length === 0 ? (
+              <Flex justify='center' align='center' minH='400px'>
+                <Text color='gray.500' fontSize='md'>
+                  {selectedMedia === "all"
+                    ? "선택한 기간에 데이터가 없습니다."
+                    : `${selectedMedia} 매체의 데이터가 없습니다.`}
+                </Text>
+              </Flex>
+            ) : (
+              <>
+                <Box overflowY='auto' maxH='calc(100vh - 200px)'>
+                  {renderTable()}
+                </Box>
+
+                {totalPages > 1 && (
+                  <Flex justify='center' align='center' mt='20px' gap='8px'>
+                    <IconButton
+                      icon={<MdChevronLeft />}
+                      size='sm'
+                      bg={pageBtnBg}
+                      color={textColor}
+                      border='1px solid'
+                      borderColor={pageBtnBorderColor}
+                      borderRadius='6px'
+                      isDisabled={currentPage === 1}
+                      onClick={() => setCurrentPage(currentPage - 1)}
+                      _hover={{ bg: bgHover }}
+                      _disabled={{ opacity: 0.4, cursor: 'not-allowed' }}
+                    />
+
+                    <HStack spacing='4px'>
+                      {getPageNumbers().map((page, index) => (
+                        page === '...' ? (
+                          <Text key={`ellipsis-${index}`} color={textColor} px='8px'>...</Text>
+                        ) : (
+                          <Button
+                            key={page}
+                            size='sm'
+                            minW='32px'
+                            h='32px'
+                            bg={currentPage === page ? pageBtnActiveBg : pageBtnBg}
+                            color={currentPage === page ? 'white' : textColor}
+                            border='1px solid'
+                            borderColor={currentPage === page ? pageBtnActiveBg : pageBtnBorderColor}
+                            borderRadius='6px'
+                            onClick={() => setCurrentPage(page)}
+                            _hover={{
+                              bg: currentPage === page ? pageBtnActiveBg : bgHover,
+                            }}
+                            fontWeight={currentPage === page ? '600' : '500'}
+                            fontSize='sm'
+                          >
+                            {page}
+                          </Button>
+                        )
+                      ))}
+                    </HStack>
+
+                    <IconButton
+                      icon={<MdChevronRight />}
+                      size='sm'
+                      bg={pageBtnBg}
+                      color={textColor}
+                      border='1px solid'
+                      borderColor={pageBtnBorderColor}
+                      borderRadius='6px'
+                      isDisabled={currentPage === totalPages}
+                      onClick={() => setCurrentPage(currentPage + 1)}
+                      _hover={{ bg: bgHover }}
+                      _disabled={{ opacity: 0.4, cursor: 'not-allowed' }}
+                    />
+                  </Flex>
+                )}
+              </>
+            )}
+          </ModalBody>
+        </ModalContent>
+      </Modal>
     </Card>
   );
 }

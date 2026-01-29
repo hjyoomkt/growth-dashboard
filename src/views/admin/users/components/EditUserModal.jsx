@@ -53,6 +53,7 @@ export default function EditUserModal({ isOpen, onClose, user, onUpdate }) {
 
   // 권한 계층 구조 정의 (master 제외 - UI에서 변경 불가)
   const roleHierarchy = {
+    specialist: 7.5,            // 스페셜리스트
     agency_admin: 7,            // 에이전시 대표
     agency_manager: 6,          // 에이전시 관리자
     agency_staff: 5,            // 에이전시 직원
@@ -67,6 +68,11 @@ export default function EditUserModal({ isOpen, onClose, user, onUpdate }) {
     // Master 권한은 UI에서 절대 변경 불가
     if (targetRole === 'master') {
       return false;
+    }
+
+    // specialist는 master만 할당 가능
+    if (targetRole === 'specialist') {
+      return isMaster();
     }
 
     // Master는 모든 권한 부여 가능 (master 제외)
@@ -184,6 +190,7 @@ export default function EditUserModal({ isOpen, onClose, user, onUpdate }) {
   const getRoleLabel = (role) => {
     const roleLabels = {
       master: '마스터',
+      specialist: '스페셜리스트',
       agency_admin: '에이전시 대표',
       agency_manager: '에이전시 관리자',
       agency_staff: '에이전시 직원',
@@ -467,6 +474,31 @@ export default function EditUserModal({ isOpen, onClose, user, onUpdate }) {
                       <Text fontSize="xs" opacity="0.8">브랜드 어드민 접근, 전체 관리 권한</Text>
                     </Box>
                   </MenuItem>
+
+                  {/* 스페셜리스트 권한 (마스터만) */}
+                  {isMaster() && (
+                    <MenuItem
+                      onClick={() => canAssignRole('specialist') && handleRoleChange('specialist')}
+                      bg={formData.role === 'specialist' ? brandColor : 'transparent'}
+                      color={formData.role === 'specialist' ? 'white' : textColor}
+                      _hover={{
+                        bg: formData.role === 'specialist' ? brandColor : bgHover,
+                      }}
+                      fontWeight={formData.role === 'specialist' ? '600' : '500'}
+                      fontSize='sm'
+                      px='12px'
+                      py='10px'
+                      borderRadius='8px'
+                      mt='4px'
+                      isDisabled={!canAssignRole('specialist')}
+                      opacity={!canAssignRole('specialist') ? 0.4 : 1}
+                    >
+                      <Box>
+                        <Text fontWeight="600">스페셜리스트</Text>
+                        <Text fontSize="xs" opacity="0.8">모든 데이터 조회 가능 (제한된 페이지 접근)</Text>
+                      </Box>
+                    </MenuItem>
+                  )}
 
                   {/* 에이전시 권한 (마스터 또는 agency) */}
                   {(isMaster() || organizationType === 'agency') && (
