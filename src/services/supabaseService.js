@@ -145,14 +145,14 @@ export const getAvailableAdvertisers = async (userData) => {
   const isAgency = ['agency_admin', 'agency_manager', 'agency_staff'].includes(userData.role);
   const isAdvertiser = ['advertiser_admin', 'advertiser_staff', 'viewer', 'editor'].includes(userData.role);
 
-  if (userData.role === 'master') {
-    // Master: 모든 광고주
+  if (userData.role === 'master' || userData.role === 'specialist') {
+    // Master & Specialist: 모든 광고주
     const { data, error } = await supabase.from('advertisers').select('*');
     if (error) {
       console.error('[getAvailableAdvertisers] 조회 실패:', error);
       throw error;
     }
-    console.log('[getAvailableAdvertisers] 조회 성공 (master):', { count: data?.length });
+    console.log('[getAvailableAdvertisers] 조회 성공 (master/specialist):', { count: data?.length });
     return data || [];
   } else if (userData.role === 'agency_admin') {
     // Agency Admin(대표): 같은 organization의 모든 브랜드 접근
@@ -612,6 +612,7 @@ export const updateUserRole = async (userId, newRole, currentUser = null) => {
   if (currentUser) {
     const roleHierarchy = {
       master: 100,
+      specialist: 50,
       agency_admin: 7,
       agency_manager: 6,
       agency_staff: 5,
@@ -682,6 +683,7 @@ export const updateUserStatus = async (userId, status, currentUser = null) => {
   if (currentUser) {
     const roleHierarchy = {
       master: 100,
+      specialist: 50,
       agency_admin: 7,
       agency_manager: 6,
       agency_staff: 5,
@@ -733,6 +735,7 @@ export const updateUserRoleAndAdvertisers = async (userId, newRole, advertiserId
   if (currentUser) {
     const roleHierarchy = {
       master: 100,
+      specialist: 50,
       agency_admin: 7,
       agency_manager: 6,
       agency_staff: 5,

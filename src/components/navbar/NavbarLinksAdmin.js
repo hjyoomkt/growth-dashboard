@@ -54,6 +54,7 @@ export default function HeaderLinks(props) {
   const getRoleKorean = (role) => {
     const roleMap = {
       'master': '마스터',
+      'specialist': '스페셜리스트',
       'agency_admin': '에이전시 대표',
       'agency_manager': '에이전시 관리자',
       'agency_staff': '에이전시 직원',
@@ -70,6 +71,7 @@ export default function HeaderLinks(props) {
   // 브랜드 선택 드롭다운 표시 여부
   const shouldShowBrandSelector =
     role === 'master' ||
+    role === 'specialist' ||
     role === 'agency_admin' ||
     role === 'agency_manager' ||
     role === 'agency_staff' ||
@@ -282,111 +284,114 @@ export default function HeaderLinks(props) {
         </Text>
       </Flex>
       <SidebarResponsive routes={activeRoutes} />
-      <Menu>
-        <MenuButton p="0px" position="relative">
-          <Icon
-            mt="6px"
-            as={MdNotificationsNone}
-            color={navbarIcon}
-            w="18px"
-            h="18px"
-            me="10px"
-          />
-          {unreadNotificationsCount > 0 && (
-            <Badge
-              position="absolute"
-              top="-2px"
-              right="6px"
-              colorScheme="red"
-              borderRadius="full"
-              fontSize="9px"
-              minW="16px"
-              h="16px"
-              display="flex"
-              alignItems="center"
-              justifyContent="center"
-            >
-              {unreadNotificationsCount}
-            </Badge>
-          )}
-        </MenuButton>
-        <MenuList
-          boxShadow={shadow}
-          p="20px"
-          borderRadius="20px"
-          bg={menuBg}
-          border="none"
-          mt="22px"
-          me={{ base: '30px', md: 'unset' }}
-          minW={{ base: 'unset', md: '400px', xl: '450px' }}
-          maxW={{ base: '360px', md: 'unset' }}
-          maxH="500px"
-          overflowY="auto"
-        >
-          <Flex w="100%" mb="20px">
-            <Text fontSize="md" fontWeight="600" color={textColor}>
-              알림
-            </Text>
+      {/* 알림 메뉴 - Specialist는 표시하지 않음 */}
+      {role !== 'specialist' && (
+        <Menu>
+          <MenuButton p="0px" position="relative">
+            <Icon
+              mt="6px"
+              as={MdNotificationsNone}
+              color={navbarIcon}
+              w="18px"
+              h="18px"
+              me="10px"
+            />
             {unreadNotificationsCount > 0 && (
-              <Text
-                fontSize="sm"
-                fontWeight="500"
-                color={textColorBrand}
-                ms="auto"
-                cursor="pointer"
-                onClick={markAllNotificationsAsRead}
+              <Badge
+                position="absolute"
+                top="-2px"
+                right="6px"
+                colorScheme="red"
+                borderRadius="full"
+                fontSize="9px"
+                minW="16px"
+                h="16px"
+                display="flex"
+                alignItems="center"
+                justifyContent="center"
               >
-                모두 읽음 표시
-              </Text>
+                {unreadNotificationsCount}
+              </Badge>
             )}
-          </Flex>
-          <Flex flexDirection="column">
-            {allNotifications.length === 0 ? (
-              <Box textAlign="center" py="20px">
-                <Text color="secondaryGray.600" fontSize="sm">
-                  새로운 알림이 없습니다
-                </Text>
-              </Box>
-            ) : (
-              allNotifications.map((notification) => (
-                <MenuItem
-                  key={notification.id}
-                  _hover={{ bg: 'secondaryGray.100' }}
-                  _focus={{ bg: 'none' }}
-                  px="12px"
-                  py="10px"
-                  borderRadius="8px"
-                  mb="8px"
-                  bg={notification.read ? 'transparent' : 'orange.50'}
-                  onClick={() => handleNotificationClick(notification)}
+          </MenuButton>
+          <MenuList
+            boxShadow={shadow}
+            p="20px"
+            borderRadius="20px"
+            bg={menuBg}
+            border="none"
+            mt="22px"
+            me={{ base: '30px', md: 'unset' }}
+            minW={{ base: 'unset', md: '400px', xl: '450px' }}
+            maxW={{ base: '360px', md: 'unset' }}
+            maxH="500px"
+            overflowY="auto"
+          >
+            <Flex w="100%" mb="20px">
+              <Text fontSize="md" fontWeight="600" color={textColor}>
+                알림
+              </Text>
+              {unreadNotificationsCount > 0 && (
+                <Text
+                  fontSize="sm"
+                  fontWeight="500"
+                  color={textColorBrand}
+                  ms="auto"
                   cursor="pointer"
+                  onClick={markAllNotificationsAsRead}
                 >
-                  <Flex direction="column" w="100%">
-                    <Flex align="center" mb="4px">
-                      <Icon
-                        as={notification.type === 'error' ? MdInfoOutline : MdNotificationsNone}
-                        color={notification.type === 'error' ? 'red.500' : notification.type === 'board' ? 'purple.500' : 'orange.500'}
-                        w="16px"
-                        h="16px"
-                        mr="8px"
-                      />
-                      <Text fontSize="sm" fontWeight="600" color={textColor}>
-                        {notification.title}
+                  모두 읽음 표시
+                </Text>
+              )}
+            </Flex>
+            <Flex flexDirection="column">
+              {allNotifications.length === 0 ? (
+                <Box textAlign="center" py="20px">
+                  <Text color="secondaryGray.600" fontSize="sm">
+                    새로운 알림이 없습니다
+                  </Text>
+                </Box>
+              ) : (
+                allNotifications.map((notification) => (
+                  <MenuItem
+                    key={notification.id}
+                    _hover={{ bg: 'secondaryGray.100' }}
+                    _focus={{ bg: 'none' }}
+                    px="12px"
+                    py="10px"
+                    borderRadius="8px"
+                    mb="8px"
+                    bg={notification.read ? 'transparent' : 'orange.50'}
+                    onClick={() => handleNotificationClick(notification)}
+                    cursor="pointer"
+                  >
+                    <Flex direction="column" w="100%">
+                      <Flex align="center" mb="4px">
+                        <Icon
+                          as={notification.type === 'error' ? MdInfoOutline : MdNotificationsNone}
+                          color={notification.type === 'error' ? 'red.500' : notification.type === 'board' ? 'purple.500' : 'orange.500'}
+                          w="16px"
+                          h="16px"
+                          mr="8px"
+                        />
+                        <Text fontSize="sm" fontWeight="600" color={textColor}>
+                          {notification.title}
+                        </Text>
+                      </Flex>
+                      <Text fontSize="xs" color="secondaryGray.600" ml="24px">
+                        {notification.message}
+                      </Text>
+                      <Text fontSize="xs" color="secondaryGray.400" ml="24px" mt="4px">
+                        {new Date(notification.timestamp).toLocaleString('ko-KR')}
                       </Text>
                     </Flex>
-                    <Text fontSize="xs" color="secondaryGray.600" ml="24px">
-                      {notification.message}
-                    </Text>
-                    <Text fontSize="xs" color="secondaryGray.400" ml="24px" mt="4px">
-                      {new Date(notification.timestamp).toLocaleString('ko-KR')}
-                    </Text>
-                  </Flex>
-                </MenuItem>
-              ))
-            )}
-          </Flex>
-        </MenuList>
-      </Menu>
+                  </MenuItem>
+                ))
+              )}
+            </Flex>
+          </MenuList>
+        </Menu>
+      )}
 
       {role === 'master' && (
         <Menu>

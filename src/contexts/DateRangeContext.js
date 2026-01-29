@@ -12,10 +12,10 @@ export const useDateRange = () => {
 };
 
 export const DateRangeProvider = ({ children }) => {
-  // 기본값: 최근 30일 (종료일 = 어제, KST 기준)
+  // 기본값: 최근 7일 (종료일 = 어제, KST 기준)
   const getDefaultRange = () => {
     return {
-      start: getKSTDaysAgo(30),
+      start: getKSTDaysAgo(7),
       end: getKSTYesterday(),
     };
   };
@@ -24,7 +24,7 @@ export const DateRangeProvider = ({ children }) => {
 
   const [startDate, setStartDate] = useState(defaultRange.start);
   const [endDate, setEndDate] = useState(defaultRange.end);
-  const [selectedPreset, setSelectedPreset] = useState('최근 30일');
+  const [selectedPreset, setSelectedPreset] = useState('최근 7일');
 
   // 비교 모드 상태
   const [comparisonMode, setComparisonMode] = useState(false);

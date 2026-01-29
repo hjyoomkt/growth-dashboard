@@ -13,9 +13,13 @@ import routes from 'routes.js';
 // Custom Chakra theme
 export default function Dashboard(props) {
   const { ...rest } = props;
-  const { user, loading } = useAuth();
+  const { user, loading, role } = useAuth();
   // Get current location from React Router
   const location = useLocation();
+
+  // Specialist 페이지 접근 제한
+  const isSpecialist = role === 'specialist';
+  const allowedSpecialistPaths = ['/admin/default', '/admin/data-tables'];
   // states and functions
   const [fixed] = useState(false);
   const [toggleSidebar, setToggleSidebar] = useState(false);
@@ -34,6 +38,12 @@ export default function Dashboard(props) {
   if (!user) {
     return <Navigate to="/auth/sign-in" replace />;
   }
+
+  // Specialist 페이지 접근 제한 - 허용된 경로 외에는 리다이렉트
+  if (isSpecialist && !allowedSpecialistPaths.includes(location.pathname)) {
+    return <Navigate to="/admin/default" replace />;
+  }
+
   // functions for changing the states from components
   const getRoute = () => {
     return location.pathname !== '/admin/full-screen-maps';
@@ -110,6 +120,10 @@ export default function Dashboard(props) {
   const getRoutes = (routes) => {
     return routes.map((route, key) => {
       if (route.layout === '/admin') {
+        // Specialist는 특정 라우트만 접근 가능
+        if (isSpecialist && route.path !== '/default' && route.path !== '/data-tables') {
+          return null;
+        }
         return (
           <Route path={`${route.path}`} element={route.component} key={key} />
         );

@@ -22,6 +22,7 @@ export function SidebarLinks(props) {
     role,
     organizationType,
     isMaster,
+    isSpecialist,
     canAccessSuperAdmin,
     canAccessBrandAdmin
   } = useAuth();
@@ -60,6 +61,13 @@ export function SidebarLinks(props) {
       // 숨김 메뉴 체크
       if (route.hidden) {
         return null;
+      }
+
+      // ✅ Specialist는 /admin/default, /admin/data-tables만 표시
+      if (isSpecialist && isSpecialist()) {
+        if (route.layout !== '/admin' || (route.path !== '/default' && route.path !== '/data-tables')) {
+          return null;
+        }
       }
 
       // ✅ 조직관리 전용 (마스터만)

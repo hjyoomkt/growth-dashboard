@@ -29,8 +29,9 @@ export default function ClientAdminLayout(props) {
   const brandColor = useColorModeValue('brand.500', 'brand.400');
   const badgeBg = useColorModeValue('secondaryGray.100', 'whiteAlpha.100');
 
-  // 권한 체크: Master, 클라이언트 최고관리자, 클라이언트 관리자, 직원 접근 가능
+  // 권한 체크: Master, 클라이언트 최고관리자, 클라이언트 관리자, 직원 접근 가능 (Specialist 제외)
   const canAccessClientAdmin = () => {
+    if (role === 'specialist') return false;
     return ['master', 'advertiser_admin', 'advertiser_staff', 'manager'].includes(role);
   };
 

@@ -221,6 +221,7 @@ export default function PermissionTable(props) {
   const getRoleLabel = (role) => {
     const roleMap = {
       master: '마스터',
+      specialist: '스페셜리스트',
       agency_admin: '에이전시 대표',
       agency_manager: '에이전시 관리자',
       agency_staff: '에이전시 직원',

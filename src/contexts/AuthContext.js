@@ -112,7 +112,8 @@ export const AuthProvider = ({ children }) => {
   // 게시판 알림 자동 로드
   useEffect(() => {
     const fetchBoardNotifications = async () => {
-      if (!user || !role || !availableAdvertisers) return;
+      // Specialist는 알림을 표시하지 않음
+      if (!user || !role || !availableAdvertisers || role === 'specialist') return;
 
       try {
         // 브랜드 사용자 여부 확인
@@ -301,6 +302,7 @@ export const AuthProvider = ({ children }) => {
 
   // ✅ 권한 체크 함수 (2026-01-03 수정)
   const isMaster = () => role === 'master';
+  const isSpecialist = () => role === 'specialist';
 
   // 슈퍼어드민 접근 권한 (조직관리 제외)
   const canAccessSuperAdmin = () => ['master', 'agency_admin', 'agency_manager'].includes(role);
@@ -433,6 +435,7 @@ export const AuthProvider = ({ children }) => {
     signOut,
     // 권한 체크 헬퍼 함수
     isMaster,
+    isSpecialist,
     isOrgAdmin,
     isAdvertiserAdmin,
     canEdit,

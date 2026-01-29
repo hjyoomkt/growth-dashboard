@@ -29,8 +29,9 @@ export default function SuperAdminLayout(props) {
   const brandColor = useColorModeValue('brand.500', 'brand.400');
   const badgeBg = useColorModeValue('secondaryGray.100', 'whiteAlpha.100');
 
-  // 권한 체크: Master, 대행사 최고관리자, 대행사 관리자만 접근 가능
+  // 권한 체크: Master, 대행사 최고관리자, 대행사 관리자만 접근 가능 (Specialist 제외)
   const canAccessSuperAdmin = () => {
+    if (role === 'specialist') return false;
     return ['master', 'agency_admin', 'agency_manager'].includes(role);
   };
 
