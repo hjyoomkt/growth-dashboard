@@ -383,11 +383,27 @@ export default function SuperAdminDashboard() {
 
     setIsSavingMeta(true);
     try {
-      const { data: sessionData } = await supabase.auth.getSession();
-      const accessToken = sessionData?.session?.access_token;
+      // 세션 토큰 가져오기
+      let { data: sessionData } = await supabase.auth.getSession();
+      let accessToken = sessionData?.session?.access_token;
 
       if (!accessToken) {
         throw new Error('인증 세션이 없습니다. 다시 로그인해주세요.');
+      }
+
+      // Supabase 인증 세션 토큰 만료 시간 확인 (디버깅용 - Meta API 토큰 아님!)
+      if (sessionData?.session) {
+        const expiresAt = sessionData.session.expires_at; // Unix timestamp (초)
+        const now = Math.floor(Date.now() / 1000); // 현재 시간 (초)
+        const remainingSeconds = expiresAt - now;
+        const remainingMinutes = Math.floor(remainingSeconds / 60);
+
+        console.log('[Meta Settings] Supabase 세션 토큰 (인증용, Meta API 토큰 아님):', {
+          현재시간: new Date().toLocaleString('ko-KR'),
+          세션만료시간: new Date(expiresAt * 1000).toLocaleString('ko-KR'),
+          남은시간: `${remainingMinutes}분 ${remainingSeconds % 60}초`,
+          세션만료됨: remainingSeconds <= 0
+        });
       }
 
       const apiKey = process.env.REACT_APP_SUPABASE_ANON_KEY;
@@ -406,18 +422,42 @@ export default function SuperAdminDashboard() {
         payload.access_token = metaSettings.accessToken?.trim() || 'EMPTY_STRING';
       }
 
-      const response = await fetch(
-        `${process.env.REACT_APP_SUPABASE_URL}/functions/v1/save-organization-meta`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${accessToken}`,
-            'apikey': apiKey,
-          },
-          body: JSON.stringify(payload),
+      // API 호출 함수 (재사용 가능)
+      const callSaveApi = async (token) => {
+        return await fetch(
+          `${process.env.REACT_APP_SUPABASE_URL}/functions/v1/save-organization-meta`,
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${token}`,
+              'apikey': apiKey,
+            },
+            body: JSON.stringify(payload),
+          }
+        );
+      };
+
+      // 첫 번째 시도
+      let response = await callSaveApi(accessToken);
+
+      // 401 에러 발생 시 세션 갱신 후 재시도
+      if (response.status === 401) {
+        console.log('[Meta Settings] 401 에러 발생, 세션 갱신 후 재시도...');
+
+        // 세션 강제 갱신
+        const { data: refreshedSession, error: refreshError } = await supabase.auth.refreshSession();
+
+        if (refreshError || !refreshedSession?.session?.access_token) {
+          throw new Error('세션 갱신에 실패했습니다. 다시 로그인해주세요.');
         }
-      );
+
+        accessToken = refreshedSession.session.access_token;
+        console.log('[Meta Settings] 세션 갱신 완료, 재시도 중...');
+
+        // 두 번째 시도
+        response = await callSaveApi(accessToken);
+      }
 
       const data = await response.json();
 
