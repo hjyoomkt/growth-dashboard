@@ -10,6 +10,7 @@ import {
   MdAdminPanelSettings,
   MdTrendingUp,
   MdBusiness,
+  MdAnalytics,
 } from 'react-icons/md';
 
 // Admin Imports
@@ -29,6 +30,9 @@ import TermsOfService from 'views/auth/termsOfService';
 
 // ROAS Analyzer - 독립 모듈
 import { ROASAnalyzer } from 'modules/roas-analyzer';
+
+// Zest Analytics - 독립 모듈 (전환 추적)
+import ZestAnalytics from 'modules/zest-analytics';
 
 // Brand Admin Imports
 import BrandAdminDefault from 'views/clientadmin/default';
@@ -51,6 +55,14 @@ const routes = [
     icon: <Icon as={MdBarChart} width="20px" height="20px" color="inherit" />,
     path: '/data-tables',
     component: <DataTables />,
+  },
+  {
+    name: 'Zest Analytics',
+    layout: '/admin',
+    path: '/zest-analytics',
+    icon: <Icon as={MdAnalytics} width="20px" height="20px" color="inherit" />,
+    component: <ZestAnalytics />,
+    masterOnly: true, // 마스터만 접근 가능 (테스트 중)
   },
   {
     name: 'ROAS 분석',
