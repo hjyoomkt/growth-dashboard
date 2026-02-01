@@ -156,8 +156,7 @@ export default function TrackingCodeManager({ advertiserId, role }) {
   };
 
   const getInstallCode = (trackingId) => {
-    // 실제 배포 시 SDK URL 변경 필요
-    const sdkUrl = 'http://localhost:3000/sdk/za-sdk.js';
+    const sdkUrl = 'https://www.zestdot.com/sdk/za-sdk.js';
     return `<!-- 1. 모든 페이지의 <head> 또는 </body> 직전에 추가 -->
 <script src="${sdkUrl}"></script>
 <script>
@@ -338,15 +337,12 @@ export default function TrackingCodeManager({ advertiserId, role }) {
                 </Text>
               </Box>
 
-              <Box mt={4} p={4} bg="orange.50" borderRadius="md" borderLeft="4px solid" borderColor="orange.500">
-                <Text fontSize="sm" fontWeight="bold" mb={2} color="orange.800">
-                  ⚠️ 주의사항
+              <Box mt={4} p={4} bg="green.50" borderRadius="md" borderLeft="4px solid" borderColor="green.500">
+                <Text fontSize="sm" fontWeight="bold" mb={2} color="green.800">
+                  ✅ 설치 준비 완료
                 </Text>
-                <Text fontSize="sm" color="orange.700" mb={2}>
-                  • 프로덕션 배포 시 SDK URL을 실제 도메인으로 변경해야 합니다
-                </Text>
-                <Text fontSize="sm" color="orange.700">
-                  • 현재: http://localhost:3000/sdk/za-sdk.js → 실제: https://yourdomain.com/sdk/za-sdk.js
+                <Text fontSize="sm" color="green.700">
+                  • SDK URL이 프로덕션 도메인(www.zestdot.com)으로 설정되어 있습니다
                 </Text>
               </Box>
             </Box>
