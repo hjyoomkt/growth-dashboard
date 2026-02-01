@@ -487,7 +487,7 @@ function CreativeCard({ creative, textColor, textColorSecondary }) {
               "2xl": "row",
             }}
             mb='auto'>
-            <Flex direction={{ base: 'column', md: 'row' }} align={{ base: 'flex-start', md: 'center' }} gap='4px' w='100%'>
+            <Flex direction='column' align='flex-start' gap='4px' w='100%'>
               <Text
                 color={textColor}
                 fontSize={{
