@@ -26,6 +26,7 @@ export default function CreativeDetailModal({ isOpen, onClose, creative }) {
   const toast = useToast();
 
   const [dailyData, setDailyData] = useState([]);
+  const [adInfo, setAdInfo] = useState(null);
   const [metric1, setMetric1] = useState('impressions');
   const [metric2, setMetric2] = useState('ctr');
   const [loading, setLoading] = useState(false);
@@ -35,6 +36,7 @@ export default function CreativeDetailModal({ isOpen, onClose, creative }) {
   const borderColor = useColorModeValue('gray.200', 'whiteAlpha.100');
   const textColorSecondary = useColorModeValue('gray.600', 'gray.400');
   const mediaBoxBg = useColorModeValue('gray.50', 'navy.700');
+  const cardBg = useColorModeValue('gray.50', 'navy.700');
 
   // 모달이 열릴 때 데이터 fetch
   useEffect(() => {
@@ -43,8 +45,9 @@ export default function CreativeDetailModal({ isOpen, onClose, creative }) {
     const fetchData = async () => {
       setLoading(true);
       try {
-        const data = await getAdDailyPerformance(creative.ad_id, startDate, endDate);
-        setDailyData(data || []);
+        const result = await getAdDailyPerformance(creative.ad_id, startDate, endDate);
+        setDailyData(result?.dailyData || []);
+        setAdInfo(result?.adInfo || null);
       } catch (error) {
         console.error('일자별 성과 조회 실패:', error);
         toast({
@@ -55,6 +58,7 @@ export default function CreativeDetailModal({ isOpen, onClose, creative }) {
           isClosable: true,
         });
         setDailyData([]);
+        setAdInfo(null);
       } finally {
         setLoading(false);
       }
@@ -67,11 +71,37 @@ export default function CreativeDetailModal({ isOpen, onClose, creative }) {
   useEffect(() => {
     if (!isOpen) {
       setDailyData([]);
+      setAdInfo(null);
       setMetric1('impressions');
       setMetric2('ctr');
       setLoading(false);
     }
   }, [isOpen]);
+
+  // 조회기간 합계 계산
+  const totalSummary = React.useMemo(() => {
+    if (!dailyData || dailyData.length === 0) {
+      return { cost: 0, impressions: 0, clicks: 0, conversions: 0, ctr: 0, cpa: 0, roas: 0 };
+    }
+    const totals = dailyData.reduce((acc, row) => {
+      acc.cost += row.cost || 0;
+      acc.impressions += row.impressions || 0;
+      acc.clicks += row.clicks || 0;
+      acc.conversions += row.conversions || 0;
+      acc.conversion_value += row.conversion_value || 0;
+      return acc;
+    }, { cost: 0, impressions: 0, clicks: 0, conversions: 0, conversion_value: 0 });
+
+    return {
+      cost: totals.cost,
+      impressions: totals.impressions,
+      clicks: totals.clicks,
+      conversions: totals.conversions,
+      ctr: totals.impressions > 0 ? (totals.clicks / totals.impressions) * 100 : 0,
+      cpa: totals.conversions > 0 ? totals.cost / totals.conversions : 0,
+      roas: totals.cost > 0 ? (totals.conversion_value / totals.cost) * 100 : 0,
+    };
+  }, [dailyData]);
 
   if (!creative) return null;
 
@@ -98,54 +128,124 @@ export default function CreativeDetailModal({ isOpen, onClose, creative }) {
               templateColumns={{ base: '1fr', lg: '1fr 2fr' }}
               gap='16px'
             >
-              {/* 왼쪽: 이미지 or 동영상 */}
+              {/* 왼쪽: 이미지 or 동영상 + 광고 정보 */}
               <GridItem>
-                <Box
-                  w='100%'
-                  h='100%'
-                  minH='250px'
-                  maxH='400px'
-                  border='1px solid'
-                  borderColor={borderColor}
-                  borderRadius='16px'
-                  overflow='hidden'
-                  bg={mediaBoxBg}
-                  display='flex'
-                  alignItems='center'
-                  justifyContent='center'
-                >
-                  {creative.isVideo ? (
-                    creative.videoUrl ? (
-                      <video
-                        src={creative.videoUrl}
-                        controls
-                        style={{
-                          width: '100%',
-                          height: '100%',
-                          objectFit: 'contain',
-                        }}
-                      >
-                        브라우저가 비디오를 지원하지 않습니다.
-                      </video>
+                <Flex direction='column' gap='16px'>
+                  {/* 이미지/동영상 영역 */}
+                  <Box
+                    w='100%'
+                    h='400px'
+                    border='1px solid'
+                    borderColor={borderColor}
+                    borderRadius='16px'
+                    overflow='hidden'
+                    bg={mediaBoxBg}
+                    display='flex'
+                    alignItems='center'
+                    justifyContent='center'
+                  >
+                    {creative.isVideo ? (
+                      creative.videoUrl ? (
+                        <video
+                          src={creative.videoUrl}
+                          controls
+                          playsInline
+                          style={{
+                            width: '100%',
+                            height: '400px',
+                            objectFit: 'contain',
+                          }}
+                        >
+                          브라우저가 비디오를 지원하지 않습니다.
+                        </video>
+                      ) : (
+                        <Text color={textColorSecondary} fontSize='sm'>
+                          동영상 없음
+                        </Text>
+                      )
+                    ) : creative.imageUrl ? (
+                      <Image
+                        src={creative.imageUrl}
+                        alt={creative.adName}
+                        w='100%'
+                        h='100%'
+                        objectFit='contain'
+                      />
                     ) : (
                       <Text color={textColorSecondary} fontSize='sm'>
-                        동영상 없음
+                        이미지 없음
                       </Text>
-                    )
-                  ) : creative.imageUrl ? (
-                    <Image
-                      src={creative.imageUrl}
-                      alt={creative.adName}
-                      w='100%'
-                      h='100%'
-                      objectFit='contain'
-                    />
-                  ) : (
-                    <Text color={textColorSecondary} fontSize='sm'>
-                      이미지 없음
-                    </Text>
-                  )}
-                </Box>
+                    )}
+                  </Box>
+
+                  {/* 광고 정보 영역 */}
+                  <Box
+                    p='16px'
+                    bg={cardBg}
+                    borderRadius='16px'
+                    border='1px solid'
+                    borderColor={borderColor}
+                  >
+                    {/* 캠페인명, 그룹명, 광고이름 */}
+                    <Flex direction='column' gap='8px' mb='16px'>
+                      <Flex justify='space-between' align='center'>
+                        <Text fontSize='xs' color={textColorSecondary} fontWeight='500'>캠페인명</Text>
+                        <Text fontSize='sm' color={textColor} fontWeight='600' textAlign='right' maxW='70%' noOfLines={1}>
+                          {adInfo?.campaignName || '-'}
+                        </Text>
+                      </Flex>
+                      <Flex justify='space-between' align='center'>
+                        <Text fontSize='xs' color={textColorSecondary} fontWeight='500'>그룹명</Text>
+                        <Text fontSize='sm' color={textColor} fontWeight='600' textAlign='right' maxW='70%' noOfLines={1}>
+                          {adInfo?.adGroupName || '-'}
+                        </Text>
+                      </Flex>
+                      <Flex justify='space-between' align='center'>
+                        <Text fontSize='xs' color={textColorSecondary} fontWeight='500'>광고이름</Text>
+                        <Text fontSize='sm' color={textColor} fontWeight='600' textAlign='right' maxW='70%' noOfLines={1}>
+                          {adInfo?.adName || creative.adName || '-'}
+                        </Text>
+                      </Flex>
+                    </Flex>
+
+                    {/* 구분선 */}
+                    <Box h='1px' bg={borderColor} mb='16px' />
+
+                    {/* 성과 지표 (3개씩 배치) */}
+                    <Grid templateColumns='repeat(3, 1fr)' gap='12px'>
+                      <GridItem>
+                        <Text fontSize='xs' color={textColorSecondary} fontWeight='500'>지출금액</Text>
+                        <Text fontSize='sm' color={textColor} fontWeight='700'>
+                          ₩{Math.round(totalSummary.cost).toLocaleString()}
+                        </Text>
+                      </GridItem>
+                      <GridItem>
+                        <Text fontSize='xs' color={textColorSecondary} fontWeight='500'>CTR</Text>
+                        <Text fontSize='sm' color={textColor} fontWeight='700'>
+                          {totalSummary.ctr.toFixed(2)}%
+                        </Text>
+                      </GridItem>
+                      <GridItem>
+                        <Text fontSize='xs' color={textColorSecondary} fontWeight='500'>전환수</Text>
+                        <Text fontSize='sm' color={textColor} fontWeight='700'>
+                          {Math.round(totalSummary.conversions).toLocaleString()}
+                        </Text>
+                      </GridItem>
+                      <GridItem>
+                        <Text fontSize='xs' color={textColorSecondary} fontWeight='500'>CPA</Text>
+                        <Text fontSize='sm' color={textColor} fontWeight='700'>
+                          ₩{Math.round(totalSummary.cpa).toLocaleString()}
+                        </Text>
+                      </GridItem>
+                      <GridItem>
+                        <Text fontSize='xs' color={textColorSecondary} fontWeight='500'>ROAS</Text>
+                        <Text fontSize='sm' color={textColor} fontWeight='700'>
+                          {Math.round(totalSummary.roas)}%
+                        </Text>
+                      </GridItem>
+                    </Grid>
+                  </Box>
+                </Flex>
               </GridItem>
 
               {/* 오른쪽: 차트 + 테이블 */}

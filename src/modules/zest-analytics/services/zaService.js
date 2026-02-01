@@ -289,7 +289,7 @@ export const getCampaignPerformance = async ({
   try {
     let query = supabase
       .from('za_events')
-      .select('utm_source, utm_campaign, event_type, value, days_since_click, is_attributed');
+      .select('utm_source, utm_medium, utm_campaign, event_type, value, days_since_click, is_attributed');
 
     // 날짜 필터
     if (startDate && endDate) {
@@ -313,10 +313,11 @@ export const getCampaignPerformance = async ({
     // 캠페인별 그룹화
     const grouped = {};
     data.forEach((event) => {
-      const key = `${event.utm_source || 'direct'}_${event.utm_campaign}`;
+      const key = `${event.utm_source || 'direct'}_${event.utm_medium || ''}_${event.utm_campaign}`;
       if (!grouped[key]) {
         grouped[key] = {
           source: event.utm_source || 'direct',
+          medium: event.utm_medium || '-',
           campaign: event.utm_campaign,
           totalEvents: 0,
           conversions: 0,

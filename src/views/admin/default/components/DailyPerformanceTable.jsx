@@ -48,6 +48,7 @@ export default function DailyPerformanceTable({ dailyData }) {
                 fontSize={{ sm: '10px', lg: '12px' }}
                 fontWeight='700'
                 textTransform='uppercase'
+                textAlign='center'
               >
                 날짜
               </Th>
@@ -57,37 +58,7 @@ export default function DailyPerformanceTable({ dailyData }) {
                 fontSize={{ sm: '10px', lg: '12px' }}
                 fontWeight='700'
                 textTransform='uppercase'
-                isNumeric
-              >
-                노출
-              </Th>
-              <Th
-                borderColor={borderColor}
-                color={textColorSecondary}
-                fontSize={{ sm: '10px', lg: '12px' }}
-                fontWeight='700'
-                textTransform='uppercase'
-                isNumeric
-              >
-                클릭
-              </Th>
-              <Th
-                borderColor={borderColor}
-                color={textColorSecondary}
-                fontSize={{ sm: '10px', lg: '12px' }}
-                fontWeight='700'
-                textTransform='uppercase'
-                isNumeric
-              >
-                CTR
-              </Th>
-              <Th
-                borderColor={borderColor}
-                color={textColorSecondary}
-                fontSize={{ sm: '10px', lg: '12px' }}
-                fontWeight='700'
-                textTransform='uppercase'
-                isNumeric
+                textAlign='center'
               >
                 지출금액
               </Th>
@@ -97,7 +68,47 @@ export default function DailyPerformanceTable({ dailyData }) {
                 fontSize={{ sm: '10px', lg: '12px' }}
                 fontWeight='700'
                 textTransform='uppercase'
-                isNumeric
+                textAlign='center'
+              >
+                노출
+              </Th>
+              <Th
+                borderColor={borderColor}
+                color={textColorSecondary}
+                fontSize={{ sm: '10px', lg: '12px' }}
+                fontWeight='700'
+                textTransform='uppercase'
+                textAlign='center'
+              >
+                클릭
+              </Th>
+              <Th
+                borderColor={borderColor}
+                color={textColorSecondary}
+                fontSize={{ sm: '10px', lg: '12px' }}
+                fontWeight='700'
+                textTransform='uppercase'
+                textAlign='center'
+              >
+                CTR
+              </Th>
+              <Th
+                borderColor={borderColor}
+                color={textColorSecondary}
+                fontSize={{ sm: '10px', lg: '12px' }}
+                fontWeight='700'
+                textTransform='uppercase'
+                textAlign='center'
+              >
+                CPM
+              </Th>
+              <Th
+                borderColor={borderColor}
+                color={textColorSecondary}
+                fontSize={{ sm: '10px', lg: '12px' }}
+                fontWeight='700'
+                textTransform='uppercase'
+                textAlign='center'
               >
                 전환수
               </Th>
@@ -107,42 +118,48 @@ export default function DailyPerformanceTable({ dailyData }) {
                 fontSize={{ sm: '10px', lg: '12px' }}
                 fontWeight='700'
                 textTransform='uppercase'
-                isNumeric
+                textAlign='center'
               >
                 ROAS
               </Th>
             </Tr>
           </Thead>
           <Tbody>
-            {dailyData.map((row, index) => (
-              <Tr
-                key={row.date}
-                bg={index % 2 === 0 ? 'transparent' : bgHover}
-                _hover={{ bg: bgHover }}
-              >
-                <Td borderColor={borderColor} fontSize='sm' fontWeight='500' color={textColor}>
-                  {row.date}
-                </Td>
-                <Td borderColor={borderColor} fontSize='sm' fontWeight='700' color={textColor} isNumeric>
-                  {Math.round(row.impressions).toLocaleString()}
-                </Td>
-                <Td borderColor={borderColor} fontSize='sm' fontWeight='700' color={textColor} isNumeric>
-                  {Math.round(row.clicks).toLocaleString()}
-                </Td>
-                <Td borderColor={borderColor} fontSize='sm' fontWeight='700' color={textColor} isNumeric>
-                  {row.ctr.toFixed(2)}%
-                </Td>
-                <Td borderColor={borderColor} fontSize='sm' fontWeight='700' color={textColor} isNumeric>
-                  ₩{Math.round(row.cost).toLocaleString()}
-                </Td>
-                <Td borderColor={borderColor} fontSize='sm' fontWeight='700' color={textColor} isNumeric>
-                  {Math.round(row.conversions).toLocaleString()}
-                </Td>
-                <Td borderColor={borderColor} fontSize='sm' fontWeight='700' color={textColor} isNumeric>
-                  {Math.round(row.roas)}%
-                </Td>
-              </Tr>
-            ))}
+            {dailyData.map((row, index) => {
+              const cpm = row.impressions > 0 ? (row.cost / row.impressions) * 1000 : 0;
+              return (
+                <Tr
+                  key={row.date}
+                  bg={index % 2 === 0 ? 'transparent' : bgHover}
+                  _hover={{ bg: bgHover }}
+                >
+                  <Td borderColor={borderColor} fontSize='sm' fontWeight='500' color={textColor} textAlign='center'>
+                    {row.date}
+                  </Td>
+                  <Td borderColor={borderColor} fontSize='sm' fontWeight='700' color={textColor} textAlign='center'>
+                    ₩{Math.round(row.cost).toLocaleString()}
+                  </Td>
+                  <Td borderColor={borderColor} fontSize='sm' fontWeight='700' color={textColor} textAlign='center'>
+                    {Math.round(row.impressions).toLocaleString()}
+                  </Td>
+                  <Td borderColor={borderColor} fontSize='sm' fontWeight='700' color={textColor} textAlign='center'>
+                    {Math.round(row.clicks).toLocaleString()}
+                  </Td>
+                  <Td borderColor={borderColor} fontSize='sm' fontWeight='700' color={textColor} textAlign='center'>
+                    {row.ctr.toFixed(2)}%
+                  </Td>
+                  <Td borderColor={borderColor} fontSize='sm' fontWeight='700' color={textColor} textAlign='center'>
+                    ₩{Math.round(cpm).toLocaleString()}
+                  </Td>
+                  <Td borderColor={borderColor} fontSize='sm' fontWeight='700' color={textColor} textAlign='center'>
+                    {Math.round(row.conversions).toLocaleString()}
+                  </Td>
+                  <Td borderColor={borderColor} fontSize='sm' fontWeight='700' color={textColor} textAlign='center'>
+                    {Math.round(row.roas)}%
+                  </Td>
+                </Tr>
+              );
+            })}
           </Tbody>
         </Table>
       </Box>

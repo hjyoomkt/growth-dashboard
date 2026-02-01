@@ -1903,9 +1903,10 @@ export const getAllCreatives = async ({ advertiserId, availableAdvertiserIds, st
  * @returns {Array} [{date, cost, impressions, clicks, conversions, conversion_value, ctr, roas}]
  */
 export const getAdDailyPerformance = async (adId, startDate, endDate) => {
+  // 1. ad_performance에서 advertiser_id, source, campaign_name, ad_group_name 및 데이터 조회
   const { data, error } = await supabase
     .from('ad_performance')
-    .select('date, cost, impressions, clicks, conversions, conversion_value')
+    .select('date, cost, impressions, clicks, conversions, conversion_value, complete_registrations, complete_registrations_value, advertiser_id, source, campaign_name, ad_group_name, ad_name')
     .eq('ad_id', adId)
     .gte('date', startDate)
     .lte('date', endDate)
@@ -1913,8 +1914,34 @@ export const getAdDailyPerformance = async (adId, startDate, endDate) => {
     .order('date', { ascending: true });
 
   if (error) throw error;
+  if (!data || data.length === 0) return { dailyData: [], adInfo: null };
 
-  // 날짜별 집계 (동일 날짜 여러 행 가능)
+  // 2. 광고 기본 정보 추출 (첫 번째 row에서)
+  const advertiserId = data[0].advertiser_id;
+  const source = data[0].source;
+  const adInfo = {
+    campaignName: data[0].campaign_name || '',
+    adGroupName: data[0].ad_group_name || '',
+    adName: data[0].ad_name || '',
+    source: source || '',
+  };
+
+  // 3. 광고주의 meta_conversion_type 조회
+  let metaConversionType = 'purchase';
+
+  if (advertiserId && source === 'Meta') {
+    const { data: advertiserData } = await supabase
+      .from('advertisers')
+      .select('meta_conversion_type')
+      .eq('id', advertiserId)
+      .single();
+    metaConversionType = advertiserData?.meta_conversion_type || 'purchase';
+  }
+
+  // 4. 메타 광고이고 complete_registration이면 해당 컬럼 사용
+  const useRegistration = source === 'Meta' && metaConversionType === 'complete_registration';
+
+  // 5. 날짜별 집계 (동일 날짜 여러 행 가능)
   const aggregatedByDate = (data || []).reduce((acc, row) => {
     const dateKey = row.date;
     if (!acc[dateKey]) {
@@ -1930,13 +1957,18 @@ export const getAdDailyPerformance = async (adId, startDate, endDate) => {
     acc[dateKey].cost += Number(row.cost) || 0;
     acc[dateKey].impressions += Number(row.impressions) || 0;
     acc[dateKey].clicks += Number(row.clicks) || 0;
-    acc[dateKey].conversions += Number(row.conversions) || 0;
-    acc[dateKey].conversion_value += Number(row.conversion_value) || 0;
+    // 메타 회원가입 전환 설정 적용
+    acc[dateKey].conversions += useRegistration
+      ? (Number(row.complete_registrations) || 0)
+      : (Number(row.conversions) || 0);
+    acc[dateKey].conversion_value += useRegistration
+      ? (Number(row.complete_registrations_value) || 0)
+      : (Number(row.conversion_value) || 0);
     return acc;
   }, {});
 
-  // CTR, ROAS 계산
-  return Object.values(aggregatedByDate).map(row => ({
+  // 6. CTR, ROAS 계산
+  const dailyData = Object.values(aggregatedByDate).map(row => ({
     date: row.date,
     cost: row.cost,
     impressions: row.impressions,
@@ -1946,6 +1978,8 @@ export const getAdDailyPerformance = async (adId, startDate, endDate) => {
     ctr: row.impressions > 0 ? (row.clicks / row.impressions) * 100 : 0,
     roas: row.cost > 0 ? (row.conversion_value / row.cost) * 100 : 0,
   }));
+
+  return { dailyData, adInfo };
 };
 
 // ============================================

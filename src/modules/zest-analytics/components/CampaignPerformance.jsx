@@ -76,6 +76,7 @@ export default function CampaignPerformance({
             <Thead>
               <Tr>
                 <Th>소스</Th>
+                <Th>미디엄</Th>
                 <Th>캠페인</Th>
                 <Th isNumeric>총 이벤트</Th>
                 <Th isNumeric>전환</Th>
@@ -91,6 +92,11 @@ export default function CampaignPerformance({
                   <Td>
                     <Badge colorScheme="blue" fontSize="xs">
                       {campaign.source}
+                    </Badge>
+                  </Td>
+                  <Td>
+                    <Badge colorScheme="purple" fontSize="xs">
+                      {campaign.medium}
                     </Badge>
                   </Td>
                   <Td fontWeight="medium">{campaign.campaign}</Td>
