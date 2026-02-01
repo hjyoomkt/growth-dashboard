@@ -217,17 +217,18 @@ function CreativeCard({ creative, rankBadge, textColor, textColorSecondary }) {
         <Box mb={{ base: "20px", "2xl": "20px" }} position='relative'>
           {creative.isVideo && creative.videoUrl ? (
             <video
-              src={creative.videoUrl}
+              src={`${creative.videoUrl}#t=0.001`}
               style={{
                 width: '100%',
                 maxHeight: '200px',
-                objectFit: 'cover',
+                objectFit: 'contain',
                 borderRadius: '20px',
                 display: 'block'
               }}
               title={creative.adName}
               controls
               preload='metadata'
+              playsInline
             />
           ) : creative.imageUrl ? (
             <Image
@@ -287,18 +288,21 @@ function CreativeCard({ creative, rankBadge, textColor, textColorSecondary }) {
               "2xl": "row",
             }}
             mb='auto'>
-            <Flex direction='row' align='center' gap='8px' flexWrap='wrap'>
+            <Flex direction={{ base: 'column', md: 'row' }} align={{ base: 'flex-start', md: 'center' }} gap='4px' w='100%'>
               <Text
                 color={textColor}
                 fontSize={{
-                  base: "xl",
+                  base: "md",
                   md: "lg",
                   lg: "lg",
                   xl: "lg",
                   "2xl": "md",
                   "3xl": "lg",
                 }}
-                fontWeight='bold'>
+                fontWeight='bold'
+                noOfLines={2}
+                maxW='100%'
+                wordBreak='break-all'>
                 {creative.adName}
               </Text>
               <Text
