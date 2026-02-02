@@ -15,21 +15,25 @@ import AdvertisersTree from "./components/AdvertisersTree";
 import AddBrandModal from "./components/AddBrandModal";
 import EditBrandModal from "./components/EditBrandModal";
 import DeleteBrandModal from "./components/DeleteBrandModal";
+import DeleteAgencyModal from "./components/DeleteAgencyModal";
 import InviteAgencyModal from "./components/InviteAgencyModal";
 import { supabase } from "config/supabase";
 import { useAuth } from "contexts/AuthContext";
-import { deleteBrand } from "services/supabaseService";
+import { deleteBrand, deleteAgency } from "services/supabaseService";
 
 export default function AdvertisersManagement() {
   const { isOpen, onOpen, onClose } = useDisclosure();
   const { isOpen: isEditOpen, onOpen: onEditOpen, onClose: onEditClose } = useDisclosure();
   const { isOpen: isDeleteOpen, onOpen: onDeleteOpen, onClose: onDeleteClose } = useDisclosure();
+  const { isOpen: isDeleteAgencyOpen, onOpen: onDeleteAgencyOpen, onClose: onDeleteAgencyClose } = useDisclosure();
   const { isOpen: isInviteAgencyOpen, onOpen: onInviteAgencyOpen, onClose: onInviteAgencyClose } = useDisclosure();
   const [selectedOrganization, setSelectedOrganization] = useState(null);
   const [selectedBrand, setSelectedBrand] = useState(null);
+  const [selectedOrganizationForDelete, setSelectedOrganizationForDelete] = useState(null);
   const [organizations, setOrganizations] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [isDeletingAgency, setIsDeletingAgency] = useState(false);
   const toast = useToast();
   const { role, organizationId, isMaster } = useAuth();
 
@@ -101,6 +105,11 @@ export default function AdvertisersManagement() {
     onDeleteOpen();
   };
 
+  const handleDeleteAgency = (organization) => {
+    setSelectedOrganizationForDelete(organization);
+    onDeleteAgencyOpen();
+  };
+
   const confirmDelete = async (brandId) => {
     try {
       setIsDeleting(true);
@@ -130,6 +139,38 @@ export default function AdvertisersManagement() {
       });
     } finally {
       setIsDeleting(false);
+    }
+  };
+
+  const confirmDeleteAgency = async (organizationId) => {
+    try {
+      setIsDeletingAgency(true);
+
+      // deleteAgency 함수 사용
+      await deleteAgency(organizationId, selectedOrganizationForDelete.name);
+
+      toast({
+        title: "에이전시 삭제 완료",
+        description: `${selectedOrganizationForDelete.name} 에이전시와 관련된 모든 데이터가 삭제되었습니다.`,
+        status: "success",
+        duration: 3000,
+      });
+
+      onDeleteAgencyClose();
+      setSelectedOrganizationForDelete(null);
+
+      // 데이터 새로고침
+      fetchOrganizations();
+    } catch (error) {
+      console.error('에이전시 삭제 실패:', error);
+      toast({
+        title: "에이전시 삭제 실패",
+        description: error.message,
+        status: "error",
+        duration: 5000,
+      });
+    } finally {
+      setIsDeletingAgency(false);
     }
   };
 
@@ -168,6 +209,7 @@ export default function AdvertisersManagement() {
           onAddBrand={handleAddBrand}
           onEditBrand={handleEditBrand}
           onDeleteBrand={handleDeleteBrand}
+          onDeleteAgency={handleDeleteAgency}
           currentUserRole={role}
           currentUserOrgId={organizationId}
         />
@@ -212,6 +254,16 @@ export default function AdvertisersManagement() {
           fetchOrganizations();
         }}
       />
+
+      {selectedOrganizationForDelete && (
+        <DeleteAgencyModal
+          isOpen={isDeleteAgencyOpen}
+          onClose={onDeleteAgencyClose}
+          organization={selectedOrganizationForDelete}
+          onConfirm={confirmDeleteAgency}
+          isLoading={isDeletingAgency}
+        />
+      )}
     </Box>
   );
 }

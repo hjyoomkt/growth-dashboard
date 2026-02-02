@@ -28,13 +28,14 @@ import { useNavigate } from 'react-router-dom';
 import DeleteAccountConfirmModal from './DeleteAccountConfirmModal';
 import OwnershipTransferModal from './OwnershipTransferModal';
 import DeleteBrandModal from 'views/superadmin/advertisers/components/DeleteBrandModal';
+import DeleteAgencyWithEmailModal from './DeleteAgencyWithEmailModal';
 import { useAuth } from 'contexts/AuthContext';
 import { deleteBrand, canDeleteBrand } from 'services/supabaseService';
 import { supabase } from 'config/supabase';
 
 export default function ProfileEditModal({ isOpen, onClose, currentData }) {
   const toast = useToast();
-  const { user, role, advertiserId, signOut } = useAuth();
+  const { user, role, advertiserId, organizationId, signOut } = useAuth();
   const [formData, setFormData] = useState({
     name: currentData?.name || '',
     job: currentData?.job || '',
@@ -62,8 +63,15 @@ export default function ProfileEditModal({ isOpen, onClose, currentData }) {
     onClose: onDeleteBrandClose
   } = useDisclosure();
 
+  const {
+    isOpen: isDeleteAgencyOpen,
+    onOpen: onDeleteAgencyOpen,
+    onClose: onDeleteAgencyClose
+  } = useDisclosure();
+
   const [newOwnerId, setNewOwnerId] = useState(null);
   const [currentBrand, setCurrentBrand] = useState(null);
+  const [currentOrganization, setCurrentOrganization] = useState(null);
   const [isDeletingBrand, setIsDeletingBrand] = useState(false);
   const navigate = useNavigate();
 
@@ -73,6 +81,7 @@ export default function ProfileEditModal({ isOpen, onClose, currentData }) {
   const placeholderColor = useColorModeValue('gray.400', 'gray.500');
 
   const isAdvertiserAdmin = role === 'advertiser_admin';
+  const isAgencyAdmin = role === 'agency_admin';
   const isMaster = role === 'master';
 
   const handleSubmit = () => {
@@ -126,6 +135,39 @@ export default function ProfileEditModal({ isOpen, onClose, currentData }) {
       fetchBrandInfo();
     }
   }, [isOpen, isAdvertiserAdmin, advertiserId]);
+
+  // 조직 정보 가져오기 (에이전시 대표용)
+  React.useEffect(() => {
+    const fetchOrganizationInfo = async () => {
+      if (isAgencyAdmin && organizationId) {
+        try {
+          const { data, error } = await supabase
+            .from('organizations')
+            .select(`
+              id,
+              name,
+              type,
+              advertisers (
+                id,
+                name
+              )
+            `)
+            .eq('id', organizationId)
+            .single();
+
+          if (error) throw error;
+          setCurrentOrganization(data);
+          console.log('[ProfileEditModal] 조직 정보 조회 성공:', data);
+        } catch (error) {
+          console.error('[ProfileEditModal] 조직 정보 조회 실패:', error);
+        }
+      }
+    };
+
+    if (isOpen) {
+      fetchOrganizationInfo();
+    }
+  }, [isOpen, isAgencyAdmin, organizationId]);
 
   const handleDeleteClick = () => {
     if (isAdvertiserAdmin) {
@@ -424,6 +466,29 @@ export default function ProfileEditModal({ isOpen, onClose, currentData }) {
                 </VStack>
               </>
             )}
+
+            {/* 에이전시 삭제 섹션 (agency_admin만) */}
+            {isAgencyAdmin && currentOrganization && (
+              <>
+                <Divider my={2} />
+                <VStack align="stretch" spacing={2}>
+                  <Text fontSize="sm" fontWeight="500" color="red.700">
+                    에이전시 서비스 탈퇴
+                  </Text>
+                  <Button
+                    leftIcon={<MdDelete />}
+                    colorScheme="red"
+                    size="sm"
+                    onClick={onDeleteAgencyOpen}
+                  >
+                    에이전시 삭제
+                  </Button>
+                  <Text fontSize="xs" color="red.500">
+                    조직, 소속 브랜드({currentOrganization.advertisers?.length || 0}개), 모든 직원 및 데이터가 영구 삭제됩니다.
+                  </Text>
+                </VStack>
+              </>
+            )}
           </VStack>
         </ModalBody>
 
@@ -469,6 +534,15 @@ export default function ProfileEditModal({ isOpen, onClose, currentData }) {
           brand={currentBrand}
           onConfirm={confirmDeleteBrand}
           isLoading={isDeletingBrand}
+        />
+      )}
+
+      {/* 에이전시 삭제 확인 모달 */}
+      {currentOrganization && (
+        <DeleteAgencyWithEmailModal
+          isOpen={isDeleteAgencyOpen}
+          onClose={onDeleteAgencyClose}
+          organization={currentOrganization}
         />
       )}
     </Modal>

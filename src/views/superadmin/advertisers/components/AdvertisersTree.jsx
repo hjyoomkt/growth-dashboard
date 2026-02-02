@@ -17,7 +17,7 @@ import {
 } from "@chakra-ui/react";
 import { MdChevronRight, MdExpandMore, MdMoreVert, MdBusiness, MdStorefront, MdDelete } from "react-icons/md";
 
-export default function AdvertisersTree({ organizations = [], onAddBrand, onEditBrand, onDeleteBrand, currentUserRole, currentUserOrgId }) {
+export default function AdvertisersTree({ organizations = [], onAddBrand, onEditBrand, onDeleteBrand, onDeleteAgency, currentUserRole, currentUserOrgId }) {
   const textColor = useColorModeValue("secondaryGray.900", "white");
   const borderColor = useColorModeValue("gray.200", "whiteAlpha.100");
   const hoverBg = useColorModeValue("secondaryGray.100", "whiteAlpha.100");
@@ -49,6 +49,11 @@ export default function AdvertisersTree({ organizations = [], onAddBrand, onEdit
     }
 
     return false;
+  };
+
+  // 에이전시 삭제 권한 체크 (master만 가능)
+  const canDeleteAgency = () => {
+    return currentUserRole === 'master';
   };
 
   const formatDate = (dateString) => {
@@ -87,9 +92,6 @@ export default function AdvertisersTree({ organizations = [], onAddBrand, onEdit
                 gap="12px"
                 p="16px"
                 bg={orgBg}
-                cursor="pointer"
-                onClick={() => toggleOrg(org.id)}
-                _hover={{ bg: hoverBg }}
                 transition="all 0.2s"
               >
                 <Icon
@@ -97,6 +99,8 @@ export default function AdvertisersTree({ organizations = [], onAddBrand, onEdit
                   w="24px"
                   h="24px"
                   color={textColor}
+                  cursor="pointer"
+                  onClick={() => toggleOrg(org.id)}
                 />
                 <Icon
                   as={MdBusiness}
@@ -104,7 +108,7 @@ export default function AdvertisersTree({ organizations = [], onAddBrand, onEdit
                   h="20px"
                   color={org.type === 'agency' ? 'purple.500' : 'blue.500'}
                 />
-                <Box>
+                <Box flex="1" cursor="pointer" onClick={() => toggleOrg(org.id)} _hover={{ opacity: 0.8 }}>
                   <HStack spacing="8px" mb="4px">
                     <Text fontSize="md" fontWeight="700" color={textColor}>
                       {org.name}
@@ -117,6 +121,31 @@ export default function AdvertisersTree({ organizations = [], onAddBrand, onEdit
                     브랜드 {brandCount}개
                   </Text>
                 </Box>
+
+                {/* 에이전시 삭제 메뉴 (master만) */}
+                {canDeleteAgency() && (
+                  <Menu>
+                    <MenuButton
+                      as={IconButton}
+                      icon={<Icon as={MdMoreVert} />}
+                      variant="ghost"
+                      size="sm"
+                      onClick={(e) => e.stopPropagation()}
+                    />
+                    <MenuList>
+                      <MenuItem
+                        icon={<Icon as={MdDelete} />}
+                        color="red.500"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onDeleteAgency(org);
+                        }}
+                      >
+                        에이전시 삭제
+                      </MenuItem>
+                    </MenuList>
+                  </Menu>
+                )}
               </Flex>
 
               {/* 광고주(브랜드) 목록 */}

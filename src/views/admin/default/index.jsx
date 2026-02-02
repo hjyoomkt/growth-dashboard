@@ -82,12 +82,23 @@ export default function UserReports() {
     try {
       setLoading(true);
       const availableAdvertiserIds = (availableAdvertisers || []).map(adv => adv.id);
+
+      console.log('[MainDashboard] fetchKPIData 호출:', {
+        currentAdvertiserId,
+        availableAdvertisers,
+        availableAdvertiserIds,
+        startDate,
+        endDate,
+      });
+
       const data = await getKPIData({
         advertiserId: currentAdvertiserId,
         availableAdvertiserIds,
         startDate,
         endDate,
       });
+
+      console.log('[MainDashboard] KPI 데이터 조회 결과:', data);
       setKpiData(data);
     } catch (error) {
       console.error('KPI 데이터 조회 실패:', error);

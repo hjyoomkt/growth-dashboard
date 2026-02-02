@@ -1171,16 +1171,22 @@ export const getKPIData = async ({ advertiserId, availableAdvertiserIds, startDa
     metaConversionType = advertiserData?.meta_conversion_type || 'purchase';
   }
 
-  // 서버측 집계 RPC 호출
-  const { data, error } = await supabase.rpc('get_kpi_aggregated', {
+  const rpcParams = {
     p_advertiser_id: advertiserId || null,
     p_advertiser_ids: (availableAdvertiserIds && availableAdvertiserIds.length > 0) ? availableAdvertiserIds : null,
     p_start_date: startDate || null,
     p_end_date: endDate || null,
     p_meta_conversion_type: metaConversionType
-  });
+  };
+
+  console.log('[getKPIData] RPC 호출 파라미터:', rpcParams);
+
+  // 서버측 집계 RPC 호출
+  const { data, error } = await supabase.rpc('get_kpi_aggregated', rpcParams);
 
   if (error) throw error;
+
+  console.log('[getKPIData] RPC 응답 데이터:', data);
 
   // 서버에서 이미 집계됨 - 첫 행 추출
   const totals = data?.[0] || {
@@ -2954,3 +2960,301 @@ export async function getChangelogs(filters = {}) {
     throw error;
   }
 }
+
+// ============================================================================
+// 에이전시 삭제 관련 함수
+// ============================================================================
+
+/**
+ * 에이전시 삭제 확인 이메일 발송
+ * @param {string} organizationId - 조직 ID
+ * @param {string} organizationName - 조직명
+ * @returns {Promise<Object>} - { success: boolean, expires_at: string }
+ */
+export const sendAgencyDeletionEmail = async (organizationId, organizationName) => {
+  try {
+    console.log('[sendAgencyDeletionEmail] 이메일 발송 시작:', { organizationId, organizationName });
+
+    const { data, error } = await supabase.functions.invoke('send-agency-deletion-email', {
+      body: {
+        organization_id: organizationId,
+        organization_name: organizationName
+      }
+    });
+
+    if (error) {
+      console.error('[sendAgencyDeletionEmail] 에러:', error);
+      throw error;
+    }
+
+    console.log('[sendAgencyDeletionEmail] 발송 완료:', data);
+    return data;
+  } catch (error) {
+    console.error('[sendAgencyDeletionEmail] 예외 발생:', error);
+    throw error;
+  }
+};
+
+/**
+ * 에이전시 삭제 확인 코드 검증
+ * @param {string} code - 확인 코드 (VERIFY-XXXXXX)
+ * @param {string} organizationId - 조직 ID
+ * @returns {Promise<Object>} - { valid: boolean, reason?: string }
+ */
+export const verifyAgencyDeletionCode = async (code, organizationId) => {
+  try {
+    console.log('[verifyAgencyDeletionCode] 코드 검증 시작:', { code, organizationId });
+
+    const { data, error } = await supabase
+      .from('agency_deletion_codes')
+      .select('*')
+      .eq('code', code)
+      .eq('organization_id', organizationId)
+      .is('used_at', null)
+      .single();
+
+    if (error) {
+      console.error('[verifyAgencyDeletionCode] 조회 에러:', error);
+      return { valid: false, reason: '유효하지 않은 코드입니다.' };
+    }
+
+    if (!data) {
+      return { valid: false, reason: '코드를 찾을 수 없습니다.' };
+    }
+
+    // 만료 확인
+    const expiresAt = new Date(data.expires_at);
+    const now = new Date();
+
+    if (now > expiresAt) {
+      return { valid: false, reason: '코드가 만료되었습니다. 새 코드를 발급받으세요.' };
+    }
+
+    // 사용 처리
+    const { error: updateError } = await supabase
+      .from('agency_deletion_codes')
+      .update({ used_at: now.toISOString() })
+      .eq('id', data.id);
+
+    if (updateError) {
+      console.error('[verifyAgencyDeletionCode] 사용 처리 실패:', updateError);
+      return { valid: false, reason: '코드 처리 중 오류가 발생했습니다.' };
+    }
+
+    console.log('[verifyAgencyDeletionCode] 검증 완료');
+    return { valid: true };
+  } catch (error) {
+    console.error('[verifyAgencyDeletionCode] 예외 발생:', error);
+    return { valid: false, reason: '코드 검증 중 오류가 발생했습니다.' };
+  }
+};
+
+/**
+ * 에이전시 삭제
+ * @param {string} organizationId - 조직 ID
+ * @param {string} organizationName - 조직명 (로그용)
+ * @returns {Promise<Object>} - 삭제 결과
+ */
+export const deleteAgency = async (organizationId, organizationName) => {
+  try {
+    console.log('[deleteAgency] 삭제 시작:', { organizationId, organizationName });
+
+    // 1. 조직 정보 조회
+    const { data: orgData, error: orgError } = await supabase
+      .from('organizations')
+      .select(`
+        id,
+        name,
+        advertisers (
+          id,
+          name
+        )
+      `)
+      .eq('id', organizationId)
+      .single();
+
+    if (orgError) {
+      console.error('[deleteAgency] 조직 조회 실패:', orgError);
+      throw orgError;
+    }
+
+    console.log('[deleteAgency] 조직 정보:', orgData);
+    console.log('[deleteAgency] 소속 브랜드 수:', orgData.advertisers?.length || 0);
+
+    // 2. 소속 브랜드 모두 삭제
+    let deletedBrands = [];
+    let failedBrands = [];
+
+    if (orgData.advertisers && orgData.advertisers.length > 0) {
+      for (const brand of orgData.advertisers) {
+        try {
+          console.log(`[deleteAgency] 브랜드 삭제 중: ${brand.name}`);
+
+          // deleteBrand 함수 재사용 (브랜드 전용 사용자 삭제 + 에이전시 직원 보호)
+          await deleteBrand(brand.id, brand.name);
+
+          deletedBrands.push(brand.name);
+          console.log(`[deleteAgency] ✓ 브랜드 삭제 완료: ${brand.name}`);
+        } catch (error) {
+          console.error(`[deleteAgency] ✗ 브랜드 삭제 실패: ${brand.name}`, error);
+          failedBrands.push(brand.name);
+        }
+      }
+    }
+
+    console.log('[deleteAgency] 브랜드 삭제 완료:', {
+      total: orgData.advertisers?.length || 0,
+      success: deletedBrands.length,
+      failed: failedBrands.length
+    });
+
+    // 3. 에이전시 직원 목록 조회
+    const { data: usersToDelete, error: usersError } = await supabase
+      .from('users')
+      .select('id, email, name, role')
+      .eq('organization_id', organizationId);
+
+    if (usersError) {
+      console.error('[deleteAgency] 직원 조회 실패:', usersError);
+      throw usersError;
+    }
+
+    console.log('[deleteAgency] 삭제할 직원:', usersToDelete?.length || 0, usersToDelete);
+
+    // 4. 에이전시 직원들 삭제 먼저 (조직 삭제 전에!)
+    // 이유: 조직 삭제 시 CASCADE로 users 삭제되면 현재 사용자도 삭제되어 Edge Function 인증 실패
+    const { data: { session } } = await supabase.auth.getSession();
+
+    let deletedUsers = [];
+    let failedUsers = [];
+
+    if (!session) {
+      console.warn('[deleteAgency] ⚠️ 세션 없음 - 직원 삭제 건너뜀');
+    } else if (usersToDelete && usersToDelete.length > 0) {
+      const SUPABASE_URL = process.env.REACT_APP_SUPABASE_URL;
+      const functionUrl = `${SUPABASE_URL}/functions/v1/delete-user`;
+
+      // 현재 로그인한 사용자를 마지막에 삭제
+      const currentUserId = session.user.id;
+      const otherUsers = usersToDelete.filter(u => u.id !== currentUserId);
+      const currentUser = usersToDelete.find(u => u.id === currentUserId);
+      const orderedUsers = currentUser ? [...otherUsers, currentUser] : usersToDelete;
+
+      console.log('[deleteAgency] 삭제 순서:', orderedUsers.map(u => `${u.email} ${u.id === currentUserId ? '(현재 사용자)' : ''}`));
+
+      for (const user of orderedUsers) {
+        try {
+          console.log(`[deleteAgency] 직원 삭제 중: ${user.email}`);
+
+          const response = await fetch(functionUrl, {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${session.access_token}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              user_id: user.id,
+              is_agency_deletion: false  // 조직 아직 존재하므로 false
+            }),
+          });
+
+          const result = await response.json();
+
+          if (!response.ok) {
+            console.error(`[deleteAgency] ✗ ${user.email} 삭제 실패:`, result);
+            failedUsers.push(user.email);
+          } else {
+            console.log(`[deleteAgency] ✓ ${user.email} 삭제 완료`);
+            deletedUsers.push(user.email);
+          }
+        } catch (fetchError) {
+          console.error(`[deleteAgency] ✗ ${user.email} 삭제 실패:`, fetchError);
+          failedUsers.push(user.email);
+        }
+      }
+    }
+
+    console.log('[deleteAgency] 직원 삭제 완료:', {
+      total: usersToDelete?.length || 0,
+      success: deletedUsers.length,
+      failed: failedUsers.length
+    });
+
+    // 5. 조직 삭제 (사용자 삭제 후에!)
+    const { error: deleteOrgError } = await supabase
+      .from('organizations')
+      .delete()
+      .eq('id', organizationId);
+
+    if (deleteOrgError) {
+      console.error('[deleteAgency] ✗ 조직 삭제 실패:', deleteOrgError);
+      throw new Error(`조직 삭제 실패: ${deleteOrgError.message}`);
+    }
+
+    console.log('[deleteAgency] ✓ 조직 삭제 완료');
+
+    console.log('[deleteAgency] 삭제 완료:', {
+      organization: organizationName,
+      deletedBrands: deletedBrands.length,
+      failedBrands: failedBrands.length,
+      deletedUsers: deletedUsers.length,
+      failedUsers: failedUsers.length
+    });
+
+    return {
+      success: true,
+      deletedBrands,
+      failedBrands,
+      deletedUsers,
+      failedUsers
+    };
+
+  } catch (error) {
+    console.error('[deleteAgency] 예외 발생:', error);
+    throw error;
+  }
+};
+
+/**
+ * 에이전시 삭제 권한 확인
+ * @param {string} userId - 사용자 ID
+ * @param {string} organizationId - 조직 ID
+ * @returns {Promise<Object>} - { canDelete: boolean, reason?: string }
+ */
+export const canDeleteAgency = async (userId, organizationId) => {
+  try {
+    const { data: userData, error: userError } = await supabase
+      .from('users')
+      .select('role, organization_id')
+      .eq('id', userId)
+      .single();
+
+    if (userError) throw userError;
+
+    // master는 모든 에이전시 삭제 가능
+    if (userData.role === 'master') {
+      return { canDelete: true };
+    }
+
+    // agency_admin: 자신의 조직만 삭제 가능
+    if (userData.role === 'agency_admin') {
+      if (userData.organization_id === organizationId) {
+        return { canDelete: true };
+      } else {
+        return {
+          canDelete: false,
+          reason: '다른 조직은 삭제할 수 없습니다.'
+        };
+      }
+    }
+
+    // 그 외 권한은 삭제 불가
+    return {
+      canDelete: false,
+      reason: '에이전시 삭제 권한이 없습니다.'
+    };
+  } catch (error) {
+    console.error('[canDeleteAgency] 권한 확인 실패:', error);
+    return { canDelete: false, reason: '권한 확인 중 오류가 발생했습니다.' };
+  }
+};

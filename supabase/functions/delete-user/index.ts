@@ -5,6 +5,7 @@ interface DeleteUserRequest {
   user_id: string;
   new_owner_id?: string | null;
   is_brand_deletion?: boolean;
+  is_agency_deletion?: boolean;
 }
 
 // 역할 계층 구조
@@ -121,7 +122,7 @@ Deno.serve(async (req) => {
       );
     }
 
-    const { user_id, new_owner_id, is_brand_deletion }: DeleteUserRequest = await req.json();
+    const { user_id, new_owner_id, is_brand_deletion, is_agency_deletion }: DeleteUserRequest = await req.json();
 
     if (!user_id) {
       return new Response(
@@ -131,8 +132,8 @@ Deno.serve(async (req) => {
     }
 
     // 본인 삭제 또는 권한 있는 관리자만 가능
-    // 브랜드 삭제 시에는 권한 체크 건너뛰기
-    if (!is_brand_deletion) {
+    // 브랜드 삭제 또는 에이전시 삭제 시에는 권한 체크 건너뛰기
+    if (!is_brand_deletion && !is_agency_deletion) {
       const authCheck = await canDeleteUser(supabaseAdmin, currentUser.id, user_id);
 
       if (!authCheck.allowed) {
@@ -199,11 +200,18 @@ Deno.serve(async (req) => {
       console.log('Brand deletion confirmed - proceeding with user deletion');
     }
 
+    // 에이전시 삭제 시에는 CASCADE DELETE로 인해 조직 삭제 후 자동 처리됨
+    // 브랜드 삭제와 달리, 조직이 먼저 삭제되고 CASCADE로 users가 삭제되므로
+    // 조직 존재 여부 체크를 하지 않음
+    if (is_agency_deletion) {
+      console.log('Agency deletion mode - skipping organization existence check');
+    }
+
     // 2. advertiser_admin인 경우 소유권 이전 처리
     const isAdvertiserAdmin = userData.role === 'advertiser_admin';
 
-    if (isAdvertiserAdmin && !is_brand_deletion) {
-      // 브랜드 삭제가 아닐 때만 소유권 이전 요구
+    if (isAdvertiserAdmin && !is_brand_deletion && !is_agency_deletion) {
+      // 브랜드/에이전시 삭제가 아닐 때만 소유권 이전 요구
       if (!new_owner_id) {
         return new Response(
           JSON.stringify({ error: 'Brand owner must transfer ownership before deletion (new_owner_id required)' }),
