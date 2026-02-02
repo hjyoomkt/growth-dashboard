@@ -3121,8 +3121,9 @@ export const deleteAgency = async (organizationId, organizationName) => {
 
     console.log('[deleteAgency] 삭제할 직원:', usersToDelete?.length || 0, usersToDelete);
 
-    // 4. 에이전시 직원들 삭제 먼저 (조직 삭제 전에!)
-    // 이유: 조직 삭제 시 CASCADE로 users 삭제되면 현재 사용자도 삭제되어 Edge Function 인증 실패
+    // 4. 에이전시 직원 삭제 (현재 사용자 제외)
+    // 이유: 현재 사용자를 먼저 삭제하면 RLS 정책 검증 실패로 조직 삭제 불가
+    // 조직 삭제 시 CASCADE DELETE로 현재 사용자도 자동 삭제됨
     const { data: { session } } = await supabase.auth.getSession();
 
     let deletedUsers = [];
@@ -3134,15 +3135,14 @@ export const deleteAgency = async (organizationId, organizationName) => {
       const SUPABASE_URL = process.env.REACT_APP_SUPABASE_URL;
       const functionUrl = `${SUPABASE_URL}/functions/v1/delete-user`;
 
-      // 현재 로그인한 사용자를 마지막에 삭제
+      // 현재 로그인한 사용자 제외 (조직 삭제 시 CASCADE로 자동 삭제됨)
       const currentUserId = session.user.id;
       const otherUsers = usersToDelete.filter(u => u.id !== currentUserId);
-      const currentUser = usersToDelete.find(u => u.id === currentUserId);
-      const orderedUsers = currentUser ? [...otherUsers, currentUser] : usersToDelete;
 
-      console.log('[deleteAgency] 삭제 순서:', orderedUsers.map(u => `${u.email} ${u.id === currentUserId ? '(현재 사용자)' : ''}`));
+      console.log('[deleteAgency] 삭제할 직원 (현재 사용자 제외):', otherUsers.map(u => u.email));
+      console.log('[deleteAgency] 현재 사용자는 조직 삭제 시 CASCADE로 자동 삭제됨:', session.user.email);
 
-      for (const user of orderedUsers) {
+      for (const user of otherUsers) {
         try {
           console.log(`[deleteAgency] 직원 삭제 중: ${user.email}`);
 
@@ -3174,13 +3174,15 @@ export const deleteAgency = async (organizationId, organizationName) => {
       }
     }
 
-    console.log('[deleteAgency] 직원 삭제 완료:', {
+    console.log('[deleteAgency] 직원 삭제 완료 (현재 사용자 제외):', {
       total: usersToDelete?.length || 0,
-      success: deletedUsers.length,
+      otherUsersDeleted: deletedUsers.length,
       failed: failedUsers.length
     });
 
-    // 5. 조직 삭제 (사용자 삭제 후에!)
+    // 5. 조직 삭제 (현재 사용자가 아직 존재하므로 권한 유지)
+    // CASCADE DELETE로 현재 사용자도 자동 삭제됨
+    console.log('[deleteAgency] 조직 삭제 시작 (CASCADE로 현재 사용자도 자동 삭제됨)');
     const { error: deleteOrgError } = await supabase
       .from('organizations')
       .delete()
@@ -3191,7 +3193,7 @@ export const deleteAgency = async (organizationId, organizationName) => {
       throw new Error(`조직 삭제 실패: ${deleteOrgError.message}`);
     }
 
-    console.log('[deleteAgency] ✓ 조직 삭제 완료');
+    console.log('[deleteAgency] ✓ 조직 삭제 완료 (현재 사용자도 CASCADE로 삭제됨)');
 
     console.log('[deleteAgency] 삭제 완료:', {
       organization: organizationName,
