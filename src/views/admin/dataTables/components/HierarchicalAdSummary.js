@@ -30,7 +30,14 @@ import {
   ModalCloseButton,
   useDisclosure,
 } from "@chakra-ui/react";
-import { MdChevronLeft, MdChevronRight, MdKeyboardArrowDown, MdTrendingUp, MdArrowUpward, MdArrowDownward, MdZoomOutMap } from "react-icons/md";
+import { MdChevronLeft, MdChevronRight, MdKeyboardArrowDown, MdTrendingUp, MdArrowUpward, MdArrowDownward, MdZoomOutMap, MdUnfoldMore } from "react-icons/md";
+import {
+  createColumnHelper,
+  flexRender,
+  getCoreRowModel,
+  getSortedRowModel,
+  useReactTable,
+} from '@tanstack/react-table';
 import Card from "components/card/Card.js";
 import { useDateRange } from "contexts/DateRangeContext";
 import { useAuth } from "contexts/AuthContext";
@@ -55,6 +62,7 @@ export default function HierarchicalAdSummary() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
   const [selectedMedia, setSelectedMedia] = useState("all");
+  const [sorting, setSorting] = useState([]);
   const itemsPerPage = 30;
   const { isOpen, onOpen, onClose } = useDisclosure();
 
@@ -249,6 +257,9 @@ export default function HierarchicalAdSummary() {
     { id: "ad", label: "광고", columnHeader: "광고명" },
   ];
 
+  // 현재 탭의 컬럼 헤더 가져오기
+  const currentTab = tabs.find(t => t.id === activeTab);
+
   // 고유 매체 목록 추출
   const availableMedias = useMemo(() => {
     const mediaSet = new Set();
@@ -281,10 +292,258 @@ export default function HierarchicalAdSummary() {
     return tableData.filter(row => row.media === selectedMedia);
   }, [tableData, selectedMedia, comparisonMode]);
 
-  // 페이지네이션 계산 (비교 모드에서는 3행을 1개 엔티티로 간주)
+  // 컬럼 정의 (탭별로 다른 컬럼 구조)
+  const columnHelper = createColumnHelper();
+  const columns = useMemo(() => {
+    const baseColumns = [
+      columnHelper.accessor('media', {
+        id: 'media',
+        header: () => <Text>매체</Text>,
+        cell: (info) => info.getValue(),
+        enableSorting: true,
+        size: 100,
+        minSize: 80,
+        maxSize: 200,
+      }),
+    ];
+
+    // 광고그룹/광고 탭에서 캠페인명 추가
+    if (activeTab === "adgroup" || activeTab === "ad") {
+      baseColumns.push(
+        columnHelper.accessor('campaignName', {
+          id: 'campaignName',
+          header: () => <Text>캠페인명</Text>,
+          cell: (info) => info.getValue(),
+          enableSorting: true,
+          size: activeTab === "ad" ? 160 : (activeTab === "adgroup" ? 160 : 250),
+          minSize: 120,
+          maxSize: 500,
+        })
+      );
+    }
+
+    // 광고 탭에서 광고그룹명 추가
+    if (activeTab === "ad") {
+      baseColumns.push(
+        columnHelper.accessor('adGroupName', {
+          id: 'adGroupName',
+          header: () => <Text>광고그룹명</Text>,
+          cell: (info) => info.getValue(),
+          enableSorting: true,
+          size: 160,
+          minSize: 120,
+          maxSize: 500,
+        })
+      );
+    }
+
+    // key 컬럼 (탭별로 다른 이름)
+    baseColumns.push(
+      columnHelper.accessor('key', {
+        id: 'key',
+        header: () => <Text>{currentTab?.columnHeader || "이름"}</Text>,
+        cell: (info) => info.getValue(),
+        enableSorting: true,
+        size: activeTab === "ad" ? 160 : (activeTab === "adgroup" ? 200 : 220),
+        minSize: 120,
+        maxSize: 500,
+      })
+    );
+
+    // 공통 지표 컬럼
+    baseColumns.push(
+      columnHelper.accessor('cost', {
+        id: 'cost',
+        header: () => <Text>지출액</Text>,
+        cell: (info) => info.getValue(),
+        enableSorting: true,
+        size: 150,
+        minSize: 100,
+        maxSize: 250,
+      }),
+      columnHelper.accessor('impressions', {
+        id: 'impressions',
+        header: () => <Text>노출수</Text>,
+        cell: (info) => info.getValue(),
+        enableSorting: true,
+        size: 120,
+        minSize: 80,
+        maxSize: 200,
+      }),
+      columnHelper.accessor('clicks', {
+        id: 'clicks',
+        header: () => <Text>클릭수</Text>,
+        cell: (info) => info.getValue(),
+        enableSorting: true,
+        size: 100,
+        minSize: 80,
+        maxSize: 200,
+      }),
+      columnHelper.accessor((row) => {
+        if (row.rowType === 'difference') return 0;
+        if (row.impressions === 0) return 0;
+        return (row.clicks / row.impressions) * 100;
+      }, {
+        id: 'ctr',
+        header: () => <Text>CTR</Text>,
+        cell: (info) => info.getValue(),
+        enableSorting: true,
+        size: 100,
+        minSize: 70,
+        maxSize: 150,
+      }),
+      columnHelper.accessor((row) => {
+        if (row.rowType === 'difference') return 0;
+        if (row.clicks === 0) return 0;
+        return row.cost / row.clicks;
+      }, {
+        id: 'cpc',
+        header: () => <Text>CPC</Text>,
+        cell: (info) => info.getValue(),
+        enableSorting: true,
+        size: 100,
+        minSize: 80,
+        maxSize: 200,
+      }),
+      columnHelper.accessor('conversions', {
+        id: 'conversions',
+        header: () => <Text>전환수</Text>,
+        cell: (info) => info.getValue(),
+        enableSorting: true,
+        size: 100,
+        minSize: 80,
+        maxSize: 200,
+      }),
+      columnHelper.accessor('conversionValue', {
+        id: 'conversionValue',
+        header: () => <Text>전환가치</Text>,
+        cell: (info) => info.getValue(),
+        enableSorting: true,
+        size: 150,
+        minSize: 100,
+        maxSize: 250,
+      }),
+      columnHelper.accessor((row) => {
+        if (row.rowType === 'difference') return 0;
+        if (row.cost === 0) return 0;
+        return (row.conversionValue / row.cost) * 100;
+      }, {
+        id: 'roas',
+        header: () => <Text>ROAS</Text>,
+        cell: (info) => info.getValue(),
+        enableSorting: true,
+        size: 100,
+        minSize: 70,
+        maxSize: 150,
+      }),
+      columnHelper.accessor((row) => {
+        if (row.rowType === 'difference') return 0;
+        if (row.clicks === 0) return 0;
+        return (row.conversions / row.clicks) * 100;
+      }, {
+        id: 'cvr',
+        header: () => <Text>CVR</Text>,
+        cell: (info) => info.getValue(),
+        enableSorting: true,
+        size: 100,
+        minSize: 70,
+        maxSize: 150,
+      })
+    );
+
+    return baseColumns;
+  }, [activeTab]);
+
+  // 비교 모드 그룹 정렬 처리
+  const sortedData = useMemo(() => {
+    if (!sorting.length) return filteredData;
+
+    const columnId = sorting[0].id;
+    const isDesc = sorting[0].desc;
+
+    // 정렬 값 계산 함수
+    const getSortValue = (row) => {
+      if (columnId === 'ctr') {
+        return row.impressions === 0 ? 0 : (row.clicks / row.impressions) * 100;
+      } else if (columnId === 'cpc') {
+        return row.clicks === 0 ? 0 : row.cost / row.clicks;
+      } else if (columnId === 'roas') {
+        return row.cost === 0 ? 0 : (row.conversionValue / row.cost) * 100;
+      } else if (columnId === 'cvr') {
+        return row.clicks === 0 ? 0 : (row.conversions / row.clicks) * 100;
+      } else {
+        return row[columnId] || 0;
+      }
+    };
+
+    // 비교 모드가 아니면 일반 정렬
+    if (!comparisonMode) {
+      const sorted = [...filteredData].sort((a, b) => {
+        const valA = getSortValue(a);
+        const valB = getSortValue(b);
+
+        if (typeof valA === 'string' && typeof valB === 'string') {
+          return isDesc ? valB.localeCompare(valA) : valA.localeCompare(valB);
+        }
+        return isDesc ? valB - valA : valA - valB;
+      });
+      return sorted;
+    }
+
+    // 비교 모드: 3행씩 그룹으로 정렬
+    const currentRows = filteredData.filter(row => row.rowType === 'current');
+
+    currentRows.sort((a, b) => {
+      const valA = getSortValue(a);
+      const valB = getSortValue(b);
+
+      if (typeof valA === 'string' && typeof valB === 'string') {
+        return isDesc ? valB.localeCompare(valA) : valA.localeCompare(valB);
+      }
+      return isDesc ? valB - valA : valA - valB;
+    });
+
+    // 정렬된 순서대로 3행씩 재구성
+    const result = [];
+    currentRows.forEach(currentRow => {
+      const originalIndex = filteredData.findIndex(
+        r => r.rowType === 'current' && r.key === currentRow.key && r.media === currentRow.media
+      );
+      if (originalIndex !== -1) {
+        result.push(filteredData[originalIndex]);     // current
+        if (filteredData[originalIndex + 1]) {
+          result.push(filteredData[originalIndex + 1]); // comparison
+        }
+        if (filteredData[originalIndex + 2]) {
+          result.push(filteredData[originalIndex + 2]); // difference
+        }
+      }
+    });
+
+    return result;
+  }, [filteredData, sorting, comparisonMode]);
+
+  // React Table 인스턴스 생성
+  const table = useReactTable({
+    data: sortedData,
+    columns,
+    state: {
+      sorting,
+    },
+    onSortingChange: setSorting,
+    getCoreRowModel: getCoreRowModel(),
+    getSortedRowModel: getSortedRowModel(),
+    manualSorting: true,
+    columnResizeMode: 'onChange',
+    enableColumnResizing: true,
+  });
+
+
+  // 페이지네이션 계산 (정렬된 데이터 사용, 비교 모드에서는 3행을 1개 엔티티로 간주)
+  const sortedRows = table.getRowModel().rows;
   const effectiveItemsPerPage = comparisonMode ? Math.floor(itemsPerPage / 3) * 3 : itemsPerPage;
-  const totalPages = Math.ceil(filteredData.length / effectiveItemsPerPage);
-  const paginatedData = filteredData.slice(
+  const totalPages = Math.ceil(sortedRows.length / effectiveItemsPerPage);
+  const paginatedRows = sortedRows.slice(
     (currentPage - 1) * effectiveItemsPerPage,
     currentPage * effectiveItemsPerPage
   );
@@ -293,6 +552,11 @@ export default function HierarchicalAdSummary() {
   React.useEffect(() => {
     setCurrentPage(1);
   }, [activeTab, startDate, endDate, selectedMedia]);
+
+  // 정렬 변경 시 페이지 초기화
+  React.useEffect(() => {
+    setCurrentPage(1);
+  }, [sorting]);
 
   // 페이지네이션 버튼 생성
   const getPageNumbers = () => {
@@ -330,88 +594,84 @@ export default function HierarchicalAdSummary() {
     return pages;
   };
 
-  // 현재 탭의 컬럼 헤더 가져오기
-  const currentTab = tabs.find(t => t.id === activeTab);
-  const columnHeader = currentTab?.columnHeader || "이름";
 
   // 테이블 렌더링 함수 (일반 화면과 모달에서 공통 사용)
   const renderTable = () => (
-    <Table variant='simple' color='gray.500' mb='24px' mt='12px'>
+    <Table variant='simple' color='gray.500' mb='24px' mt='12px' style={{ tableLayout: 'fixed' }} sx={{ 'td': { whiteSpace: 'nowrap' } }}>
       <Thead position='sticky' top='0' bg={tableHeaderBg} zIndex='1'>
-        <Tr>
-          <Th pe='10px' borderColor={borderColor}>
-            <Flex justifyContent='space-between' align='center' fontSize={{ sm: '10px', lg: '12px' }} color='gray.400'>
-              매체
-            </Flex>
-          </Th>
-          {(activeTab === "adgroup" || activeTab === "ad") && (
-            <Th pe='10px' borderColor={borderColor}>
-              <Flex justifyContent='space-between' align='center' fontSize={{ sm: '10px', lg: '12px' }} color='gray.400'>
-                캠페인명
-              </Flex>
-            </Th>
-          )}
-          {activeTab === "ad" && (
-            <Th pe='10px' borderColor={borderColor}>
-              <Flex justifyContent='space-between' align='center' fontSize={{ sm: '10px', lg: '12px' }} color='gray.400'>
-                광고그룹명
-              </Flex>
-            </Th>
-          )}
-          <Th pe='10px' borderColor={borderColor}>
-            <Flex justifyContent='space-between' align='center' fontSize={{ sm: '10px', lg: '12px' }} color='gray.400'>
-              {columnHeader}
-            </Flex>
-          </Th>
-          <Th pe='10px' borderColor={borderColor}>
-            <Flex justifyContent='space-between' align='center' fontSize={{ sm: '10px', lg: '12px' }} color='gray.400'>
-              지출액
-            </Flex>
-          </Th>
-          <Th pe='10px' borderColor={borderColor}>
-            <Flex justifyContent='space-between' align='center' fontSize={{ sm: '10px', lg: '12px' }} color='gray.400'>
-              노출수
-            </Flex>
-          </Th>
-          <Th pe='10px' borderColor={borderColor}>
-            <Flex justifyContent='space-between' align='center' fontSize={{ sm: '10px', lg: '12px' }} color='gray.400'>
-              클릭수
-            </Flex>
-          </Th>
-          <Th pe='10px' borderColor={borderColor}>
-            <Flex justifyContent='space-between' align='center' fontSize={{ sm: '10px', lg: '12px' }} color='gray.400'>
-              CTR
-            </Flex>
-          </Th>
-          <Th pe='10px' borderColor={borderColor}>
-            <Flex justifyContent='space-between' align='center' fontSize={{ sm: '10px', lg: '12px' }} color='gray.400'>
-              CPC
-            </Flex>
-          </Th>
-          <Th pe='10px' borderColor={borderColor}>
-            <Flex justifyContent='space-between' align='center' fontSize={{ sm: '10px', lg: '12px' }} color='gray.400'>
-              전환수
-            </Flex>
-          </Th>
-          <Th pe='10px' borderColor={borderColor}>
-            <Flex justifyContent='space-between' align='center' fontSize={{ sm: '10px', lg: '12px' }} color='gray.400'>
-              전환가치
-            </Flex>
-          </Th>
-          <Th pe='10px' borderColor={borderColor}>
-            <Flex justifyContent='space-between' align='center' fontSize={{ sm: '10px', lg: '12px' }} color='gray.400'>
-              ROAS
-            </Flex>
-          </Th>
-          <Th pe='10px' borderColor={borderColor}>
-            <Flex justifyContent='space-between' align='center' fontSize={{ sm: '10px', lg: '12px' }} color='gray.400'>
-              CVR
-            </Flex>
-          </Th>
-        </Tr>
+        {table.getHeaderGroups().map((headerGroup) => (
+          <Tr key={headerGroup.id}>
+            {headerGroup.headers.map((header) => (
+              <Th
+                key={header.id}
+                pe='10px'
+                borderColor={borderColor}
+                _hover={{
+                  bg: bgHover,
+                  '& .column-resizer': {
+                    opacity: 1
+                  }
+                }}
+                whiteSpace='nowrap'
+                position='relative'
+                w={header.getSize()}
+              >
+                <Flex
+                  justifyContent='space-between'
+                  align='center'
+                  fontSize={{ sm: '10px', lg: '12px' }}
+                  color='gray.400'
+                  cursor='pointer'
+                  onClick={header.column.getToggleSortingHandler()}
+                  flex='1'
+                  mr='5px'
+                >
+                  {flexRender(header.column.columnDef.header, header.getContext())}
+                  <Box ml='4px'>
+                    {header.column.getIsSorted() === 'asc' ? (
+                      <Icon as={MdArrowUpward} w='14px' h='14px' color='brand.500' />
+                    ) : header.column.getIsSorted() === 'desc' ? (
+                      <Icon as={MdArrowDownward} w='14px' h='14px' color='brand.500' />
+                    ) : (
+                      <Icon as={MdUnfoldMore} w='14px' h='14px' color='gray.300' />
+                    )}
+                  </Box>
+                </Flex>
+                {/* 컬럼 리사이저 */}
+                <Box
+                  className='column-resizer'
+                  onMouseDown={(e) => {
+                    e.stopPropagation();
+                    header.getResizeHandler()(e);
+                  }}
+                  onTouchStart={(e) => {
+                    e.stopPropagation();
+                    header.getResizeHandler()(e);
+                  }}
+                  onClick={(e) => e.stopPropagation()}
+                  position='absolute'
+                  right='0'
+                  top='0'
+                  height='100%'
+                  width='5px'
+                  cursor='col-resize'
+                  userSelect='none'
+                  touchAction='none'
+                  bg={header.column.getIsResizing() ? 'brand.500' : 'brand.400'}
+                  _hover={{ bg: 'brand.500' }}
+                  opacity={header.column.getIsResizing() ? '1' : '0'}
+                  transition='all 0.2s'
+                  zIndex='1'
+                />
+              </Th>
+            ))}
+          </Tr>
+        ))}
       </Thead>
       <Tbody>
-        {paginatedData.map((row, index) => {
+        {paginatedRows.map((tableRow, index) => {
+          const row = tableRow.original;
+          const allColumns = table.getAllColumns();
           // rowType에 따른 스타일링
           const getRowStyle = () => {
             if (row.rowType === 'current') {
@@ -467,7 +727,7 @@ export default function HierarchicalAdSummary() {
             : calculateMetric(row.cost, row.clicks, false);
           const roas = row.rowType === 'difference'
             ? null
-            : calculateMetric(row.conversionValue, row.cost);
+            : row.cost === 0 ? "0" : Math.round((row.conversionValue / row.cost) * 100);
           const cvr = row.rowType === 'difference'
             ? null
             : calculateMetric(row.conversions, row.clicks);
@@ -491,10 +751,10 @@ export default function HierarchicalAdSummary() {
           return (
             <Tr key={index} h={rowHeight === 'compact' ? '36px' : 'auto'} bg={rowStyle.bg}>
               {/* 매체 컬럼 */}
-              <Td fontSize={{ sm: '14px' }} minW={{ sm: '100px', md: '120px', lg: 'auto' }} borderColor={borderColor} py={rowHeight === 'compact' ? '8px' : '12px'}>
+              <Td fontSize={{ sm: '14px' }} borderColor={borderColor} py={rowHeight === 'compact' ? '8px' : '12px'} w={allColumns.find(col => col.id === 'media')?.getSize()}>
                 {row.media ? (
                   <Flex align='center' gap='8px'>
-                    <Text fontSize='sm' fontWeight={rowStyle.fontWeight} color={rowStyle.color}>
+                    <Text fontSize='sm' fontWeight={rowStyle.fontWeight} color={rowStyle.color} whiteSpace='nowrap'>
                       {row.media}
                     </Text>
                     {row.rowType === 'current' && comparisonMode && (
@@ -513,9 +773,9 @@ export default function HierarchicalAdSummary() {
 
               {/* 캠페인명 컬럼 (광고그룹, 광고 탭에서 표시) */}
               {(activeTab === "adgroup" || activeTab === "ad") && (
-                <Td fontSize={{ sm: '14px' }} minW={{ sm: '150px', md: '200px', lg: 'auto' }} borderColor={borderColor} py={rowHeight === 'compact' ? '8px' : '12px'}>
+                <Td fontSize={{ sm: '14px' }} borderColor={borderColor} py={rowHeight === 'compact' ? '8px' : '12px'} w={allColumns.find(col => col.id === 'campaignName')?.getSize()}>
                   {row.campaignName ? (
-                    <Text fontSize='sm' fontWeight={rowStyle.fontWeight} color={rowStyle.color}>
+                    <Text fontSize='sm' fontWeight={rowStyle.fontWeight} color={rowStyle.color} noOfLines={1} overflow='hidden' textOverflow='ellipsis'>
                       {row.campaignName}
                     </Text>
                   ) : null}
@@ -524,9 +784,9 @@ export default function HierarchicalAdSummary() {
 
               {/* 광고그룹명 컬럼 (광고 탭에서만 표시) */}
               {activeTab === "ad" && (
-                <Td fontSize={{ sm: '14px' }} minW={{ sm: '150px', md: '200px', lg: 'auto' }} borderColor={borderColor} py={rowHeight === 'compact' ? '8px' : '12px'}>
+                <Td fontSize={{ sm: '14px' }} borderColor={borderColor} py={rowHeight === 'compact' ? '8px' : '12px'} w={allColumns.find(col => col.id === 'adGroupName')?.getSize()}>
                   {row.adGroupName ? (
-                    <Text fontSize='sm' fontWeight={rowStyle.fontWeight} color={rowStyle.color}>
+                    <Text fontSize='sm' fontWeight={rowStyle.fontWeight} color={rowStyle.color} noOfLines={1} overflow='hidden' textOverflow='ellipsis'>
                       {row.adGroupName}
                     </Text>
                   ) : null}
@@ -534,14 +794,14 @@ export default function HierarchicalAdSummary() {
               )}
 
               {/* 캠페인명/광고그룹명/광고명 컬럼 */}
-              <Td fontSize={{ sm: '14px' }} minW={{ sm: '150px', md: '200px', lg: 'auto' }} borderColor={borderColor} py={rowHeight === 'compact' ? '8px' : '12px'}>
+              <Td fontSize={{ sm: '14px' }} borderColor={borderColor} py={rowHeight === 'compact' ? '8px' : '12px'} w={allColumns.find(col => col.id === 'key')?.getSize()}>
                 {row.key ? (
                   <Flex align="center" gap="8px">
-                    <Text fontSize='sm' fontWeight={rowStyle.fontWeight} color={rowStyle.color}>
+                    <Text fontSize='sm' fontWeight={rowStyle.fontWeight} color={rowStyle.color} noOfLines={1} overflow='hidden' textOverflow='ellipsis' flex='1'>
                       {row.key}
                     </Text>
                     {activeTab === "ad" && !row.hasAdData && row.rowType === 'current' && (
-                      <Badge colorScheme="gray" fontSize="10px">
+                      <Badge colorScheme="gray" fontSize="10px" flexShrink='0'>
                         광고명 없음
                       </Badge>
                     )}
@@ -550,7 +810,7 @@ export default function HierarchicalAdSummary() {
               </Td>
 
               {/* 지출액 */}
-              <Td fontSize={{ sm: '14px' }} minW={{ sm: '150px', md: '200px', lg: 'auto' }} borderColor={borderColor} py={rowHeight === 'compact' ? '8px' : '12px'}>
+              <Td fontSize={{ sm: '14px' }} borderColor={borderColor} py={rowHeight === 'compact' ? '8px' : '12px'} w={allColumns.find(col => col.id === 'cost')?.getSize()}>
                 {row.noData ? (
                   <Text fontSize='sm' color='gray.400'>-</Text>
                 ) : row.rowType === 'difference' ? (
@@ -578,7 +838,7 @@ export default function HierarchicalAdSummary() {
               </Td>
 
               {/* 노출수 */}
-              <Td fontSize={{ sm: '14px' }} minW={{ sm: '150px', md: '200px', lg: 'auto' }} borderColor={borderColor} py={rowHeight === 'compact' ? '8px' : '12px'}>
+              <Td fontSize={{ sm: '14px' }} borderColor={borderColor} py={rowHeight === 'compact' ? '8px' : '12px'} w={allColumns.find(col => col.id === 'impressions')?.getSize()}>
                 {row.noData ? (
                   <Text fontSize='sm' color='gray.400'>-</Text>
                 ) : row.rowType === 'difference' ? (
@@ -606,7 +866,7 @@ export default function HierarchicalAdSummary() {
               </Td>
 
               {/* 클릭수 */}
-              <Td fontSize={{ sm: '14px' }} minW={{ sm: '150px', md: '200px', lg: 'auto' }} borderColor={borderColor} py={rowHeight === 'compact' ? '8px' : '12px'}>
+              <Td fontSize={{ sm: '14px' }} borderColor={borderColor} py={rowHeight === 'compact' ? '8px' : '12px'} w={allColumns.find(col => col.id === 'clicks')?.getSize()}>
                 {row.noData ? (
                   <Text fontSize='sm' color='gray.400'>-</Text>
                 ) : row.rowType === 'difference' ? (
@@ -634,7 +894,7 @@ export default function HierarchicalAdSummary() {
               </Td>
 
               {/* CTR */}
-              <Td fontSize={{ sm: '14px' }} minW={{ sm: '150px', md: '200px', lg: 'auto' }} borderColor={borderColor} py={rowHeight === 'compact' ? '8px' : '12px'}>
+              <Td fontSize={{ sm: '14px' }} borderColor={borderColor} py={rowHeight === 'compact' ? '8px' : '12px'} w={allColumns.find(col => col.id === 'ctr')?.getSize()}>
                 {row.noData ? (
                   <Text fontSize='sm' color='gray.400'>-</Text>
                 ) : row.rowType === 'difference' && ctrChange !== null ? (
@@ -659,7 +919,7 @@ export default function HierarchicalAdSummary() {
               </Td>
 
               {/* CPC */}
-              <Td fontSize={{ sm: '14px' }} minW={{ sm: '150px', md: '200px', lg: 'auto' }} borderColor={borderColor} py={rowHeight === 'compact' ? '8px' : '12px'}>
+              <Td fontSize={{ sm: '14px' }} borderColor={borderColor} py={rowHeight === 'compact' ? '8px' : '12px'} w={allColumns.find(col => col.id === 'cpc')?.getSize()}>
                 {row.noData ? (
                   <Text fontSize='sm' color='gray.400'>-</Text>
                 ) : row.rowType === 'difference' && cpcChange !== null ? (
@@ -684,7 +944,7 @@ export default function HierarchicalAdSummary() {
               </Td>
 
               {/* 전환수 */}
-              <Td fontSize={{ sm: '14px' }} minW={{ sm: '150px', md: '200px', lg: 'auto' }} borderColor={borderColor} py={rowHeight === 'compact' ? '8px' : '12px'}>
+              <Td fontSize={{ sm: '14px' }} borderColor={borderColor} py={rowHeight === 'compact' ? '8px' : '12px'} w={allColumns.find(col => col.id === 'conversions')?.getSize()}>
                 {row.noData ? (
                   <Text fontSize='sm' color='gray.400'>-</Text>
                 ) : row.rowType === 'difference' ? (
@@ -712,7 +972,7 @@ export default function HierarchicalAdSummary() {
               </Td>
 
               {/* 전환가치 */}
-              <Td fontSize={{ sm: '14px' }} minW={{ sm: '150px', md: '200px', lg: 'auto' }} borderColor={borderColor} py={rowHeight === 'compact' ? '8px' : '12px'}>
+              <Td fontSize={{ sm: '14px' }} borderColor={borderColor} py={rowHeight === 'compact' ? '8px' : '12px'} w={allColumns.find(col => col.id === 'conversionValue')?.getSize()}>
                 {row.noData ? (
                   <Text fontSize='sm' color='gray.400'>-</Text>
                 ) : row.rowType === 'difference' ? (
@@ -740,7 +1000,7 @@ export default function HierarchicalAdSummary() {
               </Td>
 
               {/* ROAS */}
-              <Td fontSize={{ sm: '14px' }} minW={{ sm: '150px', md: '200px', lg: 'auto' }} borderColor={borderColor} py={rowHeight === 'compact' ? '8px' : '12px'}>
+              <Td fontSize={{ sm: '14px' }} borderColor={borderColor} py={rowHeight === 'compact' ? '8px' : '12px'} w={allColumns.find(col => col.id === 'roas')?.getSize()}>
                 {row.noData ? (
                   <Text fontSize='sm' color='gray.400'>-</Text>
                 ) : row.rowType === 'difference' && roasChange !== null ? (
@@ -765,7 +1025,7 @@ export default function HierarchicalAdSummary() {
               </Td>
 
               {/* CVR */}
-              <Td fontSize={{ sm: '14px' }} minW={{ sm: '150px', md: '200px', lg: 'auto' }} borderColor={borderColor} py={rowHeight === 'compact' ? '8px' : '12px'}>
+              <Td fontSize={{ sm: '14px' }} borderColor={borderColor} py={rowHeight === 'compact' ? '8px' : '12px'} w={allColumns.find(col => col.id === 'cvr')?.getSize()}>
                 {row.noData ? (
                   <Text fontSize='sm' color='gray.400'>-</Text>
                 ) : row.rowType === 'difference' && cvrChange !== null ? (

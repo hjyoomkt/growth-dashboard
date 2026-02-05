@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import {
   Box,
   Flex,
@@ -16,8 +16,16 @@ import {
   Spinner,
   Alert,
   AlertIcon,
+  Icon,
 } from "@chakra-ui/react";
-import { MdChevronLeft, MdChevronRight } from "react-icons/md";
+import { MdChevronLeft, MdChevronRight, MdArrowUpward, MdArrowDownward, MdUnfoldMore } from "react-icons/md";
+import {
+  createColumnHelper,
+  flexRender,
+  getCoreRowModel,
+  getSortedRowModel,
+  useReactTable,
+} from '@tanstack/react-table';
 import Card from "components/card/Card.js";
 import { useDateRange } from "contexts/DateRangeContext";
 import { useAuth } from "contexts/AuthContext";
@@ -35,6 +43,7 @@ export default function TotalAdSummary() {
   const [tableData, setTableData] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [sorting, setSorting] = useState([]);
   const itemsPerPage = 30;
 
   const textColor = useColorModeValue("secondaryGray.900", "white");
@@ -110,9 +119,153 @@ export default function TotalAdSummary() {
     { id: "monthly", label: "월별" },
   ];
 
-  // 페이지네이션 계산
-  const totalPages = Math.ceil(tableData.length / itemsPerPage);
-  const paginatedData = tableData.slice(
+  // 컬럼 정의
+  const columnHelper = createColumnHelper();
+  const columns = useMemo(() => [
+    columnHelper.accessor('key', {
+      id: 'key',
+      header: () => <Text>날짜</Text>,
+      cell: (info) => (
+        <Text fontSize='sm' fontWeight='700' color={textColor}>
+          {info.getValue()}
+        </Text>
+      ),
+      enableSorting: true,
+    }),
+    columnHelper.accessor('cost', {
+      id: 'cost',
+      header: () => <Text>지출액</Text>,
+      cell: (info) => (
+        <Text fontSize='sm' fontWeight='700' color={textColor}>
+          ₩{formatNumber(info.getValue())}
+        </Text>
+      ),
+      enableSorting: true,
+    }),
+    columnHelper.accessor('impressions', {
+      id: 'impressions',
+      header: () => <Text>노출수</Text>,
+      cell: (info) => (
+        <Text fontSize='sm' fontWeight='700' color={textColor}>
+          {formatNumber(info.getValue())}
+        </Text>
+      ),
+      enableSorting: true,
+    }),
+    columnHelper.accessor('clicks', {
+      id: 'clicks',
+      header: () => <Text>클릭수</Text>,
+      cell: (info) => (
+        <Text fontSize='sm' fontWeight='700' color={textColor}>
+          {formatNumber(info.getValue())}
+        </Text>
+      ),
+      enableSorting: true,
+    }),
+    columnHelper.accessor((row) => {
+      if (row.impressions === 0) return 0;
+      return (row.clicks / row.impressions) * 100;
+    }, {
+      id: 'ctr',
+      header: () => <Text>CTR</Text>,
+      cell: (info) => {
+        const ctr = calculateMetric(info.row.original.clicks, info.row.original.impressions);
+        return (
+          <Text fontSize='sm' fontWeight='700' color={textColor}>
+            {ctr}%
+          </Text>
+        );
+      },
+      enableSorting: true,
+    }),
+    columnHelper.accessor((row) => {
+      if (row.clicks === 0) return 0;
+      return row.cost / row.clicks;
+    }, {
+      id: 'cpc',
+      header: () => <Text>CPC</Text>,
+      cell: (info) => {
+        const cpc = calculateMetric(info.row.original.cost, info.row.original.clicks, false);
+        return (
+          <Text fontSize='sm' fontWeight='700' color={textColor}>
+            ₩{formatNumber(cpc)}
+          </Text>
+        );
+      },
+      enableSorting: true,
+    }),
+    columnHelper.accessor('conversions', {
+      id: 'conversions',
+      header: () => <Text>전환수</Text>,
+      cell: (info) => (
+        <Text fontSize='sm' fontWeight='700' color={textColor}>
+          {Math.round(info.getValue())}
+        </Text>
+      ),
+      enableSorting: true,
+    }),
+    columnHelper.accessor('conversionValue', {
+      id: 'conversionValue',
+      header: () => <Text>전환가치</Text>,
+      cell: (info) => (
+        <Text fontSize='sm' fontWeight='700' color={textColor}>
+          ₩{formatNumber(info.getValue())}
+        </Text>
+      ),
+      enableSorting: true,
+    }),
+    columnHelper.accessor((row) => {
+      if (row.cost === 0) return 0;
+      return (row.conversionValue / row.cost) * 100;
+    }, {
+      id: 'roas',
+      header: () => <Text>ROAS</Text>,
+      cell: (info) => {
+        const cost = info.row.original.cost;
+        const conversionValue = info.row.original.conversionValue;
+        const roas = cost === 0 ? "0" : Math.round((conversionValue / cost) * 100);
+        return (
+          <Text fontSize='sm' fontWeight='700' color={textColor}>
+            {roas}%
+          </Text>
+        );
+      },
+      enableSorting: true,
+    }),
+    columnHelper.accessor((row) => {
+      if (row.clicks === 0) return 0;
+      return (row.conversions / row.clicks) * 100;
+    }, {
+      id: 'cvr',
+      header: () => <Text>CVR</Text>,
+      cell: (info) => {
+        const cvr = calculateMetric(info.row.original.conversions, info.row.original.clicks);
+        return (
+          <Text fontSize='sm' fontWeight='700' color={textColor}>
+            {cvr}%
+          </Text>
+        );
+      },
+      enableSorting: true,
+    }),
+  ], [textColor]);
+
+  // React Table 인스턴스 생성
+  const table = useReactTable({
+    data: tableData,
+    columns,
+    state: {
+      sorting,
+    },
+    onSortingChange: setSorting,
+    getCoreRowModel: getCoreRowModel(),
+    getSortedRowModel: getSortedRowModel(),
+  });
+
+  // 페이지네이션 계산 (정렬된 데이터 사용)
+  const sortedRows = table.getRowModel().rows;
+  const totalPages = Math.ceil(sortedRows.length / itemsPerPage);
+  const paginatedRows = sortedRows.slice(
     (currentPage - 1) * itemsPerPage,
     currentPage * itemsPerPage
   );
@@ -121,6 +274,11 @@ export default function TotalAdSummary() {
   React.useEffect(() => {
     setCurrentPage(1);
   }, [activeTab, startDate, endDate]);
+
+  // 정렬 변경 시 페이지 초기화
+  React.useEffect(() => {
+    setCurrentPage(1);
+  }, [sorting]);
 
   // 페이지네이션 버튼 생성
   const getPageNumbers = () => {
@@ -203,119 +361,56 @@ export default function TotalAdSummary() {
           <Box flex='1' overflowY='auto' maxH='500px'>
         <Table variant='simple' color='gray.500' mb='24px' mt='12px'>
           <Thead position='sticky' top='0' bg={tableHeaderBg} zIndex='1'>
-            <Tr>
-              <Th pe='10px' borderColor={borderColor}>
-                <Flex justifyContent='space-between' align='center' fontSize={{ sm: '10px', lg: '12px' }} color='gray.400'>
-                  날짜
-                </Flex>
-              </Th>
-              <Th pe='10px' borderColor={borderColor}>
-                <Flex justifyContent='space-between' align='center' fontSize={{ sm: '10px', lg: '12px' }} color='gray.400'>
-                  지출액
-                </Flex>
-              </Th>
-              <Th pe='10px' borderColor={borderColor}>
-                <Flex justifyContent='space-between' align='center' fontSize={{ sm: '10px', lg: '12px' }} color='gray.400'>
-                  노출수
-                </Flex>
-              </Th>
-              <Th pe='10px' borderColor={borderColor}>
-                <Flex justifyContent='space-between' align='center' fontSize={{ sm: '10px', lg: '12px' }} color='gray.400'>
-                  클릭수
-                </Flex>
-              </Th>
-              <Th pe='10px' borderColor={borderColor}>
-                <Flex justifyContent='space-between' align='center' fontSize={{ sm: '10px', lg: '12px' }} color='gray.400'>
-                  CTR
-                </Flex>
-              </Th>
-              <Th pe='10px' borderColor={borderColor}>
-                <Flex justifyContent='space-between' align='center' fontSize={{ sm: '10px', lg: '12px' }} color='gray.400'>
-                  CPC
-                </Flex>
-              </Th>
-              <Th pe='10px' borderColor={borderColor}>
-                <Flex justifyContent='space-between' align='center' fontSize={{ sm: '10px', lg: '12px' }} color='gray.400'>
-                  전환수
-                </Flex>
-              </Th>
-              <Th pe='10px' borderColor={borderColor}>
-                <Flex justifyContent='space-between' align='center' fontSize={{ sm: '10px', lg: '12px' }} color='gray.400'>
-                  전환가치
-                </Flex>
-              </Th>
-              <Th pe='10px' borderColor={borderColor}>
-                <Flex justifyContent='space-between' align='center' fontSize={{ sm: '10px', lg: '12px' }} color='gray.400'>
-                  ROAS
-                </Flex>
-              </Th>
-              <Th pe='10px' borderColor={borderColor}>
-                <Flex justifyContent='space-between' align='center' fontSize={{ sm: '10px', lg: '12px' }} color='gray.400'>
-                  CVR
-                </Flex>
-              </Th>
-            </Tr>
+            {table.getHeaderGroups().map((headerGroup) => (
+              <Tr key={headerGroup.id}>
+                {headerGroup.headers.map((header) => (
+                  <Th
+                    key={header.id}
+                    pe='10px'
+                    borderColor={borderColor}
+                    cursor='pointer'
+                    onClick={header.column.getToggleSortingHandler()}
+                    _hover={{ bg: bgHover }}
+                  >
+                    <Flex
+                      justifyContent='space-between'
+                      align='center'
+                      fontSize={{ sm: '10px', lg: '12px' }}
+                      color='gray.400'
+                    >
+                      {flexRender(header.column.columnDef.header, header.getContext())}
+                      <Box ml='4px'>
+                        {header.column.getIsSorted() === 'asc' ? (
+                          <Icon as={MdArrowUpward} w='14px' h='14px' color='brand.500' />
+                        ) : header.column.getIsSorted() === 'desc' ? (
+                          <Icon as={MdArrowDownward} w='14px' h='14px' color='brand.500' />
+                        ) : (
+                          <Icon as={MdUnfoldMore} w='14px' h='14px' color='gray.300' />
+                        )}
+                      </Box>
+                    </Flex>
+                  </Th>
+                ))}
+              </Tr>
+            ))}
           </Thead>
           <Tbody>
-            {paginatedData.map((row, index) => {
-              const ctr = calculateMetric(row.clicks, row.impressions);
-              const cpc = calculateMetric(row.cost, row.clicks, false);
-              const roas = calculateMetric(row.conversionValue, row.cost);
-              const cvr = calculateMetric(row.conversions, row.clicks);
-              const rowHeight = tableData.length > 30 ? 'compact' : 'normal';
+            {paginatedRows.map((row) => {
+              const rowHeight = sortedRows.length > 30 ? 'compact' : 'normal';
 
               return (
-                <Tr key={index} h={rowHeight === 'compact' ? '36px' : 'auto'}>
-                  <Td fontSize={{ sm: '14px' }} minW={{ sm: '150px', md: '200px', lg: 'auto' }} borderColor={borderColor} py={rowHeight === 'compact' ? '8px' : '12px'}>
-                    <Text fontSize='sm' fontWeight='700' color={textColor}>
-                      {row.key}
-                    </Text>
-                  </Td>
-                  <Td fontSize={{ sm: '14px' }} minW={{ sm: '150px', md: '200px', lg: 'auto' }} borderColor={borderColor} py={rowHeight === 'compact' ? '8px' : '12px'}>
-                    <Text fontSize='sm' fontWeight='700' color={textColor}>
-                      ₩{formatNumber(row.cost)}
-                    </Text>
-                  </Td>
-                  <Td fontSize={{ sm: '14px' }} minW={{ sm: '150px', md: '200px', lg: 'auto' }} borderColor={borderColor} py={rowHeight === 'compact' ? '8px' : '12px'}>
-                    <Text fontSize='sm' fontWeight='700' color={textColor}>
-                      {formatNumber(row.impressions)}
-                    </Text>
-                  </Td>
-                  <Td fontSize={{ sm: '14px' }} minW={{ sm: '150px', md: '200px', lg: 'auto' }} borderColor={borderColor} py={rowHeight === 'compact' ? '8px' : '12px'}>
-                    <Text fontSize='sm' fontWeight='700' color={textColor}>
-                      {formatNumber(row.clicks)}
-                    </Text>
-                  </Td>
-                  <Td fontSize={{ sm: '14px' }} minW={{ sm: '150px', md: '200px', lg: 'auto' }} borderColor={borderColor} py={rowHeight === 'compact' ? '8px' : '12px'}>
-                    <Text fontSize='sm' fontWeight='700' color={textColor}>
-                      {ctr}%
-                    </Text>
-                  </Td>
-                  <Td fontSize={{ sm: '14px' }} minW={{ sm: '150px', md: '200px', lg: 'auto' }} borderColor={borderColor} py={rowHeight === 'compact' ? '8px' : '12px'}>
-                    <Text fontSize='sm' fontWeight='700' color={textColor}>
-                      ₩{formatNumber(cpc)}
-                    </Text>
-                  </Td>
-                  <Td fontSize={{ sm: '14px' }} minW={{ sm: '150px', md: '200px', lg: 'auto' }} borderColor={borderColor} py={rowHeight === 'compact' ? '8px' : '12px'}>
-                    <Text fontSize='sm' fontWeight='700' color={textColor}>
-                      {Math.round(row.conversions)}
-                    </Text>
-                  </Td>
-                  <Td fontSize={{ sm: '14px' }} minW={{ sm: '150px', md: '200px', lg: 'auto' }} borderColor={borderColor} py={rowHeight === 'compact' ? '8px' : '12px'}>
-                    <Text fontSize='sm' fontWeight='700' color={textColor}>
-                      ₩{formatNumber(row.conversionValue)}
-                    </Text>
-                  </Td>
-                  <Td fontSize={{ sm: '14px' }} minW={{ sm: '150px', md: '200px', lg: 'auto' }} borderColor={borderColor} py={rowHeight === 'compact' ? '8px' : '12px'}>
-                    <Text fontSize='sm' fontWeight='700' color={textColor}>
-                      {roas}%
-                    </Text>
-                  </Td>
-                  <Td fontSize={{ sm: '14px' }} minW={{ sm: '150px', md: '200px', lg: 'auto' }} borderColor={borderColor} py={rowHeight === 'compact' ? '8px' : '12px'}>
-                    <Text fontSize='sm' fontWeight='700' color={textColor}>
-                      {cvr}%
-                    </Text>
-                  </Td>
+                <Tr key={row.id} h={rowHeight === 'compact' ? '36px' : 'auto'}>
+                  {row.getVisibleCells().map((cell) => (
+                    <Td
+                      key={cell.id}
+                      fontSize={{ sm: '14px' }}
+                      minW={{ sm: '150px', md: '200px', lg: 'auto' }}
+                      borderColor={borderColor}
+                      py={rowHeight === 'compact' ? '8px' : '12px'}
+                    >
+                      {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                    </Td>
+                  ))}
                 </Tr>
               );
             })}

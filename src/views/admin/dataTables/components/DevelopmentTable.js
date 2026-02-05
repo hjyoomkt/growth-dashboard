@@ -211,7 +211,7 @@ export default function ComplexTable(props) {
         return (
           <Flex align="center">
             <Text me="10px" color={textColor} fontSize="sm" fontWeight="700">
-              {row.roas}%
+              {Math.round(row.roas)}%
             </Text>
             <Progress
               variant="table"

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import {
   Box,
   Flex,
@@ -16,7 +16,14 @@ import {
   Badge,
   Icon,
 } from "@chakra-ui/react";
-import { MdTrendingUp, MdArrowUpward, MdArrowDownward } from "react-icons/md";
+import { MdTrendingUp, MdArrowUpward, MdArrowDownward, MdUnfoldMore } from "react-icons/md";
+import {
+  createColumnHelper,
+  flexRender,
+  getCoreRowModel,
+  getSortedRowModel,
+  useReactTable,
+} from '@tanstack/react-table';
 import Card from "components/card/Card.js";
 import { useDateRange } from "contexts/DateRangeContext";
 import { useAuth } from "contexts/AuthContext";
@@ -34,12 +41,14 @@ export default function MediaAdSummary() {
   const [mediaData, setMediaData] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [sorting, setSorting] = useState([]);
 
   const textColor = useColorModeValue("secondaryGray.900", "white");
   const borderColor = useColorModeValue("gray.200", "whiteAlpha.100");
   const comparisonTextColor = useColorModeValue('gray.500', 'gray.400');
   const comparisonBg = useColorModeValue('gray.50', 'whiteAlpha.50');
   const differenceBg = useColorModeValue('blue.50', 'whiteAlpha.100');
+  const bgHover = useColorModeValue('gray.50', 'whiteAlpha.50');
 
   // 비교 기간 데이터 병합 함수
   const mergeAndCalculateDifferences = (currentData, comparisonData) => {
@@ -149,6 +158,169 @@ export default function MediaAdSummary() {
     return isPercentage ? result.toFixed(2) : result.toFixed(0);
   };
 
+  // 컬럼 정의
+  const columnHelper = createColumnHelper();
+  const columns = useMemo(() => [
+    columnHelper.accessor('media', {
+      id: 'media',
+      header: () => <Text>매체</Text>,
+      cell: (info) => info.getValue(),
+      enableSorting: true,
+    }),
+    columnHelper.accessor('cost', {
+      id: 'cost',
+      header: () => <Text>지출액</Text>,
+      cell: (info) => info.getValue(),
+      enableSorting: true,
+    }),
+    columnHelper.accessor('impressions', {
+      id: 'impressions',
+      header: () => <Text>노출수</Text>,
+      cell: (info) => info.getValue(),
+      enableSorting: true,
+    }),
+    columnHelper.accessor('clicks', {
+      id: 'clicks',
+      header: () => <Text>클릭수</Text>,
+      cell: (info) => info.getValue(),
+      enableSorting: true,
+    }),
+    columnHelper.accessor((row) => {
+      if (row.rowType === 'difference') return 0;
+      if (row.impressions === 0) return 0;
+      return (row.clicks / row.impressions) * 100;
+    }, {
+      id: 'ctr',
+      header: () => <Text>CTR</Text>,
+      cell: (info) => info.getValue(),
+      enableSorting: true,
+    }),
+    columnHelper.accessor((row) => {
+      if (row.rowType === 'difference') return 0;
+      if (row.clicks === 0) return 0;
+      return row.cost / row.clicks;
+    }, {
+      id: 'cpc',
+      header: () => <Text>CPC</Text>,
+      cell: (info) => info.getValue(),
+      enableSorting: true,
+    }),
+    columnHelper.accessor('conversions', {
+      id: 'conversions',
+      header: () => <Text>전환수</Text>,
+      cell: (info) => info.getValue(),
+      enableSorting: true,
+    }),
+    columnHelper.accessor('conversionValue', {
+      id: 'conversionValue',
+      header: () => <Text>전환가치</Text>,
+      cell: (info) => info.getValue(),
+      enableSorting: true,
+    }),
+    columnHelper.accessor((row) => {
+      if (row.rowType === 'difference') return 0;
+      if (row.cost === 0) return 0;
+      return (row.conversionValue / row.cost) * 100;
+    }, {
+      id: 'roas',
+      header: () => <Text>ROAS</Text>,
+      cell: (info) => info.getValue(),
+      enableSorting: true,
+    }),
+    columnHelper.accessor((row) => {
+      if (row.rowType === 'difference') return 0;
+      if (row.clicks === 0) return 0;
+      return (row.conversions / row.clicks) * 100;
+    }, {
+      id: 'cvr',
+      header: () => <Text>CVR</Text>,
+      cell: (info) => info.getValue(),
+      enableSorting: true,
+    }),
+  ], []);
+
+  // 비교 모드 그룹 정렬 처리
+  const sortedData = useMemo(() => {
+    if (!sorting.length) return mediaData;
+
+    const columnId = sorting[0].id;
+    const isDesc = sorting[0].desc;
+
+    // 정렬 값 계산 함수
+    const getSortValue = (row) => {
+      if (columnId === 'ctr') {
+        return row.impressions === 0 ? 0 : (row.clicks / row.impressions) * 100;
+      } else if (columnId === 'cpc') {
+        return row.clicks === 0 ? 0 : row.cost / row.clicks;
+      } else if (columnId === 'roas') {
+        return row.cost === 0 ? 0 : (row.conversionValue / row.cost) * 100;
+      } else if (columnId === 'cvr') {
+        return row.clicks === 0 ? 0 : (row.conversions / row.clicks) * 100;
+      } else {
+        return row[columnId] || 0;
+      }
+    };
+
+    // 비교 모드가 아니면 일반 정렬
+    if (!comparisonMode) {
+      const sorted = [...mediaData].sort((a, b) => {
+        const valA = getSortValue(a);
+        const valB = getSortValue(b);
+
+        if (typeof valA === 'string' && typeof valB === 'string') {
+          return isDesc ? valB.localeCompare(valA) : valA.localeCompare(valB);
+        }
+        return isDesc ? valB - valA : valA - valB;
+      });
+      return sorted;
+    }
+
+    // 비교 모드: 3행씩 그룹으로 정렬
+    const currentRows = mediaData.filter(row => row.rowType === 'current');
+
+    currentRows.sort((a, b) => {
+      const valA = getSortValue(a);
+      const valB = getSortValue(b);
+
+      if (typeof valA === 'string' && typeof valB === 'string') {
+        return isDesc ? valB.localeCompare(valA) : valA.localeCompare(valB);
+      }
+      return isDesc ? valB - valA : valA - valB;
+    });
+
+    // 정렬된 순서대로 3행씩 재구성
+    const result = [];
+    currentRows.forEach(currentRow => {
+      const originalIndex = mediaData.findIndex(
+        r => r.rowType === 'current' && r.media === currentRow.media
+      );
+      if (originalIndex !== -1) {
+        result.push(mediaData[originalIndex]);     // current
+        if (mediaData[originalIndex + 1]) {
+          result.push(mediaData[originalIndex + 1]); // comparison
+        }
+        if (mediaData[originalIndex + 2]) {
+          result.push(mediaData[originalIndex + 2]); // difference
+        }
+      }
+    });
+
+    return result;
+  }, [mediaData, sorting, comparisonMode]);
+
+  // React Table 인스턴스 생성
+  const table = useReactTable({
+    data: sortedData,
+    columns,
+    state: {
+      sorting,
+    },
+    onSortingChange: setSorting,
+    getCoreRowModel: getCoreRowModel(),
+    getSortedRowModel: getSortedRowModel(),
+    manualSorting: true,
+  });
+
   return (
     <Card flexDirection='column' w='100%' px='0px' overflowX={{ sm: 'scroll', lg: 'hidden' }} mb='20px'>
       <Flex px='25px' mb='8px' justifyContent='space-between' align='center'>
@@ -176,61 +348,41 @@ export default function MediaAdSummary() {
         <Box>
           <Table variant='simple' color='gray.500' mb='24px' mt='12px'>
             <Thead>
-              <Tr>
-                <Th pe='10px' borderColor={borderColor}>
-                  <Flex justifyContent='space-between' align='center' fontSize={{ sm: '10px', lg: '12px' }} color='gray.400'>
-                    매체
-                  </Flex>
-                </Th>
-                <Th pe='10px' borderColor={borderColor}>
-                  <Flex justifyContent='space-between' align='center' fontSize={{ sm: '10px', lg: '12px' }} color='gray.400'>
-                    지출액
-                  </Flex>
-                </Th>
-                <Th pe='10px' borderColor={borderColor}>
-                  <Flex justifyContent='space-between' align='center' fontSize={{ sm: '10px', lg: '12px' }} color='gray.400'>
-                    노출수
-                  </Flex>
-                </Th>
-                <Th pe='10px' borderColor={borderColor}>
-                  <Flex justifyContent='space-between' align='center' fontSize={{ sm: '10px', lg: '12px' }} color='gray.400'>
-                    클릭수
-                  </Flex>
-                </Th>
-                <Th pe='10px' borderColor={borderColor}>
-                  <Flex justifyContent='space-between' align='center' fontSize={{ sm: '10px', lg: '12px' }} color='gray.400'>
-                    CTR
-                  </Flex>
-                </Th>
-                <Th pe='10px' borderColor={borderColor}>
-                  <Flex justifyContent='space-between' align='center' fontSize={{ sm: '10px', lg: '12px' }} color='gray.400'>
-                    CPC
-                  </Flex>
-                </Th>
-                <Th pe='10px' borderColor={borderColor}>
-                  <Flex justifyContent='space-between' align='center' fontSize={{ sm: '10px', lg: '12px' }} color='gray.400'>
-                    전환수
-                  </Flex>
-                </Th>
-                <Th pe='10px' borderColor={borderColor}>
-                  <Flex justifyContent='space-between' align='center' fontSize={{ sm: '10px', lg: '12px' }} color='gray.400'>
-                    전환가치
-                  </Flex>
-                </Th>
-                <Th pe='10px' borderColor={borderColor}>
-                  <Flex justifyContent='space-between' align='center' fontSize={{ sm: '10px', lg: '12px' }} color='gray.400'>
-                    ROAS
-                  </Flex>
-                </Th>
-                <Th pe='10px' borderColor={borderColor}>
-                  <Flex justifyContent='space-between' align='center' fontSize={{ sm: '10px', lg: '12px' }} color='gray.400'>
-                    CVR
-                  </Flex>
-                </Th>
-              </Tr>
+              {table.getHeaderGroups().map((headerGroup) => (
+                <Tr key={headerGroup.id}>
+                  {headerGroup.headers.map((header) => (
+                    <Th
+                      key={header.id}
+                      pe='10px'
+                      borderColor={borderColor}
+                      cursor='pointer'
+                      onClick={header.column.getToggleSortingHandler()}
+                      _hover={{ bg: bgHover }}
+                    >
+                      <Flex
+                        justifyContent='space-between'
+                        align='center'
+                        fontSize={{ sm: '10px', lg: '12px' }}
+                        color='gray.400'
+                      >
+                        {flexRender(header.column.columnDef.header, header.getContext())}
+                        <Box ml='4px'>
+                          {header.column.getIsSorted() === 'asc' ? (
+                            <Icon as={MdArrowUpward} w='14px' h='14px' color='brand.500' />
+                          ) : header.column.getIsSorted() === 'desc' ? (
+                            <Icon as={MdArrowDownward} w='14px' h='14px' color='brand.500' />
+                          ) : (
+                            <Icon as={MdUnfoldMore} w='14px' h='14px' color='gray.300' />
+                          )}
+                        </Box>
+                      </Flex>
+                    </Th>
+                  ))}
+                </Tr>
+              ))}
             </Thead>
             <Tbody>
-              {mediaData.map((row, index) => {
+              {sortedData.map((row, index) => {
                 // rowType에 따른 스타일링
                 const getRowStyle = () => {
                   if (row.rowType === 'current') {
@@ -289,7 +441,7 @@ export default function MediaAdSummary() {
                   : calculateMetric(row.cost, row.clicks, false);
                 const roas = row.rowType === 'difference'
                   ? null
-                  : calculateMetric(row.conversionValue, row.cost);
+                  : row.cost === 0 ? "0" : Math.round((row.conversionValue / row.cost) * 100);
                 const cvr = row.rowType === 'difference'
                   ? null
                   : calculateMetric(row.conversions, row.clicks);
