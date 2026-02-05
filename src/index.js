@@ -5,6 +5,15 @@ import './assets/css/App.css';
 
 import App from './App';
 
+// 프로덕션 환경에서 모든 console 비활성화 (개발할 때만 보임)
+if (process.env.NODE_ENV === 'production') {
+  console.log = () => {};
+  console.debug = () => {};
+  console.info = () => {};
+  console.warn = () => {};
+  console.error = () => {};
+}
+
 // 전역 에러 핸들러
 window.onerror = function(message, source, lineno, colno, error) {
   console.error('전역 에러 발생:', {
