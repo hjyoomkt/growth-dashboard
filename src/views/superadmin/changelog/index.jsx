@@ -20,6 +20,7 @@ import React, { useState, useEffect } from "react";
 import { MdRefresh, MdFilterList, MdKeyboardArrowDown, MdChevronLeft, MdChevronRight } from "react-icons/md";
 import ChangelogTable from "./components/ChangelogTable";
 import { getChangelogs } from "services/supabaseService";
+import { useAuth } from "contexts/AuthContext";
 import Calendar from 'react-calendar';
 import 'react-calendar/dist/Calendar.css';
 import 'assets/css/MiniCalendar.css';
@@ -31,6 +32,8 @@ export default function ChangelogManagement() {
   const bgHover = useColorModeValue("secondaryGray.100", "whiteAlpha.100");
   const inputBg = useColorModeValue("white", "navy.700");
   const inputTextColor = useColorModeValue("secondaryGray.900", "white");
+
+  const { currentOrganizationId } = useAuth();
 
   const [changelogs, setChangelogs] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -51,7 +54,7 @@ export default function ChangelogManagement() {
   const fetchChangelogs = async () => {
     setIsLoading(true);
     try {
-      const result = await getChangelogs(filters);
+      const result = await getChangelogs(filters, currentOrganizationId);
       setChangelogs(result.changelogs);
       setTotalCount(result.totalCount);
     } catch (error) {
@@ -63,7 +66,7 @@ export default function ChangelogManagement() {
 
   useEffect(() => {
     fetchChangelogs();
-  }, [filters]);
+  }, [filters, currentOrganizationId]);
 
   const handleFilterChange = (key, value) => {
     setFilters(prev => ({

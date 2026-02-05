@@ -43,6 +43,9 @@ export default function HeaderLinks(props) {
     availableAdvertisers,
     currentAdvertiserId,
     switchAdvertiser,
+    availableOrganizations,
+    currentOrganizationId,
+    switchOrganization,
     allNotifications,
     markNotificationAsRead,
     markAllNotificationsAsRead,
@@ -125,6 +128,23 @@ export default function HeaderLinks(props) {
     navigate(`${location.pathname}${newSearch ? `?${newSearch}` : ''}`, { replace: true });
   };
 
+  // 대행사 전환 핸들러
+  const handleOrganizationSwitch = (organizationId) => {
+    switchOrganization(organizationId);
+
+    // URL에 쿼리 파라미터 추가
+    const searchParams = new URLSearchParams(location.search);
+    if (organizationId) {
+      searchParams.set('organization', organizationId);
+    } else {
+      searchParams.delete('organization');
+    }
+
+    // 현재 경로에 업데이트된 쿼리 파라미터 적용
+    const newSearch = searchParams.toString();
+    navigate(`${location.pathname}${newSearch ? `?${newSearch}` : ''}`, { replace: true });
+  };
+
   // 게시글 모달 상태
   const { isOpen: isPostModalOpen, onOpen: onPostModalOpen, onClose: onPostModalClose } = useDisclosure();
   const [selectedPost, setSelectedPost] = useState(null);
@@ -169,6 +189,83 @@ export default function HeaderLinks(props) {
         me="10px"
         borderRadius="30px"
       />
+
+      {/* 대행사 선택 드롭다운 (Master만) */}
+      {role === 'master' && availableOrganizations && availableOrganizations.length > 0 && (
+        <Menu>
+          <MenuButton
+            p="0px"
+            me="10px"
+            bg={brandSelectorBg}
+            borderRadius="30px"
+            _hover={{ bg: brandSelectorHover }}
+            transition="all 0.2s"
+          >
+            <Flex
+              align="center"
+              px="12px"
+              py="8px"
+              gap="6px"
+            >
+              <Text
+                fontSize="sm"
+                fontWeight="600"
+                color={textColor}
+                whiteSpace="nowrap"
+              >
+                {currentOrganizationId
+                  ? availableOrganizations.find(org => org.id === currentOrganizationId)?.name
+                  : '전체 대행사'}
+              </Text>
+              <Icon
+                as={MdArrowDropDown}
+                color={navbarIcon}
+                w="20px"
+                h="20px"
+              />
+            </Flex>
+          </MenuButton>
+          <MenuList
+            boxShadow={shadow}
+            p="12px"
+            borderRadius="20px"
+            bg={menuBg}
+            border="none"
+            mt="10px"
+            minW="200px"
+          >
+            <MenuItem
+              _hover={{ bg: brandSelectorHover }}
+              borderRadius="8px"
+              px="14px"
+              mb="4px"
+              onClick={() => handleOrganizationSwitch(null)}
+              bg="transparent"
+              transition="all 0.2s"
+            >
+              <Text fontSize="sm" fontWeight={!currentOrganizationId ? '600' : '500'}>
+                전체 대행사
+              </Text>
+            </MenuItem>
+            {availableOrganizations.map((org) => (
+              <MenuItem
+                key={org.id}
+                _hover={{ bg: brandSelectorHover }}
+                borderRadius="8px"
+                px="14px"
+                mb="4px"
+                onClick={() => handleOrganizationSwitch(org.id)}
+                bg="transparent"
+                transition="all 0.2s"
+              >
+                <Text fontSize="sm" fontWeight={currentOrganizationId === org.id ? '600' : '500'}>
+                  {org.name}
+                </Text>
+              </MenuItem>
+            ))}
+          </MenuList>
+        </Menu>
+      )}
 
       {/* 브랜드 선택 드롭다운 */}
       {shouldShowBrandSelector && availableAdvertisers && availableAdvertisers.length > 0 && (

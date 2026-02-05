@@ -50,7 +50,7 @@ export default function UserTable(props) {
   const [userToDelete, setUserToDelete] = React.useState(null);
   const textColor = useColorModeValue('secondaryGray.900', 'white');
   const borderColor = useColorModeValue('gray.200', 'whiteAlpha.100');
-  const { user, isAgency, role, organizationId, advertiserId, organizationType, isMaster } = useAuth();
+  const { user, isAgency, role, organizationId, advertiserId, organizationType, isMaster, currentOrganizationId } = useAuth();
   const [data, setData] = React.useState([]);
   const [isLoading, setIsLoading] = React.useState(false);
   const toast = useToast();
@@ -76,6 +76,7 @@ export default function UserTable(props) {
         organization_id: organizationId,
         advertiser_id: advertiserId,
         organizationType,
+        currentOrganizationId: currentOrganizationId,
       };
 
       const users = await getUsers(currentUser);
@@ -113,7 +114,7 @@ export default function UserTable(props) {
     } finally {
       setIsLoading(false);
     }
-  }, [user, role, organizationId, advertiserId, organizationType, toast]);
+  }, [user, role, organizationId, advertiserId, organizationType, currentOrganizationId, toast]);
 
   React.useEffect(() => {
     fetchUsers();

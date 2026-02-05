@@ -40,7 +40,7 @@ import React, { useState, useEffect } from 'react';
 export default function APIManagement() {
   const textColor = useColorModeValue('secondaryGray.900', 'white');
   const cardBg = useColorModeValue('white', 'navy.800');
-  const { isAgency, advertiserId } = useAuth();
+  const { isAgency, advertiserId, isMaster, currentOrganizationId } = useAuth();
 
   const [stats, setStats] = useState({
     total: 0,
@@ -52,7 +52,14 @@ export default function APIManagement() {
   useEffect(() => {
     const fetchStats = async () => {
       try {
-        const tokens = await getApiTokens(isAgency() ? null : advertiserId);
+        // Master가 대행사 선택 또는 클라이언트가 자신 선택
+        const filterAdvertiserId = isMaster() && currentOrganizationId
+          ? null  // Master가 대행사 선택 시 해당 대행사의 모든 토큰
+          : isAgency()
+            ? null  // 대행사는 모든 토큰
+            : advertiserId;  // 클라이언트는 자신의 토큰만
+
+        const tokens = await getApiTokens(filterAdvertiserId, currentOrganizationId);
         const total = tokens.length;
         const active = tokens.filter(t => t.status === 'active').length;
         const inactive = tokens.filter(t => t.status === 'inactive').length;
@@ -65,7 +72,7 @@ export default function APIManagement() {
     };
 
     fetchStats();
-  }, [isAgency, advertiserId]);
+  }, [isAgency, advertiserId, isMaster, currentOrganizationId]);
 
   return (
     <Box pt={{ base: '130px', md: '80px', xl: '80px' }}>

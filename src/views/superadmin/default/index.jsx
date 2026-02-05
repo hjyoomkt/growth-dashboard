@@ -68,7 +68,20 @@ export default function SuperAdminDashboard() {
   const borderColor = useColorModeValue("gray.200", "whiteAlpha.100");
   const toast = useToast();
 
-  const { user, role, organizationId, advertiserId, organizationType } = useAuth();
+  const {
+    user,
+    role,
+    organizationId: userOrgId,    // 사용자 본인의 조직 ID
+    advertiserId,
+    organizationType,
+    currentOrganizationId,         // Master가 선택한 대행사 ID
+  } = useAuth();
+
+  // Master는 선택된 대행사 ID 사용, 다른 권한은 본인 조직 ID 사용
+  const effectiveOrganizationId = role === 'master' && currentOrganizationId
+    ? currentOrganizationId
+    : userOrgId;
+
   const [stats, setStats] = useState({
     totalUsers: 0,
     adminUsers: 0,
@@ -116,9 +129,9 @@ export default function SuperAdminDashboard() {
 
   // GCP 설정 조회
   const fetchGcpSettings = useCallback(async () => {
-    console.log('[GCP Settings] fetchGcpSettings 호출됨:', { organizationId, canManageGcp });
-    if (!organizationId || !canManageGcp) {
-      console.log('[GCP Settings] Early return:', { organizationId, canManageGcp });
+    console.log('[GCP Settings] fetchGcpSettings 호출됨:', { effectiveOrganizationId, canManageGcp });
+    if (!effectiveOrganizationId || !canManageGcp) {
+      console.log('[GCP Settings] Early return:', { effectiveOrganizationId, canManageGcp });
       return;
     }
 
@@ -128,7 +141,7 @@ export default function SuperAdminDashboard() {
       // GCP 설정 미리보기 조회 (부분 마스킹)
       const { data: previewData, error: previewError } = await supabase
         .rpc('get_organization_gcp_preview', {
-          org_id: organizationId
+          org_id: effectiveOrganizationId
         });
 
       console.log('[GCP Settings] RPC 응답:', { previewData, previewError });
@@ -157,18 +170,24 @@ export default function SuperAdminDashboard() {
         console.log('[GCP Settings] Setting masked values:', newSettings);
         setGcpSettings(newSettings);
       } else {
-        console.log('[GCP Settings] No credentials to display');
+        console.log('[GCP Settings] No credentials to display - 설정 초기화');
+        setGcpSettings({
+          clientId: '',
+          clientSecret: '',
+          developerToken: '',
+          mccId: '',
+        });
       }
     } catch (error) {
       console.error('[GCP Settings] 조회 실패:', error);
     } finally {
       setIsGcpLoading(false);
     }
-  }, [organizationId, canManageGcp]);
+  }, [effectiveOrganizationId, canManageGcp]);
 
   // GCP 설정 저장
   const handleSaveGcpSettings = async () => {
-    if (!organizationId) {
+    if (!effectiveOrganizationId) {
       toast({
         title: '오류',
         description: '조직 정보를 찾을 수 없습니다.',
@@ -210,7 +229,7 @@ export default function SuperAdminDashboard() {
       const apiKey = process.env.REACT_APP_SUPABASE_ANON_KEY;
 
       const payload = {
-        organization_id: organizationId,
+        organization_id: effectiveOrganizationId,
       };
 
       // 마스킹되지 않은 필드만 payload에 추가
@@ -289,13 +308,13 @@ export default function SuperAdminDashboard() {
 
   // Meta 설정 조회
   const fetchMetaSettings = useCallback(async () => {
-    if (!organizationId || !canManageGcp) return;
+    if (!effectiveOrganizationId || !canManageGcp) return;
 
     setIsMetaLoading(true);
     try {
       const { data: previewData, error: previewError } = await supabase
         .rpc('get_organization_meta_preview', {
-          org_id: organizationId
+          org_id: effectiveOrganizationId
         });
 
       if (previewError) {
@@ -313,23 +332,29 @@ export default function SuperAdminDashboard() {
           appSecret: preview.app_secret_preview || '',
           accessToken: preview.access_token_preview || '',
         });
+      } else {
+        setMetaSettings({
+          appId: '',
+          appSecret: '',
+          accessToken: '',
+        });
       }
     } catch (error) {
       console.error('[Meta Settings] 조회 실패:', error);
     } finally {
       setIsMetaLoading(false);
     }
-  }, [organizationId, canManageGcp]);
+  }, [effectiveOrganizationId, canManageGcp]);
 
   // Naver 설정 조회
   const fetchNaverSettings = useCallback(async () => {
-    if (!organizationId || !canManageGcp) return;
+    if (!effectiveOrganizationId || !canManageGcp) return;
 
     setIsNaverLoading(true);
     try {
       const { data: previewData, error: previewError } = await supabase
         .rpc('get_organization_naver_preview', {
-          org_id: organizationId
+          org_id: effectiveOrganizationId
         });
 
       if (previewError) {
@@ -346,17 +371,22 @@ export default function SuperAdminDashboard() {
           apiKey: preview.api_key_preview || '',
           secretKey: preview.secret_key_preview || '',
         });
+      } else {
+        setNaverSettings({
+          apiKey: '',
+          secretKey: '',
+        });
       }
     } catch (error) {
       console.error('[Naver Settings] 조회 실패:', error);
     } finally {
       setIsNaverLoading(false);
     }
-  }, [organizationId, canManageGcp]);
+  }, [effectiveOrganizationId, canManageGcp]);
 
   // Meta 설정 저장
   const handleSaveMetaSettings = async () => {
-    if (!organizationId) {
+    if (!effectiveOrganizationId) {
       toast({
         title: '오류',
         description: '조직 정보를 찾을 수 없습니다.',
@@ -409,7 +439,7 @@ export default function SuperAdminDashboard() {
       const apiKey = process.env.REACT_APP_SUPABASE_ANON_KEY;
 
       const payload = {
-        organization_id: organizationId,
+        organization_id: effectiveOrganizationId,
       };
 
       if (!isMasked(metaSettings.appId)) {
@@ -490,7 +520,7 @@ export default function SuperAdminDashboard() {
 
   // Naver 설정 저장
   const handleSaveNaverSettings = async () => {
-    if (!organizationId) {
+    if (!effectiveOrganizationId) {
       toast({
         title: '오류',
         description: '조직 정보를 찾을 수 없습니다.',
@@ -528,7 +558,7 @@ export default function SuperAdminDashboard() {
       const apiKey = process.env.REACT_APP_SUPABASE_ANON_KEY;
 
       const payload = {
-        organization_id: organizationId,
+        organization_id: effectiveOrganizationId,
       };
 
       if (!isApiKeyMasked) {
@@ -599,19 +629,48 @@ export default function SuperAdminDashboard() {
   useEffect(() => {
     const fetchStats = async () => {
       try {
-        console.log('[SuperAdminDashboard] 통계 조회 시작:', { role, organizationId });
+        console.log('[SuperAdminDashboard] 통계 조회 시작:', { role, effectiveOrganizationId });
 
-        // master는 전체 통계, agency_admin은 자신의 조직 통계
+        // master는 대행사 선택 여부에 따라 통계 조회
         if (role === 'master') {
-          const data = await getUserStats();
-          console.log('[SuperAdminDashboard] 전체 통계:', data);
-          setStats(data);
+          if (effectiveOrganizationId) {
+            // 대행사를 선택한 경우: 해당 대행사의 사용자만
+            console.log('[SuperAdminDashboard] 선택된 대행사의 통계 조회:', effectiveOrganizationId);
+            const currentUser = {
+              id: user.id,
+              role: 'agency_admin',  // agency_admin처럼 동작
+              organization_id: effectiveOrganizationId,
+              organizationType: 'agency',
+            };
+
+            const users = await getUsers(currentUser);
+            console.log('[SuperAdminDashboard] 대행사 사용자:', users);
+
+            const totalUsers = users.length;
+            const adminUsers = users.filter(u =>
+              ['agency_admin', 'agency_manager', 'advertiser_admin', 'advertiser_staff'].includes(u.role)
+            ).length;
+            const activeUsers = users.filter(u => u.status === 'active').length;
+
+            console.log('[SuperAdminDashboard] 대행사 통계:', { totalUsers, adminUsers, activeUsers });
+
+            setStats({
+              totalUsers,
+              adminUsers,
+              activeUsers,
+            });
+          } else {
+            // 대행사 미선택: 전체 통계
+            const data = await getUserStats();
+            console.log('[SuperAdminDashboard] 전체 통계:', data);
+            setStats(data);
+          }
         } else {
           // agency_admin 등은 권한 기반 필터링
           const currentUser = {
             id: user.id,
             role,
-            organization_id: organizationId,
+            organization_id: effectiveOrganizationId,
             advertiser_id: advertiserId,
             organizationType,
           };
@@ -644,7 +703,7 @@ export default function SuperAdminDashboard() {
       fetchMetaSettings();
       fetchNaverSettings();
     }
-  }, [user?.id, role, organizationId, advertiserId, organizationType, fetchGcpSettings, fetchMetaSettings, fetchNaverSettings]);
+  }, [user?.id, role, effectiveOrganizationId, advertiserId, organizationType, fetchGcpSettings, fetchMetaSettings, fetchNaverSettings]);
 
   return (
     <Box pt={{ base: "130px", md: "80px", xl: "80px" }}>
@@ -709,15 +768,26 @@ export default function SuperAdminDashboard() {
 
       {/* Google API 설정 섹션 - master 또는 agency_admin만 표시 */}
       {canManageGcp && (
-        <Box
-          bg={cardBg}
-          p="24px"
-          borderRadius="20px"
-          mt="20px"
-          mx="25px"
-          border="1px solid"
-          borderColor={borderColor}
-        >
+        <>
+          {/* Master가 대행사 미선택 시 안내 메시지 */}
+          {role === 'master' && !effectiveOrganizationId && (
+            <Alert status="info" borderRadius="md" mt="20px" mx="25px">
+              <AlertIcon />
+              <AlertDescription>
+                상단 네비게이션 바에서 대행사를 선택하면 해당 대행사의 API 설정을 관리할 수 있습니다.
+              </AlertDescription>
+            </Alert>
+          )}
+
+          <Box
+            bg={cardBg}
+            p="24px"
+            borderRadius="20px"
+            mt="20px"
+            mx="25px"
+            border="1px solid"
+            borderColor={borderColor}
+          >
           <HStack mb="16px" spacing={3}>
             <Icon as={MdCloud} w="24px" h="24px" color={brandColor} />
             <Text color={textColor} fontSize="lg" fontWeight="700">
@@ -838,6 +908,7 @@ export default function SuperAdminDashboard() {
             </Button>
           </VStack>
         </Box>
+        </>
       )}
 
       {/* Meta API 설정 섹션 - master 또는 agency_admin만 표시 */}

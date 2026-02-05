@@ -27,6 +27,10 @@ export const AuthProvider = ({ children }) => {
   const [availableAdvertisers, setAvailableAdvertisers] = useState([]); // 접근 가능한 브랜드 목록
   const [currentAdvertiserId, setCurrentAdvertiserId] = useState(null); // 현재 선택된 브랜드 (null = 전체 보기)
 
+  // 대행사 전환 기능 (Master 전용)
+  const [availableOrganizations, setAvailableOrganizations] = useState([]); // 접근 가능한 대행사 목록
+  const [currentOrganizationId, setCurrentOrganizationId] = useState(null); // 현재 선택된 대행사 (null = 전체)
+
   // 알림 관리 (API 오류 + 게시판 알림)
   const [apiNotifications, setApiNotifications] = useState([]); // API 오류 알림 목록
   const [boardNotifications, setBoardNotifications] = useState([]); // 게시판 알림 목록
@@ -162,6 +166,27 @@ export const AuthProvider = ({ children }) => {
     return () => clearInterval(interval);
   }, [user, role, availableAdvertisers, currentAdvertiserId]);
 
+  // Master가 대행사를 전환할 때 브랜드 목록 재조회
+  useEffect(() => {
+    const refetchAdvertisers = async () => {
+      if (!user || role !== 'master') return;
+
+      try {
+        const userData = await getUserMetadata(user.id);
+        const advertisers = await getAvailableAdvertisers(userData, currentOrganizationId);
+        setAvailableAdvertisers(advertisers);
+        console.log('✅ 대행사 전환으로 인한 브랜드 목록 재조회:', {
+          organizationId: currentOrganizationId,
+          count: advertisers?.length
+        });
+      } catch (error) {
+        console.error('[AuthContext] 브랜드 목록 재조회 실패:', error);
+      }
+    };
+
+    refetchAdvertisers();
+  }, [currentOrganizationId, user, role]);
+
   // ✅ 사용자 메타데이터 조회 함수
   const fetchUserMetadata = async (userId) => {
     try {
@@ -203,9 +228,40 @@ export const AuthProvider = ({ children }) => {
       console.log('✅ 설정된 advertiser_id:', userData.advertiser_id);
 
       // 접근 가능한 광고주 목록 조회
-      const advertisers = await getAvailableAdvertisers(userData);
+      // Master인 경우 localStorage에서 선택된 대행사 ID를 먼저 확인
+      let selectedOrgId = null;
+      if (userData.role === 'master') {
+        selectedOrgId = localStorage.getItem('selectedOrganizationId');
+        console.log('✅ localStorage에서 대행사 ID 확인:', selectedOrgId);
+      }
+
+      const advertisers = await getAvailableAdvertisers(userData, selectedOrgId);
       setAvailableAdvertisers(advertisers);
       console.log('✅ 접근 가능한 광고주:', advertisers);
+
+      // Master인 경우 모든 대행사 목록 조회
+      if (userData.role === 'master') {
+        const { data: organizations, error: orgError } = await supabase
+          .from('organizations')
+          .select('*')
+          .eq('type', 'agency')
+          .is('deleted_at', null)
+          .order('name');
+
+        if (orgError) {
+          console.error('[AuthContext] 대행사 목록 조회 실패:', orgError);
+        } else {
+          setAvailableOrganizations(organizations || []);
+          console.log('✅ 대행사 목록:', organizations);
+
+          // localStorage에서 선택 복원
+          const savedOrgId = localStorage.getItem('selectedOrganizationId');
+          if (savedOrgId && organizations.some(org => org.id === savedOrgId)) {
+            setCurrentOrganizationId(savedOrgId);
+            console.log('✅ localStorage에서 대행사 복원:', savedOrgId);
+          }
+        }
+      }
 
       // 브랜드 선택 우선순위: URL > localStorage > 첫 번째 광고주
       const urlParams = new URLSearchParams(window.location.search);
@@ -335,6 +391,20 @@ export const AuthProvider = ({ children }) => {
     console.log('Switched to advertiser:', advertiserId || 'All');
   };
 
+  // 대행사 전환 함수 (Master 전용)
+  const switchOrganization = (organizationId) => {
+    setCurrentOrganizationId(organizationId);
+
+    // localStorage에 저장
+    if (organizationId) {
+      localStorage.setItem('selectedOrganizationId', organizationId);
+    } else {
+      localStorage.removeItem('selectedOrganizationId');
+    }
+
+    console.log('Switched to organization:', organizationId || 'All');
+  };
+
   // 계정 에러 초기화 함수
   const clearAccountError = () => {
     setAccountError(null);
@@ -447,6 +517,10 @@ export const AuthProvider = ({ children }) => {
     availableAdvertisers,
     currentAdvertiserId,
     switchAdvertiser,
+    // 대행사 전환 기능 (Master 전용)
+    availableOrganizations,
+    currentOrganizationId,
+    switchOrganization,
     // 알림 기능
     apiNotifications,
     boardNotifications,

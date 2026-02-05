@@ -140,19 +140,32 @@ export const getUserMetadata = async (userId) => {
  * 접근 가능한 광고주 목록 조회
  * user_advertisers 테이블을 통한 다대다 관계 지원
  * @param {object} userData - 사용자 메타데이터
+ * @param {string|null} selectedOrganizationId - Master가 선택한 대행사 ID (선택사항)
  */
-export const getAvailableAdvertisers = async (userData) => {
+export const getAvailableAdvertisers = async (userData, selectedOrganizationId = null) => {
   const isAgency = ['agency_admin', 'agency_manager', 'agency_staff'].includes(userData.role);
   const isAdvertiser = ['advertiser_admin', 'advertiser_staff', 'viewer', 'editor'].includes(userData.role);
 
   if (userData.role === 'master' || userData.role === 'specialist') {
-    // Master & Specialist: 모든 광고주
-    const { data, error } = await supabase.from('advertisers').select('*');
+    // Master & Specialist: 선택된 대행사가 있으면 해당 대행사의 브랜드만, 없으면 모든 광고주
+    let query = supabase
+      .from('advertisers')
+      .select('*')
+      .is('deleted_at', null);
+
+    if (selectedOrganizationId) {
+      query = query.eq('organization_id', selectedOrganizationId);
+    }
+
+    const { data, error } = await query;
     if (error) {
       console.error('[getAvailableAdvertisers] 조회 실패:', error);
       throw error;
     }
-    console.log('[getAvailableAdvertisers] 조회 성공 (master/specialist):', { count: data?.length });
+    console.log('[getAvailableAdvertisers] 조회 성공 (master/specialist):', {
+      count: data?.length,
+      selectedOrganizationId
+    });
     return data || [];
   } else if (userData.role === 'agency_admin') {
     // Agency Admin(대표): 같은 organization의 모든 브랜드 접근
@@ -270,15 +283,21 @@ export const getUsers = async (currentUser) => {
   const isAdvertiser = ['advertiser_admin', 'advertiser_staff', 'viewer', 'editor'].includes(currentUser.role);
 
   if (currentUser.role === 'master') {
-    // Master: 모든 사용자 조회 가능
-    const { data, error } = await supabase
+    // Master: 대행사 선택 여부에 따라 조회
+    let query = supabase
       .from('users')
       .select(`
         *,
         organizations(id, name, type),
         advertisers(id, name)
-      `)
-      .order('created_at', { ascending: false });
+      `);
+
+    // currentOrganizationId가 있으면 해당 조직만
+    if (currentUser.currentOrganizationId) {
+      query = query.eq('organization_id', currentUser.currentOrganizationId);
+    }
+
+    const { data, error } = await query.order('created_at', { ascending: false });
 
     if (error) {
       console.error('[getUsers] 조회 실패:', error);
@@ -1995,14 +2014,15 @@ export const getAdDailyPerformance = async (adId, startDate, endDate) => {
 /**
  * API 토큰 목록 조회 (integrations 테이블)
  * @param {string} advertiserId - 광고주 ID (선택, 클라이언트용)
+ * @param {string} organizationId - 조직 ID (선택, Master가 대행사 선택 시)
  * @returns {Array} API 토큰 목록 (camelCase 변환됨, 토큰 값 노출 안 함)
  */
-export const getApiTokens = async (advertiserId = null) => {
+export const getApiTokens = async (advertiserId = null, organizationId = null) => {
   let query = supabase
     .from('integrations')
     .select(`
       *,
-      advertisers(name)
+      advertisers(name, organization_id)
     `)
     .eq('integration_type', 'token')
     .is('deleted_at', null);
@@ -2010,6 +2030,20 @@ export const getApiTokens = async (advertiserId = null) => {
   // 클라이언트는 자신의 토큰만 조회
   if (advertiserId) {
     query = query.eq('advertiser_id', advertiserId);
+  } else if (organizationId) {
+    // Master가 특정 대행사 선택: 해당 대행사의 모든 토큰
+    const { data: advertiserIds } = await supabase
+      .from('advertisers')
+      .select('id')
+      .eq('organization_id', organizationId)
+      .is('deleted_at', null);
+
+    if (advertiserIds && advertiserIds.length > 0) {
+      query = query.in('advertiser_id', advertiserIds.map(a => a.id));
+    } else {
+      // 대행사에 브랜드가 없으면 빈 배열 반환
+      return [];
+    }
   }
 
   const { data, error } = await query;
@@ -2918,12 +2952,17 @@ export async function logChangelog(logData) {
  * @param {string} filters.startDate - 시작일 (선택)
  * @param {string} filters.endDate - 종료일 (선택)
  */
-export async function getChangelogs(filters = {}) {
+export async function getChangelogs(filters = {}, organizationId = null) {
   try {
     let query = supabase
       .from('changelog')
       .select('*', { count: 'exact' })
       .order('created_at', { ascending: false });
+
+    // 조직별 필터링 추가
+    if (organizationId) {
+      query = query.eq('organization_id', organizationId);
+    }
 
     // 필터 적용
     if (filters.targetType) {

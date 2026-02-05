@@ -22,8 +22,10 @@ import {
 import Card from 'components/card/Card';
 import { MdCheckCircle, MdError, MdSchedule, MdSync } from 'react-icons/md';
 import { supabase } from 'config/supabase';
+import { useAuth } from 'contexts/AuthContext';
 
 export default function CollectionMonitor() {
+  const { isAgency, advertiserId, isMaster, currentOrganizationId } = useAuth();
   const [jobs, setJobs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [currentPage, setCurrentPage] = useState(1);
@@ -36,9 +38,42 @@ export default function CollectionMonitor() {
   // 최근 작업 조회
   const fetchJobs = async () => {
     try {
-      const { data, error } = await supabase
+      let query = supabase
         .from('collection_jobs')
-        .select('*')
+        .select('*');
+
+      // 역할별 필터링
+      if (isMaster && isMaster()) {
+        if (currentOrganizationId) {
+          // 해당 대행사의 advertiser_id 조회
+          const { data: advertiserIds, error: advError } = await supabase
+            .from('advertisers')
+            .select('id')
+            .eq('organization_id', currentOrganizationId)
+            .is('deleted_at', null);
+
+          if (advError) throw advError;
+
+          if (advertiserIds && advertiserIds.length > 0) {
+            // collection_jobs.advertiser_id로 직접 필터링
+            query = query.in('advertiser_id', advertiserIds.map(a => a.id));
+          } else {
+            setJobs([]);
+            setLoading(false);
+            return;
+          }
+        }
+        // else: 대행사 미선택 시 필터링 없음
+      } else if (isAgency && isAgency()) {
+        // Agency: 필터링 없음 (원래 동작 유지)
+      } else {
+        // Client: 자신의 advertiser_id만
+        if (advertiserId) {
+          query = query.eq('advertiser_id', advertiserId);
+        }
+      }
+
+      const { data, error } = await query
         .order('created_at', { ascending: false })
         .limit(100);
 
@@ -78,7 +113,7 @@ export default function CollectionMonitor() {
     return () => {
       subscription.unsubscribe();
     };
-  }, []);
+  }, [currentOrganizationId, isMaster, isAgency, advertiserId]);
 
   // 상태별 아이콘 및 색상
   const getStatusBadge = (status) => {

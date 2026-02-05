@@ -68,7 +68,7 @@ const columnHelper = createColumnHelper();
 
 export default function APITokenTable(props) {
   const { ...rest } = props;
-  const { isAgency, advertiserId, availableAdvertisers, organizationId } = useAuth();
+  const { isAgency, advertiserId, availableAdvertisers, organizationId, isMaster, currentOrganizationId } = useAuth();
   const [sorting, setSorting] = React.useState([]);
   const textColor = useColorModeValue('secondaryGray.900', 'white');
   const borderColor = useColorModeValue('gray.200', 'whiteAlpha.100');
@@ -159,13 +159,16 @@ export default function APITokenTable(props) {
 
   // 권한에 따라 데이터 필터링
   const data = React.useMemo(() => {
-    // 대행사는 모든 데이터 접근
-    if (isAgency()) {
+    // Master와 대행사는 모든 데이터 접근
+    if (isMaster && isMaster()) {
+      return allData;
+    }
+    if (isAgency && isAgency()) {
       return allData;
     }
     // 클라이언트는 자신의 브랜드 데이터만 접근
     return allData.filter(item => item.advertiser_id === advertiserId);
-  }, [allData, isAgency, advertiserId]);
+  }, [allData, isMaster, isAgency, advertiserId]);
 
   // TODO: Supabase 연동 후 주석 해제
   // 컴포넌트 마운트 시 데이터 수집 상태 체크
@@ -286,7 +289,7 @@ export default function APITokenTable(props) {
   const fetchTokens = React.useCallback(async () => {
     setIsLoadingTokens(true);
     try {
-      const { data, error } = await supabase
+      let query = supabase
         .from('integrations')
         .select(`
           *,
@@ -294,8 +297,39 @@ export default function APITokenTable(props) {
             id,
             name
           )
-        `)
-        .order('created_at', { ascending: false });
+        `);
+
+      // 역할별 필터링
+      if (isMaster && isMaster()) {
+        // Master: 대행사 선택 시만 필터링
+        if (currentOrganizationId) {
+          const { data: advertiserIds, error: advError } = await supabase
+            .from('advertisers')
+            .select('id')
+            .eq('organization_id', currentOrganizationId)
+            .is('deleted_at', null);
+
+          if (advError) throw advError;
+
+          if (advertiserIds && advertiserIds.length > 0) {
+            query = query.in('advertiser_id', advertiserIds.map(a => a.id));
+          } else {
+            setAllData([]);
+            setIsLoadingTokens(false);
+            return;
+          }
+        }
+        // else: 대행사 미선택 시 필터링 없음
+      } else if (isAgency && isAgency()) {
+        // Agency: 필터링 없음 (원래 동작 유지)
+      } else {
+        // Client: 자신의 advertiser_id만 (원래 동작 유지)
+        if (advertiserId) {
+          query = query.eq('advertiser_id', advertiserId);
+        }
+      }
+
+      const { data, error } = await query.order('created_at', { ascending: false });
 
       if (error) throw error;
 
@@ -304,9 +338,6 @@ export default function APITokenTable(props) {
         ...item,
         advertiser_name: item.advertisers?.name || '알 수 없음',
       }));
-
-      console.log('[DEBUG] Integrations 데이터:', mappedData);
-      console.log('[DEBUG] 첫 번째 항목 상세:', mappedData[0]);
 
       setAllData(mappedData);
     } catch (error) {
@@ -321,14 +352,14 @@ export default function APITokenTable(props) {
     } finally {
       setIsLoadingTokens(false);
     }
-  }, [toast]);
+  }, [toast, isMaster, currentOrganizationId, isAgency, advertiserId]);
 
   React.useEffect(() => {
     if (organizationId) {
       fetchOrganizationGcp();
     }
     fetchTokens();
-  }, [organizationId, fetchOrganizationGcp, fetchTokens]);
+  }, [organizationId, currentOrganizationId, fetchOrganizationGcp, fetchTokens]);
 
   // GCP 소스 변경 시 MCC ID 자동 입력
   React.useEffect(() => {

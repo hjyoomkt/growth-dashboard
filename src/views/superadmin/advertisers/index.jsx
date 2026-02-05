@@ -35,12 +35,12 @@ export default function AdvertisersManagement() {
   const [isDeleting, setIsDeleting] = useState(false);
   const [isDeletingAgency, setIsDeletingAgency] = useState(false);
   const toast = useToast();
-  const { role, organizationId, isMaster } = useAuth();
+  const { role, organizationId, isMaster, currentOrganizationId } = useAuth();
 
   // 데이터 로드
   useEffect(() => {
     fetchOrganizations();
-  }, []);
+  }, [currentOrganizationId]);
 
   const fetchOrganizations = async () => {
     try {
@@ -67,8 +67,14 @@ export default function AdvertisersManagement() {
           )
         `);
 
-      // agency_admin은 자신의 조직만 조회
-      if (role === 'agency_admin') {
+      // 권한별 필터링
+      if (role === 'master' && currentOrganizationId) {
+        // Master가 특정 대행사 선택: 해당 대행사만
+        query = query.eq('id', currentOrganizationId);
+      } else if (role === 'master') {
+        // Master 전체 선택: 필터 없음 (모든 대행사)
+      } else if (role === 'agency_admin') {
+        // agency_admin은 자신의 조직만 조회
         query = query.eq('id', organizationId);
       }
 
