@@ -122,7 +122,7 @@ export default function NFT(props) {
             }}
             mt='25px'>
             <Text fontWeight='700' fontSize='sm' color={textColorBid}>
-              Current Bid: {currentbid}
+              현재 가격: {currentbid}
             </Text>
             <Link
               href={download}
@@ -141,7 +141,7 @@ export default function NFT(props) {
                 borderRadius='70px'
                 px='24px'
                 py='5px'>
-                Place Bid
+                입찰하기
               </Button>
             </Link>
           </Flex>

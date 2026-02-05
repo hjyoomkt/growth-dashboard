@@ -30,7 +30,7 @@ export default function Banner() {
         }}
         fontWeight='700'
         lineHeight={{ base: "32px", md: "42px" }}>
-        Discover, collect, and sell extraordinary NFTs
+        특별한 상품을 발견하고, 수집하고, 판매하세요
       </Text>
       <Text
         fontSize='md'
@@ -46,8 +46,7 @@ export default function Banner() {
         fontWeight='500'
         mb='40px'
         lineHeight='28px'>
-        Enter in this creative world. Discover now the latest NFTs or start
-        creating your own!
+        창의적인 세계로 들어오세요. 최신 상품을 발견하거나 직접 만들어보세요!
       </Text>
       <Flex align='center'>
         <Button
@@ -61,11 +60,11 @@ export default function Banner() {
           py='20px'
           px='27'
           me='38px'>
-          Discover now
+          지금 발견하기
         </Button>
         <Link>
           <Text color='white' fontSize='sm' fontWeight='500'>
-            Watch video
+            영상 보기
           </Text>
         </Link>
       </Flex>

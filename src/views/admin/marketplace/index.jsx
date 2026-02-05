@@ -79,7 +79,7 @@ export default function Marketplace() {
               direction={{ base: "column", md: "row" }}
               align={{ base: "start", md: "center" }}>
               <Text color={textColor} fontSize='2xl' ms='24px' fontWeight='700'>
-                Trending NFTs
+                인기 상품
               </Text>
               <Flex
                 align='center'
@@ -91,24 +91,24 @@ export default function Marketplace() {
                   fontWeight='500'
                   me={{ base: "34px", md: "44px" }}
                   to='#art'>
-                  Art
+                  아트
                 </Link>
                 <Link
                   color={textColorBrand}
                   fontWeight='500'
                   me={{ base: "34px", md: "44px" }}
                   to='#music'>
-                  Music
+                  음악
                 </Link>
                 <Link
                   color={textColorBrand}
                   fontWeight='500'
                   me={{ base: "34px", md: "44px" }}
                   to='#collectibles'>
-                  Collectibles
+                  수집품
                 </Link>
                 <Link color={textColorBrand} fontWeight='500' to='#sports'>
-                  Sports
+                  스포츠
                 </Link>
               </Flex>
             </Flex>
@@ -172,7 +172,7 @@ export default function Marketplace() {
               fontSize='2xl'
               ms='24px'
               fontWeight='700'>
-              Recently Added
+              최근 추가됨
             </Text>
             <SimpleGrid
               columns={{ base: 1, md: 3 }}
@@ -249,9 +249,9 @@ export default function Marketplace() {
               px='22px'
               py='18px'>
               <Text color={textColor} fontSize='xl' fontWeight='600'>
-                History
+                히스토리
               </Text>
-              <Button variant='action'>See all</Button>
+              <Button variant='action'>전체 보기</Button>
             </Flex>
 
             <HistoryItem

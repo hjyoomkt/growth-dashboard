@@ -28,7 +28,6 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import navImage from 'assets/img/layout/Navbar.png';
 import { MdNotificationsNone, MdInfoOutline, MdArrowDropDown } from 'react-icons/md';
 import { IoMdMoon, IoMdSunny } from 'react-icons/io';
-import { FaEthereum } from 'react-icons/fa';
 import routes from 'routes';
 import { useAuth } from 'contexts/AuthContext';
 import ViewPostModal from 'views/shared/board/components/ViewPostModal';
@@ -92,10 +91,7 @@ export default function HeaderLinks(props) {
   let menuBg = useColorModeValue('white', 'navy.800');
   const textColor = useColorModeValue('secondaryGray.900', 'white');
   const textColorBrand = useColorModeValue('brand.700', 'brand.400');
-  const ethColor = useColorModeValue('gray.700', 'white');
   const borderColor = useColorModeValue('#E6ECFA', 'rgba(135, 140, 189, 0.3)');
-  const ethBg = useColorModeValue('secondaryGray.300', 'navy.900');
-  const ethBox = useColorModeValue('white', 'navy.800');
   const shadow = useColorModeValue(
     '14px 17px 40px 4px rgba(112, 144, 176, 0.18)',
     '14px 17px 40px 4px rgba(112, 144, 176, 0.06)',
@@ -249,40 +245,7 @@ export default function HeaderLinks(props) {
         </Menu>
       )}
 
-      <Flex
-        bg={ethBg}
-        display={secondary ? 'flex' : 'none'}
-        borderRadius="30px"
-        ms="auto"
-        p="6px"
-        align="center"
-        me="6px"
-      >
-        <Flex
-          align="center"
-          justify="center"
-          bg={ethBox}
-          h="29px"
-          w="29px"
-          borderRadius="30px"
-          me="7px"
-        >
-          <Icon color={ethColor} w="9px" h="14px" as={FaEthereum} />
-        </Flex>
-        <Text
-          w="max-content"
-          color={ethColor}
-          fontSize="sm"
-          fontWeight="700"
-          me="6px"
-        >
-          1,924
-          <Text as="span" display={{ base: 'none', md: 'unset' }}>
-            {' '}
-            ETH
-          </Text>
-        </Text>
-      </Flex>
+      {/* ETH 표시 제거됨 */}
       <SidebarResponsive routes={activeRoutes} />
       {/* 알림 메뉴 - Specialist는 표시하지 않음 */}
       {role !== 'specialist' && (

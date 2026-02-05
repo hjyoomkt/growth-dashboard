@@ -73,9 +73,9 @@ const routes = [
     masterOnly: true, // 마스터만 접근 가능
   },
   {
-    name: 'NFT Marketplace',
+    name: 'ZestStore',
     layout: '/admin',
-    path: '/nft-marketplace',
+    path: '/zeststore',
     icon: (
       <Icon
         as={MdOutlineShoppingCart}
