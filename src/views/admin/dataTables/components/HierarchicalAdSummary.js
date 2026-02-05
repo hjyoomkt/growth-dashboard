@@ -96,6 +96,8 @@ export default function HierarchicalAdSummary() {
           rowType: 'comparison',
           media: '',
           key: '',
+          campaignName: current.campaignName,
+          adGroupName: current.adGroupName,
         });
 
         // 3. 증감 행
@@ -103,6 +105,8 @@ export default function HierarchicalAdSummary() {
           media: '',
           key: '',
           rowType: 'difference',
+          campaignName: current.campaignName,
+          adGroupName: current.adGroupName,
           cost: current.cost - comparison.cost,
           impressions: current.impressions - comparison.impressions,
           clicks: current.clicks - comparison.clicks,
@@ -130,8 +134,22 @@ export default function HierarchicalAdSummary() {
         });
       } else {
         // 비교 데이터 없음
-        mergedData.push({ rowType: 'comparison', media: '', key: '', noData: true });
-        mergedData.push({ rowType: 'difference', media: '', key: '', noData: true });
+        mergedData.push({
+          rowType: 'comparison',
+          media: '',
+          key: '',
+          campaignName: current.campaignName,
+          adGroupName: current.adGroupName,
+          noData: true
+        });
+        mergedData.push({
+          rowType: 'difference',
+          media: '',
+          key: '',
+          campaignName: current.campaignName,
+          adGroupName: current.adGroupName,
+          noData: true
+        });
       }
     });
 
@@ -326,6 +344,20 @@ export default function HierarchicalAdSummary() {
               매체
             </Flex>
           </Th>
+          {(activeTab === "adgroup" || activeTab === "ad") && (
+            <Th pe='10px' borderColor={borderColor}>
+              <Flex justifyContent='space-between' align='center' fontSize={{ sm: '10px', lg: '12px' }} color='gray.400'>
+                캠페인명
+              </Flex>
+            </Th>
+          )}
+          {activeTab === "ad" && (
+            <Th pe='10px' borderColor={borderColor}>
+              <Flex justifyContent='space-between' align='center' fontSize={{ sm: '10px', lg: '12px' }} color='gray.400'>
+                광고그룹명
+              </Flex>
+            </Th>
+          )}
           <Th pe='10px' borderColor={borderColor}>
             <Flex justifyContent='space-between' align='center' fontSize={{ sm: '10px', lg: '12px' }} color='gray.400'>
               {columnHeader}
@@ -478,6 +510,28 @@ export default function HierarchicalAdSummary() {
                   </Flex>
                 ) : null}
               </Td>
+
+              {/* 캠페인명 컬럼 (광고그룹, 광고 탭에서 표시) */}
+              {(activeTab === "adgroup" || activeTab === "ad") && (
+                <Td fontSize={{ sm: '14px' }} minW={{ sm: '150px', md: '200px', lg: 'auto' }} borderColor={borderColor} py={rowHeight === 'compact' ? '8px' : '12px'}>
+                  {row.campaignName ? (
+                    <Text fontSize='sm' fontWeight={rowStyle.fontWeight} color={rowStyle.color}>
+                      {row.campaignName}
+                    </Text>
+                  ) : null}
+                </Td>
+              )}
+
+              {/* 광고그룹명 컬럼 (광고 탭에서만 표시) */}
+              {activeTab === "ad" && (
+                <Td fontSize={{ sm: '14px' }} minW={{ sm: '150px', md: '200px', lg: 'auto' }} borderColor={borderColor} py={rowHeight === 'compact' ? '8px' : '12px'}>
+                  {row.adGroupName ? (
+                    <Text fontSize='sm' fontWeight={rowStyle.fontWeight} color={rowStyle.color}>
+                      {row.adGroupName}
+                    </Text>
+                  ) : null}
+                </Td>
+              )}
 
               {/* 캠페인명/광고그룹명/광고명 컬럼 */}
               <Td fontSize={{ sm: '14px' }} minW={{ sm: '150px', md: '200px', lg: 'auto' }} borderColor={borderColor} py={rowHeight === 'compact' ? '8px' : '12px'}>
@@ -843,13 +897,9 @@ export default function HierarchicalAdSummary() {
 
       {/* 광고 탭에서 안내 메시지 표시 */}
       {activeTab === "ad" && (
-        <Alert status="info" mx="25px" mb="12px" borderRadius="8px">
-          <AlertIcon />
-          <Text fontSize="sm">
-            Google Ads와 Naver는 광고 단위 데이터를 제공하지 않습니다.
-            광고그룹 단위로 집계된 데이터가 "N/A"로 표시됩니다.
-          </Text>
-        </Alert>
+        <Text fontSize="xs" color="gray.500" mx="25px" mb="8px">
+          * Google Ads와 Naver는 광고명을 제공하지 않아 "N/A"로 표시됩니다.
+        </Text>
       )}
 
       {isLoading ? (
@@ -1028,13 +1078,9 @@ export default function HierarchicalAdSummary() {
           <ModalCloseButton />
           <ModalBody>
             {activeTab === "ad" && (
-              <Alert status="info" mb="12px" borderRadius="8px">
-                <AlertIcon />
-                <Text fontSize="sm">
-                  Google Ads와 Naver는 광고 단위 데이터를 제공하지 않습니다.
-                  광고그룹 단위로 집계된 데이터가 "N/A"로 표시됩니다.
-                </Text>
-              </Alert>
+              <Text fontSize="xs" color="gray.500" mb="8px">
+                * Google Ads와 Naver는 광고명을 제공하지 않아 "N/A"로 표시됩니다.
+              </Text>
             )}
 
             {isLoading ? (

@@ -412,6 +412,7 @@ END;
 $$ LANGUAGE plpgsql STABLE;
 
 -- 11. 광고그룹별 집계 함수
+-- 수정: campaign_name 추가하여 상위 계층 정보 제공
 CREATE OR REPLACE FUNCTION get_ad_group_aggregated(
   p_advertiser_id uuid DEFAULT NULL,
   p_advertiser_ids uuid[] DEFAULT NULL,
@@ -433,7 +434,7 @@ BEGIN
   RETURN QUERY
   SELECT
     ap.source,
-    MAX(ap.campaign_name) as campaign_name,
+    ap.campaign_name,
     ap.ad_group_name,
     COALESCE(SUM(ap.cost), 0)::numeric as cost,
     COALESCE(SUM(ap.impressions), 0)::bigint as impressions,
@@ -454,11 +455,13 @@ BEGIN
     AND (p_advertiser_ids IS NULL OR ap.advertiser_id = ANY(p_advertiser_ids))
     AND (p_start_date IS NULL OR ap.date >= p_start_date)
     AND (p_end_date IS NULL OR ap.date <= p_end_date)
-  GROUP BY ap.source, ap.ad_group_name;
+  GROUP BY ap.source, ap.campaign_name, ap.ad_group_name;
 END;
 $$ LANGUAGE plpgsql STABLE;
 
 -- 12. 광고별 집계 함수
+-- 수정: campaign_name, ad_group_name별로 데이터를 분리하여 집계
+-- 이유: Google Ads는 ad_name이 없어서 모든 데이터가 하나로 합쳐지는 문제 해결
 CREATE OR REPLACE FUNCTION get_ad_aggregated(
   p_advertiser_id uuid DEFAULT NULL,
   p_advertiser_ids uuid[] DEFAULT NULL,
@@ -481,8 +484,8 @@ BEGIN
   RETURN QUERY
   SELECT
     ap.source,
-    MAX(ap.campaign_name) as campaign_name,
-    MAX(ap.ad_group_name) as ad_group_name,
+    ap.campaign_name,
+    ap.ad_group_name,
     COALESCE(ap.ad_name, 'N/A') as ad_name,
     COALESCE(SUM(ap.cost), 0)::numeric as cost,
     COALESCE(SUM(ap.impressions), 0)::bigint as impressions,
@@ -503,6 +506,6 @@ BEGIN
     AND (p_advertiser_ids IS NULL OR ap.advertiser_id = ANY(p_advertiser_ids))
     AND (p_start_date IS NULL OR ap.date >= p_start_date)
     AND (p_end_date IS NULL OR ap.date <= p_end_date)
-  GROUP BY ap.source, COALESCE(ap.ad_name, 'N/A');
+  GROUP BY ap.source, ap.campaign_name, ap.ad_group_name, COALESCE(ap.ad_name, 'N/A');
 END;
 $$ LANGUAGE plpgsql STABLE;
