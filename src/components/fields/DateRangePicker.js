@@ -18,6 +18,7 @@ import {
 } from '@chakra-ui/react';
 import { MdCalendarToday, MdKeyboardArrowDown, MdChevronLeft, MdChevronRight, MdFileDownload, MdCompareArrows, MdClose } from 'react-icons/md';
 import { useDateRange } from 'contexts/DateRangeContext';
+import { useAuth } from 'contexts/AuthContext';
 import Card from 'components/card/Card';
 import Calendar from 'react-calendar';
 import 'react-calendar/dist/Calendar.css';
@@ -42,6 +43,9 @@ const DateRangePicker = () => {
     updateComparisonRange,
   } = useDateRange();
 
+  const { user } = useAuth();
+  const isDemoUser = user?.email === 'demo@zestdot.com';
+
   const [isStartOpen, setIsStartOpen] = useState(false);
   const [isEndOpen, setIsEndOpen] = useState(false);
   const [isCompStartOpen, setIsCompStartOpen] = useState(false);
@@ -53,6 +57,8 @@ const DateRangePicker = () => {
   const bgHover = useColorModeValue('secondaryGray.100', 'whiteAlpha.100');
   const inputBg = useColorModeValue('white', 'navy.700');
   const inputTextColor = useColorModeValue('secondaryGray.900', 'white');
+  const noticeBoxBg = useColorModeValue('orange.50', 'orange.900');
+  const noticeTextColor = useColorModeValue('orange.700', 'orange.200');
 
   const presets = [
     '직접설정',
@@ -202,6 +208,22 @@ const DateRangePicker = () => {
   return (
     <Card p='20px' mb='20px'>
       <Flex direction='column' gap='12px'>
+        {isDemoUser && (
+          <Box
+            mb='8px'
+            p='10px 12px'
+            bg={noticeBoxBg}
+            borderLeft='3px solid'
+            borderColor='orange.400'
+            borderRadius='6px'>
+            <Text
+              fontSize='xs'
+              fontWeight='500'
+              color={noticeTextColor}>
+              알림: 250130~250205 데이터만 조회 가능합니다.
+            </Text>
+          </Box>
+        )}
         <Flex align='center' gap='12px' flexWrap='wrap'>
           <Icon as={MdCalendarToday} w='18px' h='18px' color={brandColor} />
 
