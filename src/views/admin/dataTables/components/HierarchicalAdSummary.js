@@ -63,6 +63,7 @@ export default function HierarchicalAdSummary() {
   const [error, setError] = useState(null);
   const [selectedMedia, setSelectedMedia] = useState("all");
   const [sorting, setSorting] = useState([]);
+  const [columnSizing, setColumnSizing] = useState({});
   const itemsPerPage = 30;
   const { isOpen, onOpen, onClose } = useDisclosure();
 
@@ -563,12 +564,14 @@ export default function HierarchicalAdSummary() {
     columns,
     state: {
       sorting,
+      columnSizing,
     },
     onSortingChange: setSorting,
+    onColumnSizingChange: setColumnSizing,
     getCoreRowModel: getCoreRowModel(),
     getSortedRowModel: getSortedRowModel(),
     manualSorting: true,
-    columnResizeMode: 'onChange',
+    columnResizeMode: 'onEnd',
     enableColumnResizing: true,
   });
 
@@ -648,7 +651,7 @@ export default function HierarchicalAdSummary() {
                 }}
                 whiteSpace='nowrap'
                 position='relative'
-                w={header.getSize()}
+                style={{ width: `${header.getSize()}px` }}
               >
                 <Flex
                   justifyContent='space-between'
@@ -656,7 +659,11 @@ export default function HierarchicalAdSummary() {
                   fontSize={{ sm: '10px', lg: '12px' }}
                   color='gray.400'
                   cursor='pointer'
-                  onClick={header.column.getToggleSortingHandler()}
+                  onClick={(e) => {
+                    // 리사이저 영역 클릭 시 정렬 방지
+                    if (e.target.closest('.column-resizer')) return;
+                    header.column.getToggleSortingHandler()?.(e);
+                  }}
                   flex='1'
                   mr='5px'
                 >
@@ -797,7 +804,7 @@ export default function HierarchicalAdSummary() {
           return (
             <Tr key={index} h={rowHeight === 'compact' ? '36px' : 'auto'} bg={rowStyle.bg}>
               {/* 매체 컬럼 */}
-              <Td fontSize={{ sm: '14px' }} borderColor={borderColor} py={rowHeight === 'compact' ? '8px' : '12px'} w={allColumns.find(col => col.id === 'media')?.getSize()}>
+              <Td fontSize={{ sm: '14px' }} borderColor={borderColor} py={rowHeight === 'compact' ? '8px' : '12px'} style={{ width: `${allColumns.find(col => col.id === 'media')?.getSize()}px` }}>
                 {row.media ? (
                   <Flex align='center' gap='8px'>
                     <Text fontSize='sm' fontWeight={rowStyle.fontWeight} color={rowStyle.color} whiteSpace='nowrap'>
@@ -819,7 +826,7 @@ export default function HierarchicalAdSummary() {
 
               {/* 캠페인명 컬럼 (광고그룹, 광고 탭에서 표시) */}
               {(activeTab === "adgroup" || activeTab === "ad") && (
-                <Td fontSize={{ sm: '14px' }} borderColor={borderColor} py={rowHeight === 'compact' ? '8px' : '12px'} w={allColumns.find(col => col.id === 'campaignName')?.getSize()}>
+                <Td fontSize={{ sm: '14px' }} borderColor={borderColor} py={rowHeight === 'compact' ? '8px' : '12px'} style={{ width: `${allColumns.find(col => col.id === 'campaignName')?.getSize()}px` }}>
                   {row.campaignName ? (
                     <Text fontSize='sm' fontWeight={rowStyle.fontWeight} color={rowStyle.color} noOfLines={1} overflow='hidden' textOverflow='ellipsis'>
                       {row.campaignName}
@@ -830,7 +837,7 @@ export default function HierarchicalAdSummary() {
 
               {/* 광고그룹명 컬럼 (광고 탭에서만 표시) */}
               {activeTab === "ad" && (
-                <Td fontSize={{ sm: '14px' }} borderColor={borderColor} py={rowHeight === 'compact' ? '8px' : '12px'} w={allColumns.find(col => col.id === 'adGroupName')?.getSize()}>
+                <Td fontSize={{ sm: '14px' }} borderColor={borderColor} py={rowHeight === 'compact' ? '8px' : '12px'} style={{ width: `${allColumns.find(col => col.id === 'adGroupName')?.getSize()}px` }}>
                   {row.adGroupName ? (
                     <Text fontSize='sm' fontWeight={rowStyle.fontWeight} color={rowStyle.color} noOfLines={1} overflow='hidden' textOverflow='ellipsis'>
                       {row.adGroupName}
@@ -840,7 +847,7 @@ export default function HierarchicalAdSummary() {
               )}
 
               {/* 캠페인명/광고그룹명/광고명 컬럼 */}
-              <Td fontSize={{ sm: '14px' }} borderColor={borderColor} py={rowHeight === 'compact' ? '8px' : '12px'} w={allColumns.find(col => col.id === 'key')?.getSize()}>
+              <Td fontSize={{ sm: '14px' }} borderColor={borderColor} py={rowHeight === 'compact' ? '8px' : '12px'} style={{ width: `${allColumns.find(col => col.id === 'key')?.getSize()}px` }}>
                 {row.key ? (
                   <Flex align="center" gap="8px">
                     <Text fontSize='sm' fontWeight={rowStyle.fontWeight} color={rowStyle.color} noOfLines={1} overflow='hidden' textOverflow='ellipsis' flex='1'>
@@ -856,7 +863,7 @@ export default function HierarchicalAdSummary() {
               </Td>
 
               {/* 지출액 */}
-              <Td fontSize={{ sm: '14px' }} borderColor={borderColor} py={rowHeight === 'compact' ? '8px' : '12px'} w={allColumns.find(col => col.id === 'cost')?.getSize()}>
+              <Td fontSize={{ sm: '14px' }} borderColor={borderColor} py={rowHeight === 'compact' ? '8px' : '12px'} style={{ width: `${allColumns.find(col => col.id === 'cost')?.getSize()}px` }}>
                 {row.noData ? (
                   <Text fontSize='sm' color='gray.400'>-</Text>
                 ) : row.rowType === 'difference' ? (
@@ -884,7 +891,7 @@ export default function HierarchicalAdSummary() {
               </Td>
 
               {/* 노출수 */}
-              <Td fontSize={{ sm: '14px' }} borderColor={borderColor} py={rowHeight === 'compact' ? '8px' : '12px'} w={allColumns.find(col => col.id === 'impressions')?.getSize()}>
+              <Td fontSize={{ sm: '14px' }} borderColor={borderColor} py={rowHeight === 'compact' ? '8px' : '12px'} style={{ width: `${allColumns.find(col => col.id === 'impressions')?.getSize()}px` }}>
                 {row.noData ? (
                   <Text fontSize='sm' color='gray.400'>-</Text>
                 ) : row.rowType === 'difference' ? (
@@ -912,7 +919,7 @@ export default function HierarchicalAdSummary() {
               </Td>
 
               {/* 클릭수 */}
-              <Td fontSize={{ sm: '14px' }} borderColor={borderColor} py={rowHeight === 'compact' ? '8px' : '12px'} w={allColumns.find(col => col.id === 'clicks')?.getSize()}>
+              <Td fontSize={{ sm: '14px' }} borderColor={borderColor} py={rowHeight === 'compact' ? '8px' : '12px'} style={{ width: `${allColumns.find(col => col.id === 'clicks')?.getSize()}px` }}>
                 {row.noData ? (
                   <Text fontSize='sm' color='gray.400'>-</Text>
                 ) : row.rowType === 'difference' ? (
@@ -940,7 +947,7 @@ export default function HierarchicalAdSummary() {
               </Td>
 
               {/* CTR */}
-              <Td fontSize={{ sm: '14px' }} borderColor={borderColor} py={rowHeight === 'compact' ? '8px' : '12px'} w={allColumns.find(col => col.id === 'ctr')?.getSize()}>
+              <Td fontSize={{ sm: '14px' }} borderColor={borderColor} py={rowHeight === 'compact' ? '8px' : '12px'} style={{ width: `${allColumns.find(col => col.id === 'ctr')?.getSize()}px` }}>
                 {row.noData ? (
                   <Text fontSize='sm' color='gray.400'>-</Text>
                 ) : row.rowType === 'difference' && ctrChange !== null ? (
@@ -965,7 +972,7 @@ export default function HierarchicalAdSummary() {
               </Td>
 
               {/* CPC */}
-              <Td fontSize={{ sm: '14px' }} borderColor={borderColor} py={rowHeight === 'compact' ? '8px' : '12px'} w={allColumns.find(col => col.id === 'cpc')?.getSize()}>
+              <Td fontSize={{ sm: '14px' }} borderColor={borderColor} py={rowHeight === 'compact' ? '8px' : '12px'} style={{ width: `${allColumns.find(col => col.id === 'cpc')?.getSize()}px` }}>
                 {row.noData ? (
                   <Text fontSize='sm' color='gray.400'>-</Text>
                 ) : row.rowType === 'difference' && cpcChange !== null ? (
@@ -990,7 +997,7 @@ export default function HierarchicalAdSummary() {
               </Td>
 
               {/* CPA */}
-              <Td fontSize={{ sm: '14px' }} borderColor={borderColor} py={rowHeight === 'compact' ? '8px' : '12px'} w={allColumns.find(col => col.id === 'cpa')?.getSize()}>
+              <Td fontSize={{ sm: '14px' }} borderColor={borderColor} py={rowHeight === 'compact' ? '8px' : '12px'} style={{ width: `${allColumns.find(col => col.id === 'cpa')?.getSize()}px` }}>
                 {row.noData ? (
                   <Text fontSize='sm' color='gray.400'>-</Text>
                 ) : row.rowType === 'difference' && cpaChange !== null ? (
@@ -1015,7 +1022,7 @@ export default function HierarchicalAdSummary() {
               </Td>
 
               {/* 전환수 */}
-              <Td fontSize={{ sm: '14px' }} borderColor={borderColor} py={rowHeight === 'compact' ? '8px' : '12px'} w={allColumns.find(col => col.id === 'conversions')?.getSize()}>
+              <Td fontSize={{ sm: '14px' }} borderColor={borderColor} py={rowHeight === 'compact' ? '8px' : '12px'} style={{ width: `${allColumns.find(col => col.id === 'conversions')?.getSize()}px` }}>
                 {row.noData ? (
                   <Text fontSize='sm' color='gray.400'>-</Text>
                 ) : row.rowType === 'difference' ? (
@@ -1043,7 +1050,7 @@ export default function HierarchicalAdSummary() {
               </Td>
 
               {/* 전환가치 */}
-              <Td fontSize={{ sm: '14px' }} borderColor={borderColor} py={rowHeight === 'compact' ? '8px' : '12px'} w={allColumns.find(col => col.id === 'conversionValue')?.getSize()}>
+              <Td fontSize={{ sm: '14px' }} borderColor={borderColor} py={rowHeight === 'compact' ? '8px' : '12px'} style={{ width: `${allColumns.find(col => col.id === 'conversionValue')?.getSize()}px` }}>
                 {row.noData ? (
                   <Text fontSize='sm' color='gray.400'>-</Text>
                 ) : row.rowType === 'difference' ? (
@@ -1071,7 +1078,7 @@ export default function HierarchicalAdSummary() {
               </Td>
 
               {/* ROAS */}
-              <Td fontSize={{ sm: '14px' }} borderColor={borderColor} py={rowHeight === 'compact' ? '8px' : '12px'} w={allColumns.find(col => col.id === 'roas')?.getSize()}>
+              <Td fontSize={{ sm: '14px' }} borderColor={borderColor} py={rowHeight === 'compact' ? '8px' : '12px'} style={{ width: `${allColumns.find(col => col.id === 'roas')?.getSize()}px` }}>
                 {row.noData ? (
                   <Text fontSize='sm' color='gray.400'>-</Text>
                 ) : row.rowType === 'difference' && roasChange !== null ? (
@@ -1096,7 +1103,7 @@ export default function HierarchicalAdSummary() {
               </Td>
 
               {/* CVR */}
-              <Td fontSize={{ sm: '14px' }} borderColor={borderColor} py={rowHeight === 'compact' ? '8px' : '12px'} w={allColumns.find(col => col.id === 'cvr')?.getSize()}>
+              <Td fontSize={{ sm: '14px' }} borderColor={borderColor} py={rowHeight === 'compact' ? '8px' : '12px'} style={{ width: `${allColumns.find(col => col.id === 'cvr')?.getSize()}px` }}>
                 {row.noData ? (
                   <Text fontSize='sm' color='gray.400'>-</Text>
                 ) : row.rowType === 'difference' && cvrChange !== null ? (
@@ -1121,7 +1128,7 @@ export default function HierarchicalAdSummary() {
               </Td>
 
               {/* AOV */}
-              <Td fontSize={{ sm: '14px' }} borderColor={borderColor} py={rowHeight === 'compact' ? '8px' : '12px'} w={allColumns.find(col => col.id === 'aov')?.getSize()}>
+              <Td fontSize={{ sm: '14px' }} borderColor={borderColor} py={rowHeight === 'compact' ? '8px' : '12px'} style={{ width: `${allColumns.find(col => col.id === 'aov')?.getSize()}px` }}>
                 {row.noData ? (
                   <Text fontSize='sm' color='gray.400'>-</Text>
                 ) : row.rowType === 'difference' && aovChange !== null ? (
