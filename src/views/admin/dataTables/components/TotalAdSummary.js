@@ -88,6 +88,7 @@ export default function TotalAdSummary() {
   const inputBg = useColorModeValue('white', 'navy.700');
   const brandColor = useColorModeValue('brand.500', 'white');
   const selectedBg = useColorModeValue('brand.50', 'whiteAlpha.100');
+  const evenRowBg = useColorModeValue('gray.50', 'whiteAlpha.50');
 
   // Supabase에서 데이터 조회 (매체/캠페인 포함)
   useEffect(() => {
@@ -747,11 +748,12 @@ export default function TotalAdSummary() {
             ))}
           </Thead>
           <Tbody>
-            {paginatedRows.map((row) => {
+            {paginatedRows.map((row, index) => {
               const rowHeight = sortedRows.length > 30 ? 'compact' : 'normal';
+              const isEvenRow = index % 2 === 1;
 
               return (
-                <Tr key={row.id} h={rowHeight === 'compact' ? '36px' : 'auto'}>
+                <Tr key={row.id} h={rowHeight === 'compact' ? '36px' : 'auto'} bg={isEvenRow ? evenRowBg : 'transparent'}>
                   {row.getVisibleCells().map((cell) => (
                     <Td
                       key={cell.id}
@@ -1112,9 +1114,10 @@ export default function TotalAdSummary() {
                       ))}
                     </Thead>
                     <Tbody>
-                      {paginatedRows.map((row) => {
+                      {paginatedRows.map((row, index) => {
+                        const isEvenRow = index % 2 === 1;
                         return (
-                          <Tr key={row.id}>
+                          <Tr key={row.id} bg={isEvenRow ? evenRowBg : 'transparent'}>
                             {row.getVisibleCells().map((cell) => (
                               <Td
                                 key={cell.id}

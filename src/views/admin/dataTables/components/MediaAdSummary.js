@@ -48,6 +48,7 @@ export default function MediaAdSummary() {
   const comparisonTextColor = useColorModeValue('gray.500', 'gray.400');
   const comparisonBg = useColorModeValue('gray.50', 'whiteAlpha.50');
   const differenceBg = useColorModeValue('blue.50', 'whiteAlpha.100');
+  const evenRowBg = useColorModeValue('gray.50', 'whiteAlpha.50');
   const bgHover = useColorModeValue('gray.50', 'whiteAlpha.50');
 
   // 비교 기간 데이터 병합 함수
@@ -500,8 +501,22 @@ export default function MediaAdSummary() {
                   ? calculatePercentageChange(row.currentAov, row.comparisonAov)
                   : null;
 
+                // 행 배경색 계산
+                const rowBg = (() => {
+                  if (rowStyle.bg !== 'transparent') {
+                    return rowStyle.bg;  // comparison, difference 행은 기존 배경색 유지
+                  }
+
+                  if (comparisonMode) {
+                    return 'white';  // 비교 모드의 current 행은 하얀색
+                  }
+
+                  // 일반 모드: 짝수/홀수 구분
+                  return index % 2 === 1 ? evenRowBg : 'transparent';
+                })();
+
                 return (
-                  <Tr key={index} bg={rowStyle.bg}>
+                  <Tr key={index} bg={rowBg}>
                     {/* 매체 컬럼 */}
                     <Td fontSize={{ sm: '14px' }} minW={{ sm: '150px', md: '200px', lg: 'auto' }} borderColor='transparent'>
                       {row.media ? (
