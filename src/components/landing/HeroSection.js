@@ -6,6 +6,7 @@ import {
   VStack,
   HStack,
   useColorMode,
+  useDisclosure,
 } from '@chakra-ui/react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
@@ -13,6 +14,7 @@ import { landingDesignSystem } from '../../theme/landingTheme';
 import Button from './Button';
 import { MdPlayCircleOutline } from 'react-icons/md';
 import { FiCheck } from 'react-icons/fi';
+import PlatformModal from './PlatformModal';
 
 const MotionBox = motion(Box);
 const MotionFlex = motion(Flex);
@@ -21,6 +23,7 @@ const MotionText = motion(Text);
 export const HeroSection = () => {
   const { colorMode } = useColorMode();
   const navigate = useNavigate();
+  const { isOpen, onOpen, onClose } = useDisclosure();
 
   // Prevent auto-focus on page load
   React.useEffect(() => {
@@ -53,9 +56,9 @@ export const HeroSection = () => {
   };
 
   const trustBadges = [
-    { icon: FiCheck, text: '⭐ 4.9 / 5 평균 만족도' },
-    { icon: FiCheck, text: '대시보드 바로 보기' },
-    { icon: FiCheck, text: '내 데이터 연결하기' },
+    { text: '⭐ 4.9 / 5 평균 만족도' },
+    { text: '대시보드 바로 보기' },
+    { text: '내 데이터 연결하기' },
   ];
 
   return (
@@ -106,9 +109,9 @@ export const HeroSection = () => {
             mb="24px"
             variants={itemVariants}
             fontFamily={landingDesignSystem.typography.fontFamily.heading}
-            style={{ backfaceVisibility: 'hidden', perspective: 1000 }}
+            style={{ backfaceVisibility: 'hidden', perspective: 1000, whiteSpace: 'pre-line' }}
           >
-            흩어진 마케팅 데이터 ROI로 연결하세요
+            마케팅 데이터{'\n'}ROI로 연결하세요
           </MotionText>
 
           {/* Description */}
@@ -121,7 +124,7 @@ export const HeroSection = () => {
             maxW="560px"
             variants={itemVariants}
           >
-            모든 광고·분석 데이터를 하나의 화면에서 연결하고{'\n'}실시간으로 성과를 판단하세요.
+            광고·분석 데이터를 하나의 화면에서! 실시간으로 성과를 판단하세요.
           </MotionText>
 
           {/* CTA Buttons */}
@@ -138,58 +141,37 @@ export const HeroSection = () => {
                 variant="secondary"
                 size="md"
                 leftIcon={<MdPlayCircleOutline size={20} />}
+                onClick={onOpen}
               >
                 데모 보기
               </Button>
             </HStack>
+            <PlatformModal isOpen={isOpen} onClose={onClose} />
           </MotionBox>
 
           {/* Trust Badges */}
           <MotionBox variants={itemVariants}>
-            <VStack align="flex-start" spacing="12px">
-              <Text
-                fontSize={landingDesignSystem.typography.fontSizes.caption}
-                fontWeight={landingDesignSystem.typography.fontWeights.semibold}
-                color={colorMode === 'dark' ? 'rgba(255, 255, 255, 0.6)' : landingDesignSystem.colors.textSecondary}
-                textTransform="uppercase"
-                letterSpacing="0.05em"
-              >
-                Built for performance-focused marketing teams
-              </Text>
-              <HStack spacing="12px" flexWrap="wrap">
-                {trustBadges.map((badge, index) => (
-                  <Flex
-                    key={index}
-                    align="center"
-                    gap="6px"
-                    px="14px"
-                    py="8px"
-                    borderRadius={landingDesignSystem.borderRadius.full}
-                    bg={colorMode === 'dark' ? 'rgba(66, 42, 251, 0.15)' : 'rgba(66, 42, 251, 0.08)'}
-                    border={`1px solid ${colorMode === 'dark' ? 'rgba(66, 42, 251, 0.3)' : 'rgba(66, 42, 251, 0.2)'}`}
-                    transition="all 0.3s ease"
-                    _hover={{
-                      bg: colorMode === 'dark' ? 'rgba(66, 42, 251, 0.25)' : 'rgba(66, 42, 251, 0.15)',
-                      borderColor: landingDesignSystem.colors.accent,
-                      transform: 'translateY(-2px)',
-                    }}
+            <HStack spacing="12px" flexWrap="wrap">
+              {trustBadges.map((badge, index) => (
+                <Flex
+                  key={index}
+                  align="center"
+                  px="16px"
+                  py="8px"
+                  borderRadius={landingDesignSystem.borderRadius.full}
+                  border={`1px solid ${colorMode === 'dark' ? 'rgba(66, 42, 251, 0.3)' : 'rgba(66, 42, 251, 0.3)'}`}
+                  bg="transparent"
+                >
+                  <Text
+                    fontSize="14px"
+                    fontWeight={landingDesignSystem.typography.fontWeights.medium}
+                    color={colorMode === 'dark' ? landingDesignSystem.colors.white : landingDesignSystem.colors.accent}
                   >
-                    <Box
-                      as={badge.icon}
-                      color={landingDesignSystem.colors.accent}
-                      fontSize="16px"
-                    />
-                    <Text
-                      fontSize="14px"
-                      fontWeight={landingDesignSystem.typography.fontWeights.medium}
-                      color={colorMode === 'dark' ? landingDesignSystem.colors.white : landingDesignSystem.colors.textPrimary}
-                    >
-                      {badge.text}
-                    </Text>
-                  </Flex>
-                ))}
-              </HStack>
-            </VStack>
+                    {badge.text}
+                  </Text>
+                </Flex>
+              ))}
+            </HStack>
           </MotionBox>
         </MotionFlex>
 

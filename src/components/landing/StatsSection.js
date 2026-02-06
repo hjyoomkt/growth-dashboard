@@ -77,7 +77,7 @@ export const StatsSection = () => {
               lineHeight={landingDesignSystem.typography.lineHeights.relaxed}
               maxW="500px"
             >
-              그로스메트릭스는 "왜 아직도 엑셀로 보고서를 만들까?"라는 질문에서 시작했습니다.{'\n\n'}우리가 쓰고 싶었던 대시보드를 직접 만들었습니다.
+              제스트닷은 "왜 아직도 엑셀로 보고서를 만들까?"라는 질문에서 시작했습니다.{'\n\n'}우리가 쓰고 싶었던 대시보드를 직접 만들었습니다.
             </Text>
           </VStack>
 

@@ -1,6 +1,7 @@
 import React from 'react';
 import { Box, Text, VStack, HStack, useColorMode } from '@chakra-ui/react';
 import { motion } from 'framer-motion';
+import { useNavigate } from 'react-router-dom';
 import { landingDesignSystem } from '../../theme/landingTheme';
 import Button from './Button';
 
@@ -8,6 +9,7 @@ const MotionBox = motion(Box);
 
 export const CTASection = () => {
   const { colorMode } = useColorMode();
+  const navigate = useNavigate();
 
   return (
     <Box
@@ -71,11 +73,11 @@ export const CTASection = () => {
               maxW="600px"
               lineHeight={landingDesignSystem.typography.lineHeights.relaxed}
             >
-              그로스메트릭스로 더 나은 ROI를 달성하는 수천 개의 마케팅 팀에 합류하세요.
+              제스트닷으로 더 나은 ROI를 달성하는 수천 개의 마케팅 팀에 합류하세요.
             </Text>
 
             <HStack spacing="16px" flexWrap="wrap" justify="center" pt="8px">
-              <Button variant="primary" size="lg">
+              <Button variant="primary" size="lg" onClick={() => navigate('/auth/sign-up')}>
                 지금 시작하기
               </Button>
               <Button
@@ -88,6 +90,7 @@ export const CTASection = () => {
                   borderColor: 'rgba(255, 255, 255, 0.8)',
                   color: 'rgba(255, 255, 255, 0.8)',
                 }}
+                onClick={() => navigate('/auth/sign-up')}
               >
                 영업문의
               </Button>

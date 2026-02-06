@@ -1,16 +1,18 @@
-import React from 'react';
-import { Box, Flex, Text, VStack, HStack, useColorMode } from '@chakra-ui/react';
+import React, { useState } from 'react';
+import { Box, Flex, Text, VStack, HStack, useColorMode, useDisclosure } from '@chakra-ui/react';
 import { motion } from 'framer-motion';
 import { landingDesignSystem } from '../../theme/landingTheme';
 import { FiCheck } from 'react-icons/fi';
 import Button from './Button';
 import { MdArrowForward } from 'react-icons/md';
+import PlatformModal from './PlatformModal';
 
 const MotionBox = motion(Box);
 const MotionFlex = motion(Flex);
 
 export const SolutionSection = () => {
   const { colorMode } = useColorMode();
+  const { isOpen, onOpen, onClose } = useDisclosure();
 
   const features = [
     '멀티 채널 성과 통합',
@@ -102,9 +104,12 @@ export const SolutionSection = () => {
             variant="primary"
             size="lg"
             rightIcon={<MdArrowForward size={20} />}
+            onClick={onOpen}
           >
             플랫폼 살펴보기
           </Button>
+
+          <PlatformModal isOpen={isOpen} onClose={onClose} />
         </MotionFlex>
 
         {/* Right Visual */}

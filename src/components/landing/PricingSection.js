@@ -1,6 +1,7 @@
 import React from 'react';
 import { Box, Flex, Text, VStack, HStack, useColorMode } from '@chakra-ui/react';
 import { motion } from 'framer-motion';
+import { useNavigate } from 'react-router-dom';
 import { landingDesignSystem } from '../../theme/landingTheme';
 import { FiCheck } from 'react-icons/fi';
 import Button from './Button';
@@ -9,12 +10,13 @@ const MotionBox = motion(Box);
 
 export const PricingSection = () => {
   const { colorMode } = useColorMode();
+  const navigate = useNavigate();
 
   const plans = [
     {
       name: 'Starter',
-      price: '$0',
-      period: '/month',
+      price: '₩ 0',
+      period: '/월',
       description: '개인 또는 소규모 팀을 위한 시작 플랜',
       features: ['프로젝트 1개', '핵심 마케팅 지표 분석', '기본 대시보드', '커뮤니티 기반 지원'],
       buttonText: '무료시작',
@@ -23,8 +25,8 @@ export const PricingSection = () => {
     },
     {
       name: 'Pro',
-      price: '$29',
-      period: '/month',
+      price: '₩ 99,000',
+      period: '/월',
       description: '성과 관리가 필요한 성장 단계의 팀을 위해',
       features: [
         '프로젝트 무제한',
@@ -136,7 +138,7 @@ export const PricingSection = () => {
                 p={{ base: '40px', md: '48px' }}
                 borderRadius={landingDesignSystem.borderRadius.large}
                 bg={plan.popular
-                  ? (colorMode === 'dark' ? landingDesignSystem.colors.cardBg : 'rgba(66, 42, 251, 0.15)')
+                  ? (colorMode === 'dark' ? landingDesignSystem.colors.cardBg : '#7551FF')
                   : (colorMode === 'dark' ? landingDesignSystem.colors.cardBg : landingDesignSystem.colors.white)
                 }
                 border={plan.popular
@@ -161,12 +163,12 @@ export const PricingSection = () => {
                     px="16px"
                     py="6px"
                     borderRadius={landingDesignSystem.borderRadius.full}
-                    bg={landingDesignSystem.colors.white}
+                    bg="#000000"
                   >
                     <Text
                       fontSize={landingDesignSystem.typography.fontSizes.caption}
                       fontWeight={landingDesignSystem.typography.fontWeights.bold}
-                      color={landingDesignSystem.colors.textPrimary}
+                      color={landingDesignSystem.colors.white}
                       textTransform="uppercase"
                       letterSpacing="0.05em"
                     >
@@ -252,6 +254,7 @@ export const PricingSection = () => {
                     variant={plan.buttonVariant}
                     size="lg"
                     w="100%"
+                    onClick={() => navigate('/auth/sign-up')}
                   >
                     {plan.buttonText}
                   </Button>

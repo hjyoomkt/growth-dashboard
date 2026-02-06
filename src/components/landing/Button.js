@@ -15,10 +15,11 @@ export const Button = ({
 }) => {
   const variants = {
     primary: {
-      bg: landingDesignSystem.colors.accent,
+      bg: '#000000',
       color: landingDesignSystem.colors.white,
       _hover: {
-        bg: landingDesignSystem.colors.accentLight,
+        bg: landingDesignSystem.colors.white,
+        color: '#000000',
       },
       border: 'none',
     },

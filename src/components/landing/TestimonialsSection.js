@@ -11,7 +11,7 @@ export const TestimonialsSection = () => {
 
   const testimonials = [
     {
-      quote: '그로스메트릭스로 보고 시간을 80% 단축하고 캠페인 ROI를 2배로 늘렸습니다.',
+      quote: '제스트닷으로 보고 시간을 80% 단축하고 캠페인 ROI를 2배로 늘렸습니다.',
       author: 'Sarah Chen',
       role: '마케팅 디렉터 @ 테크플로우',
       rating: 5,
@@ -76,7 +76,7 @@ export const TestimonialsSection = () => {
             lineHeight={landingDesignSystem.typography.lineHeights.tight}
             fontFamily={landingDesignSystem.typography.fontFamily.heading}
           >
-            그로스 마케터들의 신뢰.
+            가장 정확히 도달하는 제스트닷
           </Text>
         </VStack>
 
