@@ -127,6 +127,9 @@ export default function SuperAdminDashboard() {
   // 권한 체크: master 또는 agency_admin만 GCP 설정 가능
   const canManageGcp = role === 'master' || role === 'agency_admin';
 
+  // Master만 GCP 자격증명 수정 가능 (agency_admin은 MCC ID만 수정 가능)
+  const canEditGcpCredentials = role === 'master';
+
   // GCP 설정 조회
   const fetchGcpSettings = useCallback(async () => {
     console.log('[GCP Settings] fetchGcpSettings 호출됨:', { effectiveOrganizationId, canManageGcp });
@@ -204,6 +207,18 @@ export default function SuperAdminDashboard() {
     const isClientSecretMasked = isMasked(gcpSettings.clientSecret);
     const isDeveloperTokenMasked = isMasked(gcpSettings.developerToken);
     const isMccIdMasked = isMasked(gcpSettings.mccId);
+
+    // agency_admin은 기존 설정 없이 새로 생성 불가 (Master만 가능)
+    if (!hasExistingGcp && !canEditGcpCredentials) {
+      toast({
+        title: '권한 없음',
+        description: 'Google API 자격증명은 Master 관리자만 설정할 수 있습니다.',
+        status: 'warning',
+        duration: 4000,
+        isClosable: true,
+      });
+      return;
+    }
 
     if (!hasExistingGcp && (!gcpSettings.clientId || !gcpSettings.clientSecret)) {
       toast({
@@ -299,6 +314,11 @@ export default function SuperAdminDashboard() {
 
   // 입력 필드 클릭 시 마스킹 해제
   const handleInputFocus = (field) => {
+    // Master가 아닌 경우 자격증명 필드는 마스킹 해제 불가
+    if (!canEditGcpCredentials && ['clientId', 'clientSecret', 'developerToken'].includes(field)) {
+      return;
+    }
+
     const value = gcpSettings[field];
     // 마스킹된 값인지 확인 (부분 마스킹 패턴: xxxx••••••••••)
     if (value && value.includes('••••')) {
@@ -806,24 +826,43 @@ export default function SuperAdminDashboard() {
             </AlertDescription>
           </Alert>
 
+          {/* Agency Admin 권한 안내 */}
+          {!canEditGcpCredentials && (
+            <Alert status="warning" borderRadius="md" mb="16px" fontSize="sm">
+              <AlertIcon />
+              <AlertDescription>
+                Google API 자격증명(Client ID, Client Secret, Developer Token)은 Master 관리자만 수정할 수 있습니다.
+                MCC ID는 수정 가능합니다.
+              </AlertDescription>
+            </Alert>
+          )}
+
           <VStack spacing={4} align="stretch">
             <FormControl>
-              <FormLabel fontSize="sm" fontWeight="500">
+              <FormLabel fontSize="sm" fontWeight="500" color={!canEditGcpCredentials ? 'gray.500' : undefined}>
                 Google OAuth Client ID
+                {!canEditGcpCredentials && (
+                  <Badge ml={2} colorScheme="gray" fontSize="2xs">Master 전용</Badge>
+                )}
               </FormLabel>
               <Input
                 placeholder="xxxxx.apps.googleusercontent.com"
                 value={gcpSettings.clientId}
                 onChange={(e) => setGcpSettings(prev => ({ ...prev, clientId: e.target.value }))}
                 onFocus={() => handleInputFocus('clientId')}
-                bg={inputBg}
+                bg={!canEditGcpCredentials ? 'gray.100' : inputBg}
                 fontSize="sm"
+                isDisabled={!canEditGcpCredentials}
+                _disabled={{ cursor: 'not-allowed', opacity: 0.6 }}
               />
             </FormControl>
 
             <FormControl>
-              <FormLabel fontSize="sm" fontWeight="500">
+              <FormLabel fontSize="sm" fontWeight="500" color={!canEditGcpCredentials ? 'gray.500' : undefined}>
                 Google OAuth Client Secret
+                {!canEditGcpCredentials && (
+                  <Badge ml={2} colorScheme="gray" fontSize="2xs">Master 전용</Badge>
+                )}
               </FormLabel>
               <InputGroup>
                 <Input
@@ -832,8 +871,10 @@ export default function SuperAdminDashboard() {
                   value={gcpSettings.clientSecret}
                   onChange={(e) => setGcpSettings(prev => ({ ...prev, clientSecret: e.target.value }))}
                   onFocus={() => handleInputFocus('clientSecret')}
-                  bg={inputBg}
+                  bg={!canEditGcpCredentials ? 'gray.100' : inputBg}
                   fontSize="sm"
+                  isDisabled={!canEditGcpCredentials}
+                  _disabled={{ cursor: 'not-allowed', opacity: 0.6 }}
                 />
                 <InputRightElement>
                   <IconButton
@@ -842,14 +883,18 @@ export default function SuperAdminDashboard() {
                     icon={showClientSecret ? <MdVisibilityOff /> : <MdVisibility />}
                     onClick={() => setShowClientSecret(!showClientSecret)}
                     aria-label={showClientSecret ? "숨기기" : "보기"}
+                    isDisabled={!canEditGcpCredentials}
                   />
                 </InputRightElement>
               </InputGroup>
             </FormControl>
 
             <FormControl>
-              <FormLabel fontSize="sm" fontWeight="500">
+              <FormLabel fontSize="sm" fontWeight="500" color={!canEditGcpCredentials ? 'gray.500' : undefined}>
                 Google Ads Developer Token (선택)
+                {!canEditGcpCredentials && (
+                  <Badge ml={2} colorScheme="gray" fontSize="2xs">Master 전용</Badge>
+                )}
               </FormLabel>
               <InputGroup>
                 <Input
@@ -858,8 +903,10 @@ export default function SuperAdminDashboard() {
                   value={gcpSettings.developerToken}
                   onChange={(e) => setGcpSettings(prev => ({ ...prev, developerToken: e.target.value }))}
                   onFocus={() => handleInputFocus('developerToken')}
-                  bg={inputBg}
+                  bg={!canEditGcpCredentials ? 'gray.100' : inputBg}
                   fontSize="sm"
+                  isDisabled={!canEditGcpCredentials}
+                  _disabled={{ cursor: 'not-allowed', opacity: 0.6 }}
                 />
                 <InputRightElement>
                   <IconButton
@@ -868,6 +915,7 @@ export default function SuperAdminDashboard() {
                     icon={showDeveloperToken ? <MdVisibilityOff /> : <MdVisibility />}
                     onClick={() => setShowDeveloperToken(!showDeveloperToken)}
                     aria-label={showDeveloperToken ? "숨기기" : "보기"}
+                    isDisabled={!canEditGcpCredentials}
                   />
                 </InputRightElement>
               </InputGroup>
