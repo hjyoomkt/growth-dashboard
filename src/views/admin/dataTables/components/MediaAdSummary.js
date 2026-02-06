@@ -91,10 +91,14 @@ export default function MediaAdSummary() {
           comparisonCtr: comparison.clicks / comparison.impressions,
           currentCpc: current.cost / current.clicks,
           comparisonCpc: comparison.cost / comparison.clicks,
+          currentCpa: current.cost / current.conversions,
+          comparisonCpa: comparison.cost / comparison.conversions,
           currentRoas: current.conversionValue / current.cost,
           comparisonRoas: comparison.conversionValue / comparison.cost,
           currentCvr: current.conversions / current.clicks,
           comparisonCvr: comparison.conversions / comparison.clicks,
+          currentAov: current.conversionValue / current.conversions,
+          comparisonAov: comparison.conversionValue / comparison.conversions,
         });
       } else {
         // 비교 데이터 없음
@@ -205,6 +209,16 @@ export default function MediaAdSummary() {
       cell: (info) => info.getValue(),
       enableSorting: true,
     }),
+    columnHelper.accessor((row) => {
+      if (row.rowType === 'difference') return 0;
+      if (row.conversions === 0) return 0;
+      return row.cost / row.conversions;
+    }, {
+      id: 'cpa',
+      header: () => <Text>CPA</Text>,
+      cell: (info) => info.getValue(),
+      enableSorting: true,
+    }),
     columnHelper.accessor('conversions', {
       id: 'conversions',
       header: () => <Text>전환수</Text>,
@@ -237,6 +251,16 @@ export default function MediaAdSummary() {
       cell: (info) => info.getValue(),
       enableSorting: true,
     }),
+    columnHelper.accessor((row) => {
+      if (row.rowType === 'difference') return 0;
+      if (row.conversions === 0) return 0;
+      return row.conversionValue / row.conversions;
+    }, {
+      id: 'aov',
+      header: () => <Text>AOV</Text>,
+      cell: (info) => info.getValue(),
+      enableSorting: true,
+    }),
   ], []);
 
   // 비교 모드 그룹 정렬 처리
@@ -252,10 +276,14 @@ export default function MediaAdSummary() {
         return row.impressions === 0 ? 0 : (row.clicks / row.impressions) * 100;
       } else if (columnId === 'cpc') {
         return row.clicks === 0 ? 0 : row.cost / row.clicks;
+      } else if (columnId === 'cpa') {
+        return row.conversions === 0 ? 0 : row.cost / row.conversions;
       } else if (columnId === 'roas') {
         return row.cost === 0 ? 0 : (row.conversionValue / row.cost) * 100;
       } else if (columnId === 'cvr') {
         return row.clicks === 0 ? 0 : (row.conversions / row.clicks) * 100;
+      } else if (columnId === 'aov') {
+        return row.conversions === 0 ? 0 : row.conversionValue / row.conversions;
       } else {
         return row[columnId] || 0;
       }
@@ -439,12 +467,18 @@ export default function MediaAdSummary() {
                 const cpc = row.rowType === 'difference'
                   ? null
                   : calculateMetric(row.cost, row.clicks, false);
+                const cpa = row.rowType === 'difference'
+                  ? null
+                  : calculateMetric(row.cost, row.conversions, false);
                 const roas = row.rowType === 'difference'
                   ? null
                   : row.cost === 0 ? "0" : Math.round((row.conversionValue / row.cost) * 100);
                 const cvr = row.rowType === 'difference'
                   ? null
                   : calculateMetric(row.conversions, row.clicks);
+                const aov = row.rowType === 'difference'
+                  ? null
+                  : calculateMetric(row.conversionValue, row.conversions, false);
 
                 // 증감률 계산 (difference 행용)
                 const ctrChange = row.rowType === 'difference' && row.currentCtr !== undefined
@@ -453,11 +487,17 @@ export default function MediaAdSummary() {
                 const cpcChange = row.rowType === 'difference' && row.currentCpc !== undefined
                   ? calculatePercentageChange(row.currentCpc, row.comparisonCpc)
                   : null;
+                const cpaChange = row.rowType === 'difference' && row.currentCpa !== undefined
+                  ? calculatePercentageChange(row.currentCpa, row.comparisonCpa)
+                  : null;
                 const roasChange = row.rowType === 'difference' && row.currentRoas !== undefined
                   ? calculatePercentageChange(row.currentRoas, row.comparisonRoas)
                   : null;
                 const cvrChange = row.rowType === 'difference' && row.currentCvr !== undefined
                   ? calculatePercentageChange(row.currentCvr, row.comparisonCvr)
+                  : null;
+                const aovChange = row.rowType === 'difference' && row.currentAov !== undefined
+                  ? calculatePercentageChange(row.currentAov, row.comparisonAov)
                   : null;
 
                 return (
@@ -617,6 +657,31 @@ export default function MediaAdSummary() {
                       )}
                     </Td>
 
+                    {/* CPA */}
+                    <Td fontSize={{ sm: '14px' }} minW={{ sm: '150px', md: '200px', lg: 'auto' }} borderColor='transparent'>
+                      {row.noData ? (
+                        <Text fontSize='sm' color='gray.400'>-</Text>
+                      ) : row.rowType === 'difference' && cpaChange !== null ? (
+                        <Flex align='center' gap='4px'>
+                          <Text fontSize='sm' fontWeight='700' color={getMetricColor(cpaChange, 'cost')}>
+                            {cpaChange >= 0 ? '+' : ''}{cpaChange.toFixed(2)}%p
+                          </Text>
+                          {cpaChange !== 0 && (
+                            <Icon
+                              as={cpaChange >= 0 ? MdArrowUpward : MdArrowDownward}
+                              w='14px'
+                              h='14px'
+                              color={getMetricColor(cpaChange, 'cost')}
+                            />
+                          )}
+                        </Flex>
+                      ) : (
+                        <Text fontSize='sm' fontWeight={rowStyle.fontWeight} color={rowStyle.color}>
+                          ₩{formatNumber(cpa)}
+                        </Text>
+                      )}
+                    </Td>
+
                     {/* 전환수 */}
                     <Td fontSize={{ sm: '14px' }} minW={{ sm: '150px', md: '200px', lg: 'auto' }} borderColor='transparent'>
                       {row.noData ? (
@@ -719,6 +784,31 @@ export default function MediaAdSummary() {
                       ) : (
                         <Text fontSize='sm' fontWeight={rowStyle.fontWeight} color={rowStyle.color}>
                           {cvr}%
+                        </Text>
+                      )}
+                    </Td>
+
+                    {/* AOV */}
+                    <Td fontSize={{ sm: '14px' }} minW={{ sm: '150px', md: '200px', lg: 'auto' }} borderColor='transparent'>
+                      {row.noData ? (
+                        <Text fontSize='sm' color='gray.400'>-</Text>
+                      ) : row.rowType === 'difference' && aovChange !== null ? (
+                        <Flex align='center' gap='4px'>
+                          <Text fontSize='sm' fontWeight='700' color={getMetricColor(aovChange, 'performance')}>
+                            {aovChange >= 0 ? '+' : ''}{aovChange.toFixed(2)}%p
+                          </Text>
+                          {aovChange !== 0 && (
+                            <Icon
+                              as={aovChange >= 0 ? MdArrowUpward : MdArrowDownward}
+                              w='14px'
+                              h='14px'
+                              color={getMetricColor(aovChange, 'performance')}
+                            />
+                          )}
+                        </Flex>
+                      ) : (
+                        <Text fontSize='sm' fontWeight={rowStyle.fontWeight} color={rowStyle.color}>
+                          ₩{formatNumber(aov)}
                         </Text>
                       )}
                     </Td>

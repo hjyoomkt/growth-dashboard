@@ -1609,6 +1609,219 @@ export const getMonthlyAdSummary = async ({ advertiserId, availableAdvertiserIds
 };
 
 /**
+ * 일별 광고 요약 데이터 조회 (매체/캠페인 포함)
+ * 필터링을 위해 매체와 캠페인 정보를 포함한 상세 데이터 반환
+ * @param {object} params - 필터 파라미터
+ * @param {string} params.advertiserId - 광고주 ID (선택)
+ * @param {array} params.availableAdvertiserIds - 접근 가능한 광고주 ID 목록
+ * @param {string} params.startDate - 시작일 (YYYY-MM-DD)
+ * @param {string} params.endDate - 종료일 (YYYY-MM-DD)
+ */
+export const getDailyAdSummaryWithDetails = async ({
+  advertiserId,
+  availableAdvertiserIds,
+  startDate,
+  endDate
+}) => {
+  try {
+    // 광고주별 Meta 전환 타입 조회
+    let metaConversionType = 'purchase';
+    if (advertiserId && advertiserId !== 'all') {
+      const { data: advertiserData } = await supabase
+        .from('advertisers')
+        .select('meta_conversion_type')
+        .eq('id', advertiserId)
+        .single();
+      metaConversionType = advertiserData?.meta_conversion_type || 'purchase';
+    }
+
+    // Supabase 쿼리 빌더로 ad_performance 조회
+    let query = supabase
+      .from('ad_performance')
+      .select('date, source, campaign_name, cost, impressions, clicks, conversions, conversion_value, complete_registrations, complete_registrations_value')
+      .is('deleted_at', null);
+
+    // 광고주 필터
+    if (advertiserId && advertiserId !== 'all') {
+      query = query.eq('advertiser_id', advertiserId);
+    } else if (availableAdvertiserIds && availableAdvertiserIds.length > 0) {
+      query = query.in('advertiser_id', availableAdvertiserIds);
+    }
+
+    // 날짜 필터
+    if (startDate) query = query.gte('date', startDate);
+    if (endDate) query = query.lte('date', endDate);
+
+    const { data, error } = await query;
+    if (error) throw error;
+
+    // 클라이언트에서 그룹핑 및 집계
+    const grouped = {};
+    (data || []).forEach(row => {
+      const key = `${row.date}_${row.source}_${row.campaign_name}`;
+
+      if (!grouped[key]) {
+        grouped[key] = {
+          date: row.date,
+          source: row.source,
+          campaign_name: row.campaign_name,
+          cost: 0,
+          impressions: 0,
+          clicks: 0,
+          conversions: 0,
+          conversion_value: 0,
+        };
+      }
+
+      grouped[key].cost += Number(row.cost) || 0;
+      grouped[key].impressions += Number(row.impressions) || 0;
+      grouped[key].clicks += Number(row.clicks) || 0;
+
+      // Meta 전환 타입 처리
+      if (row.source === 'Meta' && metaConversionType === 'complete_registration') {
+        grouped[key].conversions += Number(row.complete_registrations) || 0;
+        grouped[key].conversion_value += Number(row.complete_registrations_value) || 0;
+      } else {
+        grouped[key].conversions += Number(row.conversions) || 0;
+        grouped[key].conversion_value += Number(row.conversion_value) || 0;
+      }
+    });
+
+    return Object.values(grouped).map(item => ({
+      ...item,
+      key: item.date, // 일별 탭의 key는 date
+    }));
+  } catch (error) {
+    console.error('일별 상세 데이터 조회 실패:', error);
+    throw error;
+  }
+};
+
+/**
+ * 주별 광고 요약 데이터 조회 (매체/캠페인 포함)
+ * @param {object} params - 필터 파라미터
+ * @param {string} params.advertiserId - 광고주 ID (선택)
+ * @param {array} params.availableAdvertiserIds - 접근 가능한 광고주 ID 목록
+ * @param {string} params.startDate - 시작일 (YYYY-MM-DD)
+ * @param {string} params.endDate - 종료일 (YYYY-MM-DD)
+ */
+export const getWeeklyAdSummaryWithDetails = async ({
+  advertiserId,
+  availableAdvertiserIds,
+  startDate,
+  endDate
+}) => {
+  // 동일한 로직으로 데이터 조회 후 주별로 그룹핑
+  const dailyData = await getDailyAdSummaryWithDetails({
+    advertiserId,
+    availableAdvertiserIds,
+    startDate,
+    endDate
+  });
+
+  // 주별로 재집계
+  const weeklyGrouped = {};
+  dailyData.forEach(row => {
+    const date = new Date(row.date);
+    // ISO 주 계산 (월요일 시작)
+    const weekStart = new Date(date);
+    const day = weekStart.getDay();
+    const diff = weekStart.getDate() - day + (day === 0 ? -6 : 1);
+    weekStart.setDate(diff);
+
+    const weekEnd = new Date(weekStart);
+    weekEnd.setDate(weekStart.getDate() + 6);
+
+    const weekLabel = `${weekStart.getMonth() + 1}/${weekStart.getDate()} ~ ${weekEnd.getMonth() + 1}/${weekEnd.getDate()}`;
+    const key = `${weekLabel}_${row.source}_${row.campaign_name}`;
+
+    if (!weeklyGrouped[key]) {
+      weeklyGrouped[key] = {
+        week_label: weekLabel,
+        week_start: weekStart.toISOString().split('T')[0],
+        week_end: weekEnd.toISOString().split('T')[0],
+        source: row.source,
+        campaign_name: row.campaign_name,
+        cost: 0,
+        impressions: 0,
+        clicks: 0,
+        conversions: 0,
+        conversion_value: 0,
+      };
+    }
+
+    weeklyGrouped[key].cost += row.cost;
+    weeklyGrouped[key].impressions += row.impressions;
+    weeklyGrouped[key].clicks += row.clicks;
+    weeklyGrouped[key].conversions += row.conversions;
+    weeklyGrouped[key].conversion_value += row.conversion_value;
+  });
+
+  return Object.values(weeklyGrouped).map(item => ({
+    ...item,
+    key: item.week_label, // 주별 탭의 key는 week_label
+  }));
+};
+
+/**
+ * 월별 광고 요약 데이터 조회 (매체/캠페인 포함)
+ * @param {object} params - 필터 파라미터
+ * @param {string} params.advertiserId - 광고주 ID (선택)
+ * @param {array} params.availableAdvertiserIds - 접근 가능한 광고주 ID 목록
+ * @param {string} params.startDate - 시작일 (YYYY-MM-DD)
+ * @param {string} params.endDate - 종료일 (YYYY-MM-DD)
+ */
+export const getMonthlyAdSummaryWithDetails = async ({
+  advertiserId,
+  availableAdvertiserIds,
+  startDate,
+  endDate
+}) => {
+  // 동일한 로직으로 데이터 조회 후 월별로 그룹핑
+  const dailyData = await getDailyAdSummaryWithDetails({
+    advertiserId,
+    availableAdvertiserIds,
+    startDate,
+    endDate
+  });
+
+  // 월별로 재집계
+  const monthlyGrouped = {};
+  dailyData.forEach(row => {
+    const date = new Date(row.date);
+    const year = date.getFullYear();
+    const month = date.getMonth() + 1;
+    const monthLabel = `${year}년 ${month.toString().padStart(2, '0')}월`;
+    const key = `${monthLabel}_${row.source}_${row.campaign_name}`;
+
+    if (!monthlyGrouped[key]) {
+      monthlyGrouped[key] = {
+        month_label: monthLabel,
+        month_date: `${year}-${month.toString().padStart(2, '0')}-01`,
+        source: row.source,
+        campaign_name: row.campaign_name,
+        cost: 0,
+        impressions: 0,
+        clicks: 0,
+        conversions: 0,
+        conversion_value: 0,
+      };
+    }
+
+    monthlyGrouped[key].cost += row.cost;
+    monthlyGrouped[key].impressions += row.impressions;
+    monthlyGrouped[key].clicks += row.clicks;
+    monthlyGrouped[key].conversions += row.conversions;
+    monthlyGrouped[key].conversion_value += row.conversion_value;
+  });
+
+  return Object.values(monthlyGrouped).map(item => ({
+    ...item,
+    key: item.month_label, // 월별 탭의 key는 month_label
+  }));
+};
+
+/**
  * 매체별 ROAS 분석 데이터 조회
  * @param {object} params - 필터 파라미터
  * @param {string} params.advertiserId - 광고주 ID (선택)
