@@ -33,3 +33,7 @@ yarn-error.log*
 .env
 .env.local
 .env.*.local
+
+# Markdown files (except README)
+*.md
+!README.md
