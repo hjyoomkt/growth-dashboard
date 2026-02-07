@@ -1,5 +1,5 @@
-import React from 'react';
-import { Box } from '@chakra-ui/react';
+import React, { useState, useEffect } from 'react';
+import { Box, useDisclosure } from '@chakra-ui/react';
 import { PageHelmet } from '../../components/HelmetProvider';
 
 // Import all landing sections
@@ -17,7 +17,35 @@ import FAQSection from '../../components/landing/FAQSection';
 import CTASection from '../../components/landing/CTASection';
 import Footer from '../../components/landing/Footer';
 
+// Import announcement modal
+import AnnouncementModal from '../../components/modal/AnnouncementModal';
+
+// Import popup image
+import popupImage from 'assets/img/pop_up01.png';
+
 export default function Landing() {
+  const { isOpen, onOpen, onClose } = useDisclosure();
+
+  useEffect(() => {
+    // 페이지 로드 시 항상 1초 후에 팝업 표시
+    const timer = setTimeout(() => {
+      onOpen();
+    }, 1000);
+
+    return () => clearTimeout(timer);
+  }, [onOpen]);
+
+  const handleModalClose = () => {
+    // 팝업 닫기
+    onClose();
+  };
+
+  const handleButtonClick = () => {
+    // 버튼 클릭 시 동작 (예: 특정 섹션으로 스크롤 또는 페이지 이동)
+    console.log('더 알아보기 버튼 클릭');
+    // window.location.href = '/auth/sign-up'; // 원하는 페이지로 이동
+  };
+
   return (
     <Box>
       {/* SEO Meta Tags */}
@@ -27,6 +55,23 @@ export default function Landing() {
         keywords="마케팅 대시보드, 광고 성과 분석, 퍼포먼스 마케팅, 구글 광고, 메타 광고, 네이버 광고"
         ogTitle="제스트닷 | 마케팅 인텔리전스 통합 대시보드"
         ogDescription="다채널 데이터를 자동으로 통합 분석하세요"
+      />
+
+      {/* Announcement Modal */}
+      <AnnouncementModal
+        isOpen={isOpen}
+        onClose={handleModalClose}
+        title="경쟁사 광고 모니터링은 제스트닷에서"
+        subtitle={
+          <>
+            보고 싶은 레퍼런스가 찾아지는 오늘,
+            <br />
+            마케터를 위한 새로운 레퍼런스 라이브러리
+          </>
+        }
+        imageSrc={popupImage}
+        buttonText="더 알아보기"
+        onButtonClick={handleButtonClick}
       />
 
       {/* Fixed Navbar */}

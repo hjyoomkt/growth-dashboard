@@ -19,7 +19,7 @@ import {
   AlertDescription,
   Spinner,
 } from "@chakra-ui/react";
-import illustration from "assets/img/auth/auth.png";
+import illustration from "assets/img/auth/lemon.jpg";
 import { MdOutlineRemoveRedEye } from "react-icons/md";
 import { RiEyeCloseLine } from "react-icons/ri";
 import { supabase } from "config/supabase";
@@ -149,7 +149,7 @@ function ResetPassword() {
       >
         <Box textAlign="center" maxW="440px">
           <Heading color={textColor} fontSize="28px" mb="20px" fontWeight="700">
-            Invalid or Expired Link
+            유효하지 않거나 만료된 링크
           </Heading>
           <Alert status="error" mb="20px" borderRadius="10px">
             <AlertIcon />
@@ -164,7 +164,7 @@ function ResetPassword() {
             borderRadius="10px"
             onClick={() => navigate("/auth/forgot-password")}
           >
-            Request New Link
+            새 링크 요청
           </Button>
         </Box>
       </Flex>
@@ -197,7 +197,7 @@ function ResetPassword() {
                 mb="10px"
                 fontWeight="700"
               >
-                Reset Password
+                비밀번호 재설정
               </Heading>
               <Text
                 mb="36px"
@@ -205,7 +205,7 @@ function ResetPassword() {
                 fontWeight="400"
                 fontSize={{ base: "sm", md: "md" }}
               >
-                Enter your new password below.
+                새 비밀번호를 입력해주세요.
               </Text>
 
               {error && (
@@ -225,13 +225,13 @@ function ResetPassword() {
                     color={textColor}
                     mb="8px"
                   >
-                    New Password
+                    새 비밀번호
                   </FormLabel>
                   <InputGroup size="md">
                     <Input
                       isRequired={true}
                       fontSize="sm"
-                      placeholder="At least 8 characters"
+                      placeholder="최소 8자 이상"
                       size="lg"
                       type={showPassword ? "text" : "password"}
                       variant="auth"
@@ -258,13 +258,13 @@ function ResetPassword() {
                     color={textColor}
                     mb="8px"
                   >
-                    Confirm Password
+                    비밀번호 확인
                   </FormLabel>
                   <InputGroup size="md">
                     <Input
                       isRequired={true}
                       fontSize="sm"
-                      placeholder="Re-enter your password"
+                      placeholder="비밀번호를 다시 입력해주세요"
                       size="lg"
                       type={showConfirmPassword ? "text" : "password"}
                       variant="auth"
@@ -294,7 +294,7 @@ function ResetPassword() {
                   borderRadius="10px"
                   type="submit"
                 >
-                  Reset Password
+                  비밀번호 재설정
                 </Button>
               </form>
 
@@ -305,7 +305,7 @@ function ResetPassword() {
                 fontSize="14px"
                 textAlign="center"
               >
-                Remember your password?{" "}
+                비밀번호가 기억나시나요?{" "}
                 <Text
                   color={textColorBrand}
                   as="span"
@@ -314,7 +314,7 @@ function ResetPassword() {
                   _hover={{ textDecoration: "underline" }}
                   onClick={() => navigate("/auth/sign-in")}
                 >
-                  Sign in
+                  로그인
                 </Text>
               </Text>
             </>
@@ -327,7 +327,7 @@ function ResetPassword() {
                 mb="10px"
                 fontWeight="700"
               >
-                Password Reset Successful! 🎉
+                비밀번호 재설정 완료! 🎉
               </Heading>
               <Alert
                 status="success"
@@ -342,7 +342,7 @@ function ResetPassword() {
               >
                 <AlertIcon boxSize="40px" mr={0} mb="16px" />
                 <AlertDescription maxW="sm" fontSize="md">
-                  Your password has been successfully reset. You will be redirected to the sign-in page shortly.
+                  비밀번호가 성공적으로 재설정되었습니다. 곧 로그인 페이지로 이동합니다.
                 </AlertDescription>
               </Alert>
 
@@ -355,7 +355,7 @@ function ResetPassword() {
                 borderRadius="10px"
                 onClick={() => navigate("/auth/sign-in")}
               >
-                Sign In Now
+                지금 로그인
               </Button>
             </>
           )}
@@ -367,7 +367,7 @@ function ResetPassword() {
             textAlign="center"
             mt="40px"
           >
-            © 2023 ALL RIGHTS RESERVED
+            © 2026 ZEST DOT. All rights reserved.
           </Text>
         </Box>
       </Flex>
