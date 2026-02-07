@@ -133,7 +133,8 @@ export function SidebarLinks(props) {
         route.layout === "/auth" ||
         route.layout === "/rtl" ||
         route.layout === "/superadmin" ||
-        route.layout === "/brandadmin"
+        route.layout === "/brandadmin" ||
+        route.layout === "/master"
       ) {
         return (
           <NavLink key={index} to={route.layout + route.path}>

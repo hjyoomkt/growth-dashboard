@@ -60,24 +60,7 @@ serve(async (req) => {
       return jsonResponse({ error: 'Integration not found' }, 404)
     }
 
-    // 2. 토큰 검증 (초기 연동 필수)
-    if (mode === 'initial') {
-      const tokenValidation = await validateToken(supabase, integration)
-      if (!tokenValidation.valid) {
-        return jsonResponse({
-          error: 'Token validation failed',
-          details: tokenValidation.error
-        }, 401)
-      }
-    }
-
-    // 3. 토큰 해결
-    const accessToken = await resolveAccessToken(supabase, integration)
-    if (!accessToken) {
-      return jsonResponse({ error: 'Failed to resolve access token' }, 500)
-    }
-
-    // 4. Platform Config 조회
+    // 2. Platform Config 조회
     const { data: platformConfig } = await supabase
       .from('platform_configs')
       .select('*')
@@ -86,6 +69,23 @@ serve(async (req) => {
 
     if (!platformConfig) {
       return jsonResponse({ error: 'Platform config not found' }, 404)
+    }
+
+    // 3. 토큰 검증 (초기 연동 필수)
+    if (mode === 'initial') {
+      const tokenValidation = await validateToken(supabase, integration, platformConfig.api_version)
+      if (!tokenValidation.valid) {
+        return jsonResponse({
+          error: 'Token validation failed',
+          details: tokenValidation.error
+        }, 401)
+      }
+    }
+
+    // 4. 토큰 해결
+    const accessToken = await resolveAccessToken(supabase, integration)
+    if (!accessToken) {
+      return jsonResponse({ error: 'Failed to resolve access token' }, 500)
     }
 
     // initial-collection에서 호출된 경우: job 생성 안 함, 단일 청크만 처리
@@ -295,7 +295,7 @@ serve(async (req) => {
 // Helper Functions
 // ============================================================================
 
-async function validateToken(supabase: any, integration: any): Promise<{ valid: boolean; error?: string }> {
+async function validateToken(supabase: any, integration: any, apiVersion: string): Promise<{ valid: boolean; error?: string }> {
   // 토큰 검증 API 호출 (플랫폼별)
   try {
     const platform = integration.platform
@@ -312,7 +312,7 @@ async function validateToken(supabase: any, integration: any): Promise<{ valid: 
     // 플랫폼별 테스트 API 호출
     if (platform === 'Meta Ads') {
       const accountId = integration.legacy_account_id
-      const url = `https://graph.facebook.com/v24.0/act_${accountId}?fields=id,name&access_token=${token}`
+      const url = `https://graph.facebook.com/${apiVersion}/act_${accountId}?fields=id,name&access_token=${token}`
       console.log('[DEBUG] Meta API validation:', { accountId, url: url.replace(token, 'TOKEN_HIDDEN') })
 
       const response = await fetch(url, { method: 'GET' })
@@ -501,10 +501,10 @@ async function collectChunk(
 
   if (platform === 'Meta Ads') {
     const { collectMetaAds } = await import('../_shared/collectors/meta.ts')
-    await collectMetaAds(supabase, integration, accessToken, startDate, endDate, collectionType)
+    await collectMetaAds(supabase, integration, accessToken, startDate, endDate, collectionType, platformConfig.api_version)
   } else if (platform === 'Google Ads') {
     const { collectGoogleAds } = await import('../_shared/collectors/google.ts')
-    await collectGoogleAds(supabase, integration, accessToken, startDate, endDate)
+    await collectGoogleAds(supabase, integration, accessToken, startDate, endDate, platformConfig.api_version)
   } else if (platform === 'Naver Ads') {
     const { collectNaverAds } = await import('../_shared/collectors/naver.ts')
     await collectNaverAds(supabase, integration, accessToken, startDate, endDate)

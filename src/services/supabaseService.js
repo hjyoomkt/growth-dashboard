@@ -3512,3 +3512,42 @@ export const canDeleteAgency = async (userId, organizationId) => {
     return { canDelete: false, reason: '권한 확인 중 오류가 발생했습니다.' };
   }
 };
+
+// ============================================
+// 플랫폼 설정 (Platform Configs)
+// ============================================
+
+/**
+ * platform_configs 전체 조회
+ */
+export const getPlatformConfigs = async () => {
+  const { data, error } = await supabase
+    .from('platform_configs')
+    .select('*')
+    .order('platform');
+
+  if (error) {
+    console.error('[getPlatformConfigs] 조회 실패:', error);
+    throw error;
+  }
+
+  return data || [];
+};
+
+/**
+ * 특정 플랫폼 설정 업데이트
+ */
+export const updatePlatformConfig = async (platform, updates) => {
+  const { data, error } = await supabase
+    .from('platform_configs')
+    .update(updates)
+    .eq('platform', platform)
+    .select();
+
+  if (error) {
+    console.error('[updatePlatformConfig] 업데이트 실패:', error);
+    throw error;
+  }
+
+  return data;
+};

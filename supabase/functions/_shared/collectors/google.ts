@@ -1,5 +1,6 @@
 // Google Ads 수집기
-// API v22 기준, Ad 레벨 우선 수집 (ad_group_ad)
+// API 버전은 platform_configs.api_version에서 동적으로 가져옴
+// Ad 레벨 우선 수집 (ad_group_ad)
 // P-MAX는 Ad가 없으므로 AssetGroup으로 Fallback
 // 전환 데이터: 전환 발생일 기준 (conversions_by_conversion_date)
 
@@ -8,7 +9,8 @@ export async function collectGoogleAds(
   integration: any,
   accessToken: string,
   startDate: string,
-  endDate: string
+  endDate: string,
+  apiVersion: string = 'v22'
 ) {
   const customerId = integration.legacy_customer_id
   const managerAccountId = integration.legacy_manager_account_id
@@ -29,7 +31,8 @@ export async function collectGoogleAds(
     managerAccountId,
     developerToken,
     startDate,
-    endDate
+    endDate,
+    apiVersion
   )
 
   // 2. 전환 데이터 수집 (전환액션별, 전환 발생일 기준)
@@ -40,7 +43,8 @@ export async function collectGoogleAds(
     developerToken,
     startDate,
     endDate,
-    conversionActionIds
+    conversionActionIds,
+    apiVersion
   )
 
   // 3. 데이터 병합 및 저장
@@ -56,7 +60,8 @@ export async function collectGoogleAds(
     developerToken,
     startDate,
     endDate,
-    conversionActionIds
+    conversionActionIds,
+    apiVersion
   )
 
   console.log(`Google Ads data saved successfully`)
@@ -71,7 +76,8 @@ async function collectGoogleMetrics(
   managerAccountId: string | null,
   developerToken: string,
   startDate: string,
-  endDate: string
+  endDate: string,
+  apiVersion: string
 ): Promise<Map<string, any>> {
   console.log(`Collecting Google Ads metrics (impressions, clicks, cost)`)
 
@@ -93,7 +99,7 @@ async function collectGoogleMetrics(
       AND ad_group_ad.status = 'ENABLED'
   `
 
-  const url = `https://googleads.googleapis.com/v22/customers/${customerId}/googleAds:searchStream`
+  const url = `https://googleads.googleapis.com/${apiVersion}/customers/${customerId}/googleAds:searchStream`
 
   const headers: any = {
     'Authorization': `Bearer ${accessToken}`,
@@ -159,7 +165,8 @@ async function collectGoogleConversions(
   developerToken: string,
   startDate: string,
   endDate: string,
-  conversionActionIds: string[]
+  conversionActionIds: string[],
+  apiVersion: string
 ): Promise<Map<string, any>> {
   const conversionsMap = new Map<string, any>()
 
@@ -184,7 +191,8 @@ async function collectGoogleConversions(
       startDate,
       endDate,
       conversionActionResourceName,
-      'ad_group_ad'
+      'ad_group_ad',
+      apiVersion
     )
 
     // 전환 데이터 합산
@@ -217,7 +225,8 @@ async function fetchConversionData(
   startDate: string,
   endDate: string,
   conversionActionResourceName: string,
-  resourceType: 'ad_group_ad' | 'ad_group' | 'campaign'
+  resourceType: 'ad_group_ad' | 'ad_group' | 'campaign',
+  apiVersion: string
 ): Promise<Map<string, any>> {
   const conversionsMap = new Map<string, any>()
 
@@ -263,7 +272,7 @@ async function fetchConversionData(
     `
   }
 
-  const url = `https://googleads.googleapis.com/v22/customers/${customerId}/googleAds:searchStream`
+  const url = `https://googleads.googleapis.com/${apiVersion}/customers/${customerId}/googleAds:searchStream`
 
   const headers: any = {
     'Authorization': `Bearer ${accessToken}`,
@@ -365,7 +374,8 @@ async function collectGoogleAssetGroups(
   developerToken: string,
   startDate: string,
   endDate: string,
-  conversionActionIds: string[]
+  conversionActionIds: string[],
+  apiVersion: string
 ) {
   console.log(`Collecting Google Asset Groups (P-MAX): ${startDate} to ${endDate}`)
 
@@ -376,7 +386,8 @@ async function collectGoogleAssetGroups(
     managerAccountId,
     developerToken,
     startDate,
-    endDate
+    endDate,
+    apiVersion
   )
 
   // 2. Asset Group 전환 데이터
@@ -387,7 +398,8 @@ async function collectGoogleAssetGroups(
     developerToken,
     startDate,
     endDate,
-    conversionActionIds
+    conversionActionIds,
+    apiVersion
   )
 
   // 3. 데이터 병합 및 저장
@@ -402,7 +414,8 @@ async function collectAssetGroupMetrics(
   managerAccountId: string | null,
   developerToken: string,
   startDate: string,
-  endDate: string
+  endDate: string,
+  apiVersion: string
 ): Promise<Map<string, any>> {
   const gaqlQuery = `
     SELECT
@@ -418,7 +431,7 @@ async function collectAssetGroupMetrics(
     WHERE segments.date BETWEEN '${startDate}' AND '${endDate}'
   `
 
-  const url = `https://googleads.googleapis.com/v22/customers/${customerId}/googleAds:searchStream`
+  const url = `https://googleads.googleapis.com/${apiVersion}/customers/${customerId}/googleAds:searchStream`
 
   const headers: any = {
     'Authorization': `Bearer ${accessToken}`,
@@ -475,7 +488,8 @@ async function collectAssetGroupConversions(
   developerToken: string,
   startDate: string,
   endDate: string,
-  conversionActionIds: string[]
+  conversionActionIds: string[],
+  apiVersion: string
 ): Promise<Map<string, any>> {
   const conversionsMap = new Map<string, any>()
 
@@ -498,7 +512,7 @@ async function collectAssetGroupConversions(
         AND segments.conversion_action = '${conversionActionResourceName}'
     `
 
-    const url = `https://googleads.googleapis.com/v22/customers/${customerId}/googleAds:searchStream`
+    const url = `https://googleads.googleapis.com/${apiVersion}/customers/${customerId}/googleAds:searchStream`
 
     const headers: any = {
       'Authorization': `Bearer ${accessToken}`,

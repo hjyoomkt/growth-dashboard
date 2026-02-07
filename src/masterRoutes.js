@@ -5,6 +5,7 @@ import {
   MdBusiness,
   MdSettings,
   MdDashboard,
+  MdHome,
 } from "react-icons/md";
 
 // Master Dashboard Views
@@ -15,18 +16,26 @@ import MasterSettings from "views/master/settings";
 
 const masterRoutes = [
   {
+    name: "Home",
+    layout: "/admin",
+    path: "/default",
+    icon: <Icon as={MdHome} width="20px" height="20px" color="inherit" />,
+    component: null,
+    isExternal: true,
+  },
+  {
     name: "Master Dashboard",
     layout: "/master",
     path: "/default",
     icon: <Icon as={MdDashboard} width="20px" height="20px" color="inherit" />,
-    component: MasterDashboard,
+    component: <MasterDashboard />,
   },
   {
     name: "Organizations",
     layout: "/master",
     path: "/organizations",
     icon: <Icon as={MdBusiness} width="20px" height="20px" color="inherit" />,
-    component: MasterOrganizations,
+    component: <MasterOrganizations />,
     secondary: true,
   },
   {
@@ -34,7 +43,7 @@ const masterRoutes = [
     layout: "/master",
     path: "/users",
     icon: <Icon as={MdPeople} width="20px" height="20px" color="inherit" />,
-    component: MasterUsers,
+    component: <MasterUsers />,
     secondary: true,
   },
   {
@@ -42,7 +51,7 @@ const masterRoutes = [
     layout: "/master",
     path: "/settings",
     icon: <Icon as={MdSettings} width="20px" height="20px" color="inherit" />,
-    component: MasterSettings,
+    component: <MasterSettings />,
     secondary: true,
   },
 ];

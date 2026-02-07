@@ -133,7 +133,7 @@ Deno.serve(async (req) => {
     // platform_configs에서 OAuth 활성화 여부 확인
     const { data: platformConfig, error: configError } = await supabaseClient
       .from('platform_configs')
-      .select('oauth_enabled, oauth_scopes')
+      .select('oauth_enabled, oauth_scopes, api_version')
       .eq('platform', platform)
       .single();
 
@@ -260,7 +260,7 @@ Deno.serve(async (req) => {
         scope: scopes,
       });
 
-      authorizationUrl = `https://www.facebook.com/v24.0/dialog/oauth?${params.toString()}`;
+      authorizationUrl = `https://www.facebook.com/${platformConfig.api_version}/dialog/oauth?${params.toString()}`;
     } else {
       return new Response(
         JSON.stringify({ error: 'Unsupported platform for OAuth' }),

@@ -80,8 +80,16 @@ Deno.serve(async (req) => {
       );
     }
 
+    // Meta API 버전 조회
+    const { data: platformConfig } = await supabaseServiceRole
+      .from('platform_configs')
+      .select('api_version')
+      .eq('platform', 'Meta Ads')
+      .single();
+    const metaApiVersion = platformConfig?.api_version || 'v24.0';
+
     // Meta Graph API 호출
-    const url = `https://graph.facebook.com/v21.0/me/adaccounts?fields=name,account_id,account_status&access_token=${metaAccessToken}`;
+    const url = `https://graph.facebook.com/${metaApiVersion}/me/adaccounts?fields=name,account_id,account_status&access_token=${metaAccessToken}`;
 
     const response = await fetch(url, { method: 'GET' });
 

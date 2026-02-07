@@ -1,5 +1,6 @@
 // Meta Ads 수집기
-// API v24.0 기준, 광고 레벨 수집 + Demographics 별도 수집 + 크리에이티브 수집
+// API 버전은 platform_configs.api_version에서 동적으로 가져옴
+// 광고 레벨 수집 + Demographics 별도 수집 + 크리에이티브 수집
 
 export async function collectMetaAds(
   supabase: any,
@@ -7,7 +8,8 @@ export async function collectMetaAds(
   accessToken: string,
   startDate: string,
   endDate: string,
-  collectionType: string = 'ads'
+  collectionType: string = 'ads',
+  apiVersion: string = 'v24.0'
 ) {
   const accountId = integration.legacy_account_id
 
@@ -16,11 +18,11 @@ export async function collectMetaAds(
   }
 
   if (collectionType === 'ads') {
-    await collectMetaAdInsights(supabase, integration, accessToken, accountId, startDate, endDate)
+    await collectMetaAdInsights(supabase, integration, accessToken, accountId, startDate, endDate, apiVersion)
   } else if (collectionType === 'demographics') {
-    await collectMetaDemographics(supabase, integration, accessToken, accountId, startDate, endDate)
+    await collectMetaDemographics(supabase, integration, accessToken, accountId, startDate, endDate, apiVersion)
   } else if (collectionType === 'creatives') {
-    await collectMetaCreatives(supabase, integration, accessToken, accountId, startDate, endDate)
+    await collectMetaCreatives(supabase, integration, accessToken, accountId, startDate, endDate, apiVersion)
   } else {
     throw new Error(`Unsupported collection type: ${collectionType}`)
   }
@@ -35,7 +37,8 @@ async function collectMetaAdInsights(
   accessToken: string,
   accountId: string,
   startDate: string,
-  endDate: string
+  endDate: string,
+  apiVersion: string
 ) {
   console.log(`Collecting Meta Ad Insights: ${startDate} to ${endDate}`)
 
@@ -43,7 +46,7 @@ async function collectMetaAdInsights(
   const attrWindows = JSON.stringify(['7d_click', '1d_view'])
 
   let url =
-    `https://graph.facebook.com/v24.0/act_${accountId}/insights?` +
+    `https://graph.facebook.com/${apiVersion}/act_${accountId}/insights?` +
     `fields=date_start,campaign_id,campaign_name,adset_id,adset_name,ad_id,ad_name,spend,impressions,actions,action_values` +
     `&level=ad` +
     `&time_range=${encodeURIComponent(timeRange)}` +
@@ -146,7 +149,8 @@ async function collectMetaDemographics(
   accessToken: string,
   accountId: string,
   startDate: string,
-  endDate: string
+  endDate: string,
+  apiVersion: string
 ) {
   console.log(`Collecting Meta Demographics: ${startDate} to ${endDate}`)
 
@@ -154,7 +158,7 @@ async function collectMetaDemographics(
   const attrWindows = JSON.stringify(['7d_click', '1d_view'])
 
   let url =
-    `https://graph.facebook.com/v24.0/act_${accountId}/insights?` +
+    `https://graph.facebook.com/${apiVersion}/act_${accountId}/insights?` +
     `fields=date_start,spend,impressions,actions,action_values` +
     `&level=account` +
     `&breakdowns=age,gender` +
@@ -252,14 +256,15 @@ async function collectMetaCreatives(
   accessToken: string,
   accountId: string,
   startDate: string,
-  endDate: string
+  endDate: string,
+  apiVersion: string
 ) {
   console.log(`Collecting Meta Creatives: ${startDate} to ${endDate}`)
 
   // Step 1: 광고 목록 조회 (campaign_id, adset_id 포함)
   const filterParam = encodeURIComponent('[{"field":"ad.effective_status","operator":"IN","value":["ACTIVE","PAUSED","DELETED","ARCHIVED"]}]')
   let adsUrl =
-    `https://graph.facebook.com/v24.0/act_${accountId}/ads?` +
+    `https://graph.facebook.com/${apiVersion}/act_${accountId}/ads?` +
     `fields=id,campaign_id,adset_id` +
     `&filtering=${filterParam}` +
     `&limit=500&access_token=${accessToken}`
@@ -300,9 +305,9 @@ async function collectMetaCreatives(
 
   // Step 2: 이름 조회 (batch API)
   console.log('Fetching names via batch API...')
-  const campaignNames = await batchGetNames(campaignIds, accessToken)
-  const adsetNames = await batchGetNames(adsetIds, accessToken)
-  const adNames = await batchGetNames(adIds, accessToken)
+  const campaignNames = await batchGetNames(campaignIds, accessToken, apiVersion)
+  const adsetNames = await batchGetNames(adsetIds, accessToken, apiVersion)
+  const adNames = await batchGetNames(adIds, accessToken, apiVersion)
   console.log('Names fetched successfully')
 
   // Step 3: 광고-캠페인-광고그룹 매핑
@@ -329,7 +334,7 @@ async function collectMetaCreatives(
       relative_url: `${adId}?fields=creative{asset_feed_spec,object_story_spec,thumbnail_url}`
     }))
 
-    const batchResponse = await fetch('https://graph.facebook.com/v24.0/', {
+    const batchResponse = await fetch(`https://graph.facebook.com/${apiVersion}/`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: `access_token=${accessToken}&batch=${encodeURIComponent(JSON.stringify(batchRequests))}`
@@ -384,7 +389,7 @@ async function collectMetaCreatives(
   if (imageHashes.length > 0) {
     console.log('Fetching adimages...')
     const imagesUrl =
-      `https://graph.facebook.com/v24.0/act_${accountId}/adimages?` +
+      `https://graph.facebook.com/${apiVersion}/act_${accountId}/adimages?` +
       `fields=hash,url,url_128,original_width,original_height` +
       `&limit=1000&access_token=${accessToken}`
 
@@ -414,7 +419,7 @@ async function collectMetaCreatives(
   if (videoIds.length > 0) {
     console.log('Fetching advideos...')
     const videosUrl =
-      `https://graph.facebook.com/v24.0/act_${accountId}/advideos?` +
+      `https://graph.facebook.com/${apiVersion}/act_${accountId}/advideos?` +
       `fields=id,source,thumbnails` +
       `&limit=1000&access_token=${accessToken}`
 
@@ -560,7 +565,7 @@ async function collectMetaCreatives(
 }
 
 // Batch API로 이름 조회
-async function batchGetNames(ids: string[], accessToken: string): Promise<Record<string, string>> {
+async function batchGetNames(ids: string[], accessToken: string, apiVersion: string): Promise<Record<string, string>> {
   if (!ids || ids.length === 0) return {}
 
   const result: Record<string, string> = {}
@@ -575,7 +580,7 @@ async function batchGetNames(ids: string[], accessToken: string): Promise<Record
     }))
 
     try {
-      const response = await fetch('https://graph.facebook.com/v24.0/', {
+      const response = await fetch(`https://graph.facebook.com/${apiVersion}/`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
         body: `access_token=${accessToken}&batch=${encodeURIComponent(JSON.stringify(batchRequests))}`

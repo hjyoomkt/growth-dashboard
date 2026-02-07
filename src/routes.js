@@ -11,6 +11,7 @@ import {
   MdTrendingUp,
   MdBusiness,
   MdAnalytics,
+  MdSettings,
 } from 'react-icons/md';
 
 // Admin Imports
@@ -129,6 +130,14 @@ const routes = [
     component: <BrandsManagement />,
     adminOnly: true,
     advertiserOnly: true,
+  },
+  {
+    name: 'Master Console',
+    layout: '/master',
+    path: '/default',
+    icon: <Icon as={MdSettings} width="20px" height="20px" color="inherit" />,
+    component: null,
+    masterOnly: true,
   },
   {
     name: 'Sign In',

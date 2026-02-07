@@ -29,17 +29,11 @@ export default function MasterDashboard() {
 
   return (
     <Box pt={{ base: "130px", md: "80px", xl: "80px" }}>
-      <Heading size="lg" mb="20px">
-        Master Console
-      </Heading>
-      <Text fontSize="md" color="gray.600" mb="40px">
-        시스템 전체 관리자 대시보드 - 모든 조직 및 사용자 통계를 확인할 수 있습니다.
-      </Text>
-
       <SimpleGrid
         columns={{ base: 1, md: 2, lg: 4 }}
         gap="20px"
         mb="20px"
+        mt="30px"
       >
         <MiniStatistics
           startContent={
