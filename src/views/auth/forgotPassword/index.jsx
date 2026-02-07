@@ -42,33 +42,26 @@ function ForgotPassword() {
       return;
     }
 
-    try {
-      // Supabase Edge Function을 통해 비밀번호 재설정 이메일 발송
-      const { error } = await supabase.functions.invoke('send-password-reset-email', {
-        body: {
-          email: email,
-          redirectTo: `${window.location.origin}/auth/reset-password`,
-        },
-      });
+    // 즉시 성공 메시지 표시 (사용자 경험 개선)
+    setIsSubmitted(true);
 
+    // 백그라운드에서 이메일 발송 (10초 대기 포함)
+    // 사용자는 기다릴 필요 없음
+    supabase.functions.invoke('send-password-reset-email', {
+      body: {
+        email: email,
+        redirectTo: `${window.location.origin}/auth/reset-password`,
+      },
+    }).then(({ error }) => {
       if (error) {
         console.error('Password reset email error:', error);
-        // Supabase 에러 메시지 한글화
-        const errorMessages = {
-          'User not found': '등록되지 않은 이메일입니다.',
-          'Email not confirmed': '이메일 인증이 완료되지 않았습니다.',
-          'Invalid email': '올바른 이메일 형식이 아닙니다.',
-        };
-        setError(errorMessages[error.message] || error.message || '이메일 발송에 실패했습니다.');
-        return;
+        // 에러 발생해도 사용자에게는 이미 성공 메시지가 표시됨
+        // 보안상 이메일 존재 여부를 노출하지 않기 위해 에러를 숨김
       }
-
-      // 성공 처리
-      setIsSubmitted(true);
-    } catch (err) {
+    }).catch(err => {
       console.error('Unexpected error:', err);
-      setError('비밀번호 재설정 요청 중 오류가 발생했습니다.');
-    }
+      // 마찬가지로 에러를 사용자에게 표시하지 않음
+    });
   };
 
   return (

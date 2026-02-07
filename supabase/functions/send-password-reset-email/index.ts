@@ -61,6 +61,9 @@ Deno.serve({
     const { data: linkData, error: linkError } = await supabaseAdmin.auth.admin.generateLink({
       type: 'recovery',
       email: email,
+      options: {
+        redirectTo: redirectTo,  // redirectTo를 options에 포함
+      },
     });
 
     if (linkError) {
@@ -71,20 +74,21 @@ Deno.serve({
       );
     }
 
+    // 디버그: 생성된 링크 데이터 확인
+    console.log(`[DEBUG] action_link: ${linkData.properties.action_link}`);
+    console.log(`[DEBUG] hashed_token: ${linkData.properties.hashed_token}`);
+
     // 3. Resend API를 통한 이메일 발송
     const resendApiKey = Deno.env.get('RESEND_API_KEY');
     if (!resendApiKey) {
       throw new Error('RESEND_API_KEY is not configured');
     }
 
-    // URL 파싱: action_link에서 토큰 추출 후 redirectTo와 결합
+    // action_link를 그대로 사용 (Supabase가 토큰 검증 및 세션 생성 후 redirect)
     const actionLink = linkData.properties.action_link;
-    const url = new URL(actionLink);
-    const token = url.searchParams.get('token');
-    const type = url.searchParams.get('type');
+    const resetUrl = actionLink;  // action_link를 그대로 사용!
 
-    // redirectTo URL에 토큰과 타입을 hash로 추가
-    const resetUrl = `${redirectTo}#access_token=${token}&type=${type}`;
+    console.log(`[DEBUG] Using action_link directly: ${resetUrl}`);
 
     const emailHtml = `
 <!DOCTYPE html>
@@ -113,11 +117,8 @@ Deno.serve({
                   </td>
                 </tr>
               </table>
-              <p style="margin: 0 0 10px; font-size: 14px; color: #6b7280;">
-                또는 아래 링크를 복사하여 브라우저에 붙여넣으세요:
-              </p>
-              <p style="margin: 0; padding: 12px; background-color: #f9fafb; border-radius: 4px; font-size: 13px; color: #4b5563; word-break: break-all;">
-                ${resetUrl}
+              <p style="margin: 0 0 10px; font-size: 14px; color: #6b7280; text-align: center;">
+                버튼이 작동하지 않으면 <a href="${resetUrl}" style="color: #4F46E5; text-decoration: none;">여기</a>를 클릭하세요
               </p>
               <div style="margin: 30px 0 0; padding: 15px; background-color: #fef3c7; border-radius: 6px; border-left: 4px solid #f59e0b;">
                 <p style="margin: 0; font-size: 14px; color: #92400e; font-weight: 500;">

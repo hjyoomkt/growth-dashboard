@@ -42,23 +42,64 @@ function ResetPassword() {
   const [isValidToken, setIsValidToken] = useState(false);
   const [loading, setLoading] = useState(true);
 
-  // 토큰 검증 및 세션 확인
+  // 토큰 검증 및 세션 확인 (재시도 로직 포함)
   useEffect(() => {
+    let retryCount = 0;
+    const MAX_RETRIES = 15; // 최대 15번 재시도 (충분한 시간 확보)
+    const RETRY_DELAY = 2000; // 2초 간격
+
     const checkToken = async () => {
       try {
         // URL hash에서 access_token 확인 (Supabase는 자동으로 처리)
         const { data: { session }, error } = await supabase.auth.getSession();
 
-        if (error || !session) {
+        if (error) {
+          console.error('Session error:', error);
+
+          // 재시도 가능하면 재시도
+          if (retryCount < MAX_RETRIES) {
+            retryCount++;
+            console.log(`토큰 검증 재시도 중... (${retryCount}/${MAX_RETRIES})`);
+            setTimeout(checkToken, RETRY_DELAY);
+            return;
+          }
+
+          // 최대 재시도 초과
           setError("유효하지 않거나 만료된 링크입니다. 비밀번호 찾기를 다시 시도해주세요.");
           setIsValidToken(false);
-        } else {
-          setIsValidToken(true);
+          setLoading(false);
+          return;
         }
+
+        if (!session) {
+          // 세션이 없으면 재시도
+          if (retryCount < MAX_RETRIES) {
+            retryCount++;
+            console.log(`세션 확인 재시도 중... (${retryCount}/${MAX_RETRIES})`);
+            setTimeout(checkToken, RETRY_DELAY);
+            return;
+          }
+
+          setError("유효하지 않거나 만료된 링크입니다. 비밀번호 찾기를 다시 시도해주세요.");
+          setIsValidToken(false);
+          setLoading(false);
+          return;
+        }
+
+        // 성공!
+        setIsValidToken(true);
+        setLoading(false);
       } catch (err) {
+        console.error('Unexpected error:', err);
+
+        if (retryCount < MAX_RETRIES) {
+          retryCount++;
+          setTimeout(checkToken, RETRY_DELAY);
+          return;
+        }
+
         setError("링크 검증 중 오류가 발생했습니다. 다시 시도해주세요.");
         setIsValidToken(false);
-      } finally {
         setLoading(false);
       }
     };
