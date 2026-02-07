@@ -98,13 +98,10 @@ export default function ROASAdCost(props) {
       return `${date.getMonth() + 1}/${date.getDate()}`;
     });
     const adCostData = validData.map(d => d.cost);
-    const roasValues = validData.map(d => d.roas * 100); // 퍼센티지로 변환 (10.0 → 1000%)
-
-    // 디버깅: 실제 데이터 확인
-    console.log('=== ROAS & 광고비 데이터 ===');
-    console.log('validData:', validData);
-    console.log('adCostData:', adCostData);
-    console.log('roasValues:', roasValues);
+    const roasValues = validData.map(d => {
+      const percentage = d.roas * 100;
+      return Math.round(percentage); // 정수로 반올림, 1% 미만은 0으로 처리
+    });
 
     const series = [
       {
@@ -189,6 +186,8 @@ export default function ROASAdCost(props) {
         {
           opposite: true,
           min: 0,
+          max: Math.max(100, ...roasValues) || 100,
+          tickAmount: 4,
           labels: {
             style: {
               colors: "#A3AED0",
