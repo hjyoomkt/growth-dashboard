@@ -37,3 +37,7 @@ yarn-error.log*
 # Markdown files (except README)
 *.md
 !README.md
+
+# Backup files
+backup/
+nul
