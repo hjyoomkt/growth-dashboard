@@ -6,11 +6,12 @@ import {
   MdSettings,
   MdDashboard,
   MdHome,
+  MdHistory,
 } from "react-icons/md";
 
 // Master Dashboard Views
 import MasterDashboard from "views/master/default";
-import MasterOrganizations from "views/master/organizations";
+import MasterAccessLogs from "views/master/access-logs";
 import MasterUsers from "views/master/users";
 import MasterSettings from "views/master/settings";
 
@@ -31,11 +32,11 @@ const masterRoutes = [
     component: <MasterDashboard />,
   },
   {
-    name: "Organizations",
+    name: "Access Logs",
     layout: "/master",
-    path: "/organizations",
-    icon: <Icon as={MdBusiness} width="20px" height="20px" color="inherit" />,
-    component: <MasterOrganizations />,
+    path: "/access-logs",
+    icon: <Icon as={MdHistory} width="20px" height="20px" color="inherit" />,
+    component: <MasterAccessLogs />,
     secondary: true,
   },
   {

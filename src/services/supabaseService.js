@@ -71,6 +71,16 @@ export const signIn = async (email, password) => {
     throw new Error('비활성화된 계정입니다. 관리자에게 문의하세요.');
   }
 
+  // 5. 로그인 액세스 로그 기록
+  try {
+    await logAccess(data.user.id, 'login', {
+      userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : null,
+    });
+  } catch (logError) {
+    console.error('[signIn] 액세스 로그 기록 실패:', logError);
+    // 로그 기록 실패는 로그인을 막지 않음
+  }
+
   return { ...data, userData };
 };
 
@@ -78,8 +88,30 @@ export const signIn = async (email, password) => {
  * 로그아웃
  */
 export const signOut = async () => {
+  // 로그아웃 전 현재 사용자 ID 저장
+  let currentUserId = null;
+  try {
+    const { data: { user } } = await supabase.auth.getUser();
+    currentUserId = user?.id;
+  } catch (error) {
+    console.error('[signOut] 사용자 정보 조회 실패:', error);
+  }
+
+  // 로그아웃 수행
   const { error } = await supabase.auth.signOut();
   if (error) throw error;
+
+  // 로그아웃 액세스 로그 기록
+  if (currentUserId) {
+    try {
+      await logAccess(currentUserId, 'logout', {
+        userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : null,
+      });
+    } catch (logError) {
+      console.error('[signOut] 액세스 로그 기록 실패:', logError);
+      // 로그 기록 실패는 로그아웃을 막지 않음
+    }
+  }
 };
 
 /**
@@ -3551,3 +3583,135 @@ export const updatePlatformConfig = async (platform, updates) => {
 
   return data;
 };
+
+// ============================================================================
+// 액세스 로그 관련 함수
+// ============================================================================
+
+/**
+ * 사용자 액세스 로그 기록
+ * @param {string} userId - 사용자 ID
+ * @param {string} action - 'login' | 'logout'
+ * @param {Object} metadata - 추가 메타데이터
+ * @param {string} metadata.ipAddress - IP 주소 (선택)
+ * @param {string} metadata.userAgent - User Agent (선택)
+ */
+export async function logAccess(userId, action, metadata = {}) {
+  try {
+    const { data, error } = await supabase.rpc('log_access', {
+      p_user_id: userId,
+      p_action: action,
+      p_ip_address: metadata.ipAddress || null,
+      p_user_agent: metadata.userAgent || null,
+    });
+
+    if (error) throw error;
+    console.log(`[logAccess] ${action} logged for user ${userId}`);
+    return data;
+  } catch (error) {
+    console.error('[logAccess] Error:', error);
+    // 로그 기록 실패는 메인 작업을 중단시키지 않음
+    return null;
+  }
+}
+
+/**
+ * 액세스 로그 조회 (권한별 자동 필터링)
+ * @param {Object} filters - 필터 옵션
+ * @param {number} filters.limit - 조회 개수 (기본: 100)
+ * @param {number} filters.offset - 오프셋 (기본: 0)
+ * @param {string} filters.action - 액션 타입 ('login' | 'logout')
+ * @param {string} filters.userId - 사용자 ID 필터
+ * @param {string} filters.startDate - 시작일 (YYYY-MM-DD)
+ * @param {string} filters.endDate - 종료일 (YYYY-MM-DD)
+ * @param {string} organizationId - 조직 ID (Master의 조직 전환용)
+ */
+export async function getAccessLogs(filters = {}, organizationId = null) {
+  try {
+    let query = supabase
+      .from('access_logs')
+      .select('*', { count: 'exact' })
+      .order('created_at', { ascending: false });
+
+    // 조직별 필터링 추가
+    if (organizationId) {
+      query = query.eq('organization_id', organizationId);
+    }
+
+    // 필터 적용
+    if (filters.action) {
+      query = query.eq('action', filters.action);
+    }
+
+    if (filters.userId) {
+      query = query.eq('user_id', filters.userId);
+    }
+
+    if (filters.startDate) {
+      // 한국 시간(KST) → UTC 변환
+      // KST 2025-02-08 00:00:00 = UTC 2025-02-07 15:00:00
+      const kstStart = new Date(`${filters.startDate}T00:00:00+09:00`);
+      query = query.gte('created_at', kstStart.toISOString());
+    }
+
+    if (filters.endDate) {
+      // 한국 시간(KST) → UTC 변환
+      // KST 2025-02-08 23:59:59 = UTC 2025-02-08 14:59:59
+      const kstEnd = new Date(`${filters.endDate}T23:59:59+09:00`);
+      query = query.lte('created_at', kstEnd.toISOString());
+    }
+
+    // 페이지네이션
+    const limit = filters.limit || 100;
+    const offset = filters.offset || 0;
+    query = query.range(offset, offset + limit - 1);
+
+    const { data, error, count } = await query;
+
+    if (error) throw error;
+
+    return {
+      accessLogs: data || [],
+      totalCount: count || 0,
+    };
+  } catch (error) {
+    console.error('[getAccessLogs] Error:', error);
+    throw error;
+  }
+}
+
+/**
+ * 액세스 로그 통계 조회 (선택 사항)
+ * @param {string} startDate - 시작일
+ * @param {string} endDate - 종료일
+ */
+export async function getAccessLogStats(startDate, endDate) {
+  try {
+    const { data, error } = await supabase
+      .from('access_logs')
+      .select('action, user_role')
+      .gte('created_at', startDate)
+      .lte('created_at', `${endDate}T23:59:59`);
+
+    if (error) throw error;
+
+    // 통계 계산
+    const stats = {
+      totalLogins: data.filter(log => log.action === 'login').length,
+      totalLogouts: data.filter(log => log.action === 'logout').length,
+      byRole: {},
+    };
+
+    // 권한별 로그인 수 집계
+    data.forEach(log => {
+      if (log.action === 'login') {
+        stats.byRole[log.user_role] = (stats.byRole[log.user_role] || 0) + 1;
+      }
+    });
+
+    return stats;
+  } catch (error) {
+    console.error('[getAccessLogStats] Error:', error);
+    throw error;
+  }
+}
