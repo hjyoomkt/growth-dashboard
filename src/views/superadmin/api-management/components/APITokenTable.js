@@ -1188,7 +1188,7 @@ export default function APITokenTable(props) {
 
     try {
       // 1. 선택된 플랫폼의 Integration 조회
-      const selectedToken = data.find(token => token.platform === syncConfig.selectedPlatform);
+      const selectedToken = data.find(token => token.id === syncConfig.selectedPlatform);
 
       if (!selectedToken) {
         toast({
@@ -1210,11 +1210,11 @@ export default function APITokenTable(props) {
           break;
         case 'lastWeek':
           startDate = getKSTDaysAgo(7);
-          endDate = getKSTToday();
+          endDate = getKSTYesterday();
           break;
         case 'lastMonth':
           startDate = getKSTDaysAgo(30);
-          endDate = getKSTToday();
+          endDate = getKSTYesterday();
           break;
         case 'all':
           startDate = getKSTDaysAgo(365);
@@ -2698,22 +2698,22 @@ export default function APITokenTable(props) {
                     w='100%'
                     textAlign='left'>
                     {syncConfig.selectedPlatform ?
-                      data.find(token => token.platform === syncConfig.selectedPlatform) ?
-                        `${data.find(token => token.platform === syncConfig.selectedPlatform).advertiser_name} - ${syncConfig.selectedPlatform}`
-                        : syncConfig.selectedPlatform
+                      data.find(token => token.id === syncConfig.selectedPlatform) ?
+                        `${data.find(token => token.id === syncConfig.selectedPlatform).advertiser_name} - ${data.find(token => token.id === syncConfig.selectedPlatform).platform}`
+                        : '연동할 매체를 선택하세요'
                       : '연동할 매체를 선택하세요'}
                   </MenuButton>
                   <MenuList minW='auto' w='fit-content' px='8px' py='8px' maxH='300px' overflowY='auto'>
                     {data.filter(token => token.status === 'active').map((token) => (
                       <MenuItem
                         key={token.id}
-                        onClick={() => setSyncConfig({ ...syncConfig, selectedPlatform: token.platform })}
-                        bg={syncConfig.selectedPlatform === token.platform ? brandColor : 'transparent'}
-                        color={syncConfig.selectedPlatform === token.platform ? 'white' : textColor}
+                        onClick={() => setSyncConfig({ ...syncConfig, selectedPlatform: token.id })}
+                        bg={syncConfig.selectedPlatform === token.id ? brandColor : 'transparent'}
+                        color={syncConfig.selectedPlatform === token.id ? 'white' : textColor}
                         _hover={{
-                          bg: syncConfig.selectedPlatform === token.platform ? brandColor : bgHover,
+                          bg: syncConfig.selectedPlatform === token.id ? brandColor : bgHover,
                         }}
-                        fontWeight={syncConfig.selectedPlatform === token.platform ? '600' : '500'}
+                        fontWeight={syncConfig.selectedPlatform === token.id ? '600' : '500'}
                         fontSize='sm'
                         px='12px'
                         py='8px'
@@ -2874,7 +2874,7 @@ export default function APITokenTable(props) {
 
             <VStack align="start" spacing={1.5} p={3} bg={vStackBg} borderRadius="12px">
               <Text fontSize="xs" fontWeight="600" mb={0.5}>연동 설정 확인:</Text>
-              <Text fontSize="xs" fontWeight="400">• 매체: {syncConfig.selectedPlatform}</Text>
+              <Text fontSize="xs" fontWeight="400">• 매체: {data.find(token => token.id === syncConfig.selectedPlatform)?.advertiser_name} - {data.find(token => token.id === syncConfig.selectedPlatform)?.platform}</Text>
               <Text fontSize="xs" fontWeight="400">
                 • 기간: {
                   syncConfig.dateRange === 'yesterday' ? '어제' :
