@@ -459,11 +459,11 @@ export const SpotifyLogo = createIcon({
   ),
 });
 
-export const HorizonLogo = createIcon({
-  displayName: "horizonLogo",
-  viewBox: "0 0 400 80",
+export const ZestDotLogo = createIcon({
+  displayName: "zestDotLogo",
+  viewBox: "0 0 390 80",
   path: (
-    <g width='400' height='80' fill='none' xmlns='http://www.w3.org/2000/svg'>
+    <g width='390' height='80' fill='none' xmlns='http://www.w3.org/2000/svg'>
       {/* ZEST 텍스트 */}
       <text
         x='20'
@@ -478,13 +478,13 @@ export const HorizonLogo = createIcon({
       </text>
 
       {/* DOT 아이콘 (점 3개) */}
-      <circle cx='200' cy='40' r='6' fill='#4FD1C5' />
-      <circle cx='220' cy='40' r='6' fill='#4FD1C5' />
-      <circle cx='240' cy='40' r='6' fill='#4FD1C5' />
+      <circle cx='185' cy='40' r='6' fill='#4FD1C5' />
+      <circle cx='205' cy='40' r='6' fill='#4FD1C5' />
+      <circle cx='225' cy='40' r='6' fill='#4FD1C5' />
 
       {/* DOT 텍스트 */}
       <text
-        x='260'
+        x='245'
         y='60'
         fontFamily='Arial, sans-serif'
         fontSize='48'

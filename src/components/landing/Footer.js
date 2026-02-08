@@ -2,7 +2,7 @@ import React from 'react';
 import { Box, Flex, Text, VStack, HStack, SimpleGrid, useColorMode, useColorModeValue } from '@chakra-ui/react';
 import { NavLink } from 'react-router-dom';
 import { landingDesignSystem } from '../../theme/landingTheme';
-import { HorizonLogo } from 'components/icons/Icons';
+import { ZestDotLogo } from 'components/icons/Icons';
 
 export const Footer = () => {
   const { colorMode } = useColorMode();
@@ -43,7 +43,7 @@ export const Footer = () => {
           {/* Brand Section */}
           <VStack align={{ base: 'center', lg: 'flex-start' }} spacing="24px" flex={1}>
             <Flex align="center">
-              <HorizonLogo
+              <ZestDotLogo
                 h='30px'
                 w='150px'
                 color='white'

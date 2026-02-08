@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { landingDesignSystem } from '../../theme/landingTheme';
 import Button from './Button';
-import { HorizonLogo } from 'components/icons/Icons';
+import { ZestDotLogo } from 'components/icons/Icons';
 
 const MotionBox = motion(Box);
 
@@ -57,7 +57,7 @@ export const Navbar = () => {
       >
         {/* Logo */}
         <Flex align="center">
-          <HorizonLogo
+          <ZestDotLogo
             h='30px'
             w='150px'
             color={useColorModeValue('navy.700', 'white')}
