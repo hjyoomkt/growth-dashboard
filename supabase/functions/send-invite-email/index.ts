@@ -75,42 +75,60 @@ Deno.serve(async (req) => {
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
 </head>
-<body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #f5f5f5;">
-  <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #f5f5f5; padding: 40px 20px;">
+<body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #ffffff;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="max-width: 600px; margin: 0 auto;">
+    <!-- 로고 영역 -->
     <tr>
-      <td align="center">
-        <table width="600" cellpadding="0" cellspacing="0" style="background-color: #ffffff; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+      <td style="padding: 50px 40px 40px; background-color: #2d3748;">
+        <h1 style="margin: 0; font-size: 28px; font-weight: 600; color: #ffffff; letter-spacing: -0.5px;">
+          ZestDot<span style="color: #4F46E5;">.</span>
+        </h1>
+      </td>
+    </tr>
+
+    <!-- 메인 컨텐츠 -->
+    <tr>
+      <td style="padding: 60px 40px;">
+        <h2 style="margin: 0 0 30px; font-size: 26px; font-weight: 600; color: #1a202c; text-align: center; line-height: 1.4;">
+          이메일 주소 인증 메일
+        </h2>
+
+        <p style="margin: 0 0 10px; font-size: 15px; color: #4a5568; text-align: center; line-height: 1.6;">
+          안녕하세요. ${invitedEmail}님
+        </p>
+        <p style="margin: 0 0 30px; font-size: 15px; color: #4a5568; text-align: center; line-height: 1.6;">
+          제스트닷 서비스 이용을 위해 이메일 주소 인증을 요청하셨습니다.<br>
+          아래 버튼을 클릭하여 회원가입을 완료하세요.
+        </p>
+        <!-- 인증 버튼 -->
+        <table width="100%" cellpadding="0" cellspacing="0" style="margin: 0 0 40px;">
           <tr>
-            <td style="padding: 40px 40px 20px;">
-              <h1 style="margin: 0 0 20px; font-size: 24px; font-weight: 600; color: #1a1a1a;">초대장이 도착했습니다</h1>
-              <p style="margin: 0 0 30px; font-size: 16px; line-height: 1.5; color: #4a4a4a;">
-                Growth Dashboard에 초대되었습니다. 아래 버튼을 클릭하여 회원가입을 완료하세요.
-              </p>
-              <table cellpadding="0" cellspacing="0" style="margin: 0 0 30px;">
-                <tr>
-                  <td style="border-radius: 6px; background-color: #4F46E5;">
-                    <a href="${signupUrl}" target="_blank" style="display: inline-block; padding: 14px 32px; font-size: 16px; font-weight: 600; color: #ffffff; text-decoration: none;">
-                      회원가입 하기
-                    </a>
-                  </td>
-                </tr>
-              </table>
-              <p style="margin: 0 0 10px; font-size: 14px; color: #6b7280;">
-                또는 아래 링크를 복사하여 브라우저에 붙여넣으세요:
-              </p>
-              <p style="margin: 0; padding: 12px; background-color: #f9fafb; border-radius: 4px; font-size: 13px; color: #4b5563; word-break: break-all;">
-                ${signupUrl}
-              </p>
-            </td>
-          </tr>
-          <tr>
-            <td style="padding: 20px 40px 40px; border-top: 1px solid #e5e7eb;">
-              <p style="margin: 0; font-size: 13px; color: #9ca3af; line-height: 1.5;">
-                이 이메일을 요청하지 않으셨다면 무시하셔도 됩니다.
-              </p>
+            <td align="center">
+              <a href="${signupUrl}" target="_blank" style="display: inline-block; padding: 18px 60px; font-size: 16px; font-weight: 600; color: #ffffff; background-color: #2d3748; text-decoration: none; border-radius: 50px; text-align: center; transition: background-color 0.2s;">
+                이메일 주소를 인증합니다
+              </a>
             </td>
           </tr>
         </table>
+
+        <p style="margin: 0 0 5px; font-size: 13px; color: #718096; text-align: center;">
+          <span style="display: inline-block; width: 16px; height: 16px; line-height: 16px; text-align: center; border: 1.5px solid #cbd5e0; border-radius: 50%; font-size: 11px; color: #718096; margin-right: 4px;">i</span>
+          인증메일은 1시간 이내 완료해주세요.
+        </p>
+      </td>
+    </tr>
+
+    <!-- 하단 링크 영역 -->
+    <tr>
+      <td style="padding: 40px; background-color: #fafafa; border-top: 1px solid #e5e7eb;">
+        <p style="margin: 0 0 15px; font-size: 13px; color: #718096; text-align: center; line-height: 1.5;">
+          버튼이 정상적으로 클릭되지 않는다면, 아래 링크를 복사하여 접속해 주세요.
+        </p>
+        <div style="padding: 16px; background-color: #ffffff; border: 1px solid #e2e8f0; border-radius: 6px;">
+          <p style="margin: 0; font-size: 12px; color: #4a5568; word-break: break-all; line-height: 1.6;">
+            ${signupUrl}
+          </p>
+        </div>
       </td>
     </tr>
   </table>
@@ -127,7 +145,7 @@ Deno.serve(async (req) => {
       body: JSON.stringify({
         from: 'ZestDot <invite@zestdot.com>',
         to: invitedEmail,
-        subject: 'Growth Dashboard 초대장',
+        subject: '제스트닷 대시보드 초대장',
         html: emailHtml,
       }),
     });

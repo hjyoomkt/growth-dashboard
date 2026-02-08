@@ -41,9 +41,8 @@ export default function Landing() {
   };
 
   const handleButtonClick = () => {
-    // 버튼 클릭 시 동작 (예: 특정 섹션으로 스크롤 또는 페이지 이동)
-    console.log('더 알아보기 버튼 클릭');
-    // window.location.href = '/auth/sign-up'; // 원하는 페이지로 이동
+    // 더 알아보기 버튼 클릭 시 라이브러리 페이지로 이동
+    window.open('https://library.zestdot.com/', '_blank');
   };
 
   return (

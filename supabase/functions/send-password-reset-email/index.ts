@@ -97,45 +97,57 @@ Deno.serve({
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
 </head>
-<body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #f5f5f5;">
-  <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #f5f5f5; padding: 40px 20px;">
+<body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #ffffff;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="max-width: 600px; margin: 0 auto;">
+    <!-- 로고 영역 -->
     <tr>
-      <td align="center">
-        <table width="600" cellpadding="0" cellspacing="0" style="background-color: #ffffff; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+      <td style="padding: 50px 40px 40px; background-color: #2d3748;">
+        <h1 style="margin: 0; font-size: 28px; font-weight: 600; color: #ffffff; letter-spacing: -0.5px;">
+          ZestDot<span style="color: #4F46E5;">.</span>
+        </h1>
+      </td>
+    </tr>
+
+    <!-- 메인 컨텐츠 -->
+    <tr>
+      <td style="padding: 60px 40px;">
+        <h2 style="margin: 0 0 30px; font-size: 26px; font-weight: 600; color: #1a202c; text-align: center; line-height: 1.4;">
+          비밀번호 재설정
+        </h2>
+        <p style="margin: 0 0 30px; font-size: 15px; color: #4a5568; text-align: center; line-height: 1.6;">
+          비밀번호 재설정 요청을 받았습니다.<br>
+          아래 버튼을 클릭하여 새 비밀번호를 설정하세요.
+        </p>
+
+        <!-- 재설정 버튼 -->
+        <table width="100%" cellpadding="0" cellspacing="0" style="margin: 0 0 20px;">
           <tr>
-            <td style="padding: 40px 40px 20px;">
-              <h1 style="margin: 0 0 20px; font-size: 24px; font-weight: 600; color: #1a1a1a;">비밀번호 재설정</h1>
-              <p style="margin: 0 0 30px; font-size: 16px; line-height: 1.5; color: #4a4a4a;">
-                비밀번호 재설정 요청을 받았습니다. 아래 버튼을 클릭하여 새 비밀번호를 설정하세요.
-              </p>
-              <table cellpadding="0" cellspacing="0" style="margin: 0 0 30px;">
-                <tr>
-                  <td style="border-radius: 6px; background-color: #4F46E5;">
-                    <a href="${resetUrl}" target="_blank" style="display: inline-block; padding: 14px 32px; font-size: 16px; font-weight: 600; color: #ffffff; text-decoration: none;">
-                      비밀번호 재설정
-                    </a>
-                  </td>
-                </tr>
-              </table>
-              <p style="margin: 0 0 10px; font-size: 14px; color: #6b7280; text-align: center;">
-                버튼이 작동하지 않으면 <a href="${resetUrl}" style="color: #4F46E5; text-decoration: none;">여기</a>를 클릭하세요
-              </p>
-              <div style="margin: 30px 0 0; padding: 15px; background-color: #fef3c7; border-radius: 6px; border-left: 4px solid #f59e0b;">
-                <p style="margin: 0; font-size: 14px; color: #92400e; font-weight: 500;">
-                  ⚠️ 이 링크는 1시간 후에 만료됩니다.
-                </p>
-              </div>
-            </td>
-          </tr>
-          <tr>
-            <td style="padding: 20px 40px 40px; border-top: 1px solid #e5e7eb;">
-              <p style="margin: 0; font-size: 13px; color: #9ca3af; line-height: 1.5;">
-                비밀번호 재설정을 요청하지 않으셨다면 이 이메일을 무시하셔도 됩니다.<br>
-                계정 보안에 문제가 있다고 생각되시면 즉시 관리자에게 문의하세요.
-              </p>
+            <td align="center">
+              <a href="${resetUrl}" target="_blank" style="display: inline-block; padding: 18px 60px; font-size: 16px; font-weight: 600; color: #ffffff; background-color: #2d3748; text-decoration: none; border-radius: 50px; text-align: center; transition: background-color 0.2s;">
+                비밀번호 재설정
+              </a>
             </td>
           </tr>
         </table>
+
+        <p style="margin: 0 0 10px; font-size: 13px; color: #718096; text-align: center;">
+          버튼이 작동하지 않으면 <a href="${resetUrl}" style="color: #4F46E5; text-decoration: none;">여기</a>를 클릭하세요
+        </p>
+
+        <p style="margin: 0 0 5px; font-size: 13px; color: #718096; text-align: center;">
+          <span style="display: inline-block; width: 16px; height: 16px; line-height: 16px; text-align: center; border: 1.5px solid #cbd5e0; border-radius: 50%; font-size: 11px; color: #718096; margin-right: 4px;">i</span>
+          재설정 링크는 1시간 이내 완료해주세요.
+        </p>
+      </td>
+    </tr>
+
+    <!-- 하단 링크 영역 -->
+    <tr>
+      <td style="padding: 40px; background-color: #fafafa; border-top: 1px solid #e5e7eb;">
+        <p style="margin: 0; font-size: 13px; color: #718096; text-align: center; line-height: 1.5;">
+          비밀번호 재설정을 요청하지 않으셨다면 이 이메일을 무시하셔도 됩니다.<br>
+          계정 보안에 문제가 있다고 생각되시면 즉시 관리자에게 문의하세요.
+        </p>
       </td>
     </tr>
   </table>
@@ -152,7 +164,7 @@ Deno.serve({
       body: JSON.stringify({
         from: 'ZestDot <noreply@zestdot.com>',
         to: email,
-        subject: '비밀번호 재설정 요청',
+        subject: '제스트닷 비밀번호 재설정 요청',
         html: emailHtml,
       }),
     });
