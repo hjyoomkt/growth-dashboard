@@ -112,7 +112,7 @@ export const Footer = () => {
             상호: 제스트닷 | 주소: 서울 강남구 역삼동 하이츠빌딩 151, 03342
           </Text>
           <Text fontSize={landingDesignSystem.typography.fontSizes.caption} color="rgba(255, 255, 255, 0.4)">
-            전화: +82-10-6425-2654 | 이메일: hjyoomkt@gmail.com
+            전화: 10-0000-0000 | 이메일: zestdot@zestdot.com
           </Text>
 
           {/* Copyright and Social Links */}

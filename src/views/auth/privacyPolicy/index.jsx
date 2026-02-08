@@ -219,7 +219,7 @@ function PrivacyPolicy() {
                     <strong>고객서비스담당 부서:</strong> 마케팅사업부
                   </Text>
                   <Text fontSize="16px" color={textColor} lineHeight="1.8">
-                    <strong>전화번호:</strong> 010-6425-2654
+                    <strong>전화번호:</strong> 010-0000-0000
                   </Text>
                   <Text fontSize="16px" color={textColor} lineHeight="1.8">
                     <strong>이메일:</strong> zestdot@zestdot.com
@@ -228,7 +228,7 @@ function PrivacyPolicy() {
                     <strong>개인정보보호책임자 성명:</strong> 유현종
                   </Text>
                   <Text fontSize="16px" color={textColor} lineHeight="1.8">
-                    <strong>전화번호:</strong> 010-6425-2654
+                    <strong>전화번호:</strong> 010-0000-0000
                   </Text>
                   <Text fontSize="16px" color={textColor} lineHeight="1.8">
                     <strong>이메일:</strong> zestdot@zestdot.com
