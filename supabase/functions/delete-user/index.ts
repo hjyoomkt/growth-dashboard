@@ -146,6 +146,33 @@ Deno.serve(async (req) => {
 
     console.log(`Starting account deletion for user: ${user_id}`);
 
+    // 에이전시 삭제 시에는 users 테이블이 CASCADE로 이미 삭제되었으므로
+    // auth.users에서만 삭제하고 종료
+    if (is_agency_deletion) {
+      console.log('Agency deletion mode - users table already deleted by CASCADE, deleting auth.users only');
+
+      // auth.users에서 삭제
+      const { error: authDeleteError } = await supabaseAdmin.auth.admin.deleteUser(user_id);
+
+      if (authDeleteError) {
+        console.error('Error deleting auth user:', authDeleteError);
+        return new Response(
+          JSON.stringify({ error: 'Failed to delete authentication record' }),
+          { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      console.log('Auth user deleted successfully (agency deletion)');
+
+      return new Response(
+        JSON.stringify({
+          success: true,
+          message: 'Auth account deleted successfully (agency deletion)'
+        }),
+        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
     // 1. 사용자 정보 조회
     const { data: userData, error: userError } = await supabaseAdmin
       .from('users')

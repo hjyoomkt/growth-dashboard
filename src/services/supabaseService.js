@@ -3464,9 +3464,8 @@ export const deleteAgency = async (organizationId, organizationName) => {
       failed: failedUsers.length
     });
 
-    // 5. 조직 삭제 (현재 사용자가 아직 존재하므로 권한 유지)
-    // CASCADE DELETE로 현재 사용자도 자동 삭제됨
-    console.log('[deleteAgency] 조직 삭제 시작 (CASCADE로 현재 사용자도 자동 삭제됨)');
+    // 5. 조직 삭제 (CASCADE DELETE로 users 테이블에서 현재 사용자도 삭제됨)
+    console.log('[deleteAgency] 조직 삭제 시작 (CASCADE로 현재 사용자의 users 레코드도 삭제됨)');
     const { error: deleteOrgError } = await supabase
       .from('organizations')
       .delete()
@@ -3477,7 +3476,42 @@ export const deleteAgency = async (organizationId, organizationName) => {
       throw new Error(`조직 삭제 실패: ${deleteOrgError.message}`);
     }
 
-    console.log('[deleteAgency] ✓ 조직 삭제 완료 (현재 사용자도 CASCADE로 삭제됨)');
+    console.log('[deleteAgency] ✓ 조직 삭제 완료');
+
+    // 6. 현재 사용자 auth.users에서 삭제 (조직 이미 삭제되었으므로 is_agency_deletion: true)
+    if (session) {
+      const currentUserId = session.user.id;
+      const currentUserEmail = session.user.email;
+
+      console.log(`[deleteAgency] 현재 사용자 auth.users 삭제 시작: ${currentUserEmail}`);
+
+      try {
+        const SUPABASE_URL = process.env.REACT_APP_SUPABASE_URL;
+        const functionUrl = `${SUPABASE_URL}/functions/v1/delete-user`;
+
+        const response = await fetch(functionUrl, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${session.access_token}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            user_id: currentUserId,
+            is_agency_deletion: true  // 조직 이미 삭제됨, 권한 체크 건너뛰기
+          }),
+        });
+
+        const result = await response.json();
+
+        if (!response.ok) {
+          console.error(`[deleteAgency] ✗ 현재 사용자 삭제 실패:`, result);
+        } else {
+          console.log(`[deleteAgency] ✓ 현재 사용자 삭제 완료: ${currentUserEmail}`);
+        }
+      } catch (fetchError) {
+        console.error(`[deleteAgency] ✗ 현재 사용자 삭제 실패:`, fetchError);
+      }
+    }
 
     console.log('[deleteAgency] 삭제 완료:', {
       organization: organizationName,
