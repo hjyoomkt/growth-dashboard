@@ -28,6 +28,7 @@ import ForgotPassword from 'views/auth/forgotPassword';
 import ResetPassword from 'views/auth/resetPassword';
 import PrivacyPolicy from 'views/auth/privacyPolicy';
 import TermsOfService from 'views/auth/termsOfService';
+import DataDeletion from 'views/auth/dataDeletion';
 
 // ROAS Analyzer - 독립 모듈
 import { ROASAnalyzer } from 'modules/roas-analyzer';
@@ -181,6 +182,13 @@ const routes = [
     layout: '/auth',
     path: '/terms-of-service',
     component: <TermsOfService />,
+    hidden: true, // 사이드바에서 숨김
+  },
+  {
+    name: 'Data Deletion',
+    layout: '/auth',
+    path: '/data-deletion',
+    component: <DataDeletion />,
     hidden: true, // 사이드바에서 숨김
   },
   // {

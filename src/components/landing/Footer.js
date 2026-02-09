@@ -23,7 +23,7 @@ export const Footer = () => {
     Legal: [
       { label: '개인정보 처리방침', href: '/auth/privacy-policy' },
       { label: '서비스 약관', href: '/auth/terms-of-service' },
-      { label: '쿠키 정책', href: '#' },
+      { label: '데이터 삭제 요청', href: '/auth/data-deletion' },
     ],
   };
 
