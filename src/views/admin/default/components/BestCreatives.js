@@ -17,6 +17,7 @@ import {
   SimpleGrid,
   Grid,
   GridItem,
+  Tooltip,
 } from "@chakra-ui/react";
 import { MdKeyboardArrowDown } from 'react-icons/md';
 import Card from "components/card/Card.js";
@@ -289,22 +290,37 @@ function CreativeCard({ creative, rankBadge, textColor, textColorSecondary }) {
             }}
             mb='auto'>
             <Flex direction='column' align='flex-start' gap='4px' w='100%'>
-              <Text
-                color={textColor}
-                fontSize={{
-                  base: "md",
-                  md: "lg",
-                  lg: "lg",
-                  xl: "lg",
-                  "2xl": "md",
-                  "3xl": "lg",
-                }}
-                fontWeight='bold'
-                noOfLines={2}
-                maxW='100%'
-                wordBreak='break-all'>
-                {creative.adName}
-              </Text>
+              <Tooltip
+                label={creative.adName}
+                placement='top'
+                hasArrow
+                bg={useColorModeValue('navy.700', 'white')}
+                color={useColorModeValue('white', 'navy.700')}
+                fontSize='sm'
+                fontWeight='500'
+                px='12px'
+                py='8px'
+                borderRadius='10px'
+                boxShadow='lg'
+                maxW='300px'>
+                <Text
+                  color={textColor}
+                  fontSize={{
+                    base: "md",
+                    md: "lg",
+                    lg: "lg",
+                    xl: "lg",
+                    "2xl": "md",
+                    "3xl": "lg",
+                  }}
+                  fontWeight='bold'
+                  noOfLines={1}
+                  maxW='100%'
+                  overflow='hidden'
+                  textOverflow='ellipsis'>
+                  {creative.adName}
+                </Text>
+              </Tooltip>
               <Text
                 color='secondaryGray.600'
                 fontSize={{

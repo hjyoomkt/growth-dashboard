@@ -15,6 +15,7 @@ import {
   Spinner,
   useColorModeValue,
   useToast,
+  Tooltip,
 } from '@chakra-ui/react';
 import { useDateRange } from 'contexts/DateRangeContext';
 import { getAdDailyPerformance } from 'services/supabaseService';
@@ -37,6 +38,8 @@ export default function CreativeDetailModal({ isOpen, onClose, creative }) {
   const textColorSecondary = useColorModeValue('gray.600', 'gray.400');
   const mediaBoxBg = useColorModeValue('gray.50', 'navy.700');
   const cardBg = useColorModeValue('gray.50', 'navy.700');
+  const tooltipBg = useColorModeValue('navy.700', 'white');
+  const tooltipColor = useColorModeValue('white', 'navy.700');
 
   // 모달이 열릴 때 데이터 fetch
   useEffect(() => {
@@ -211,23 +214,36 @@ export default function CreativeDetailModal({ isOpen, onClose, creative }) {
                       {adInfo?.destinationUrl && (
                         <Flex justify='space-between' align='flex-start'>
                           <Text fontSize='xs' color={textColorSecondary} fontWeight='500'>랜딩 URL</Text>
-                          <Text
+                          <Tooltip
+                            label={adInfo.destinationUrl}
+                            placement='top'
+                            hasArrow
+                            bg={tooltipBg}
+                            color={tooltipColor}
                             fontSize='sm'
-                            color='brand.500'
-                            fontWeight='600'
-                            maxW='75%'
-                            noOfLines={2}
-                            wordBreak='break-all'
-                            as='a'
-                            href={adInfo.destinationUrl}
-                            target='_blank'
-                            rel='noopener noreferrer'
-                            _hover={{ textDecoration: 'underline' }}
-                            cursor='pointer'
-                            title={adInfo.destinationUrl}
-                          >
-                            {adInfo.destinationUrl}
-                          </Text>
+                            fontWeight='500'
+                            px='12px'
+                            py='8px'
+                            borderRadius='10px'
+                            boxShadow='lg'
+                            maxW='400px'>
+                            <Text
+                              fontSize='sm'
+                              color='brand.500'
+                              fontWeight='600'
+                              maxW='75%'
+                              noOfLines={2}
+                              wordBreak='break-all'
+                              as='a'
+                              href={adInfo.destinationUrl}
+                              target='_blank'
+                              rel='noopener noreferrer'
+                              _hover={{ textDecoration: 'underline' }}
+                              cursor='pointer'
+                            >
+                              {adInfo.destinationUrl}
+                            </Text>
+                          </Tooltip>
                         </Flex>
                       )}
                     </Flex>
