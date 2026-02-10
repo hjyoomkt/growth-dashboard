@@ -138,6 +138,21 @@ async function collectMetaAdInsights(
   }
 
   console.log(`Meta Ad Insights saved successfully`)
+
+  // Destination URL 수집 및 저장 (ad_performance 저장 완료 후 실행, 에러 발생해도 영향 없음)
+  try {
+    const uniqueAdIds = Array.from(new Set(allData.map(item => item.ad_id).filter(Boolean)))
+    await fetchAndSaveDestinationUrls(
+      supabase,
+      integration.advertiser_id,
+      uniqueAdIds,
+      accessToken,
+      apiVersion
+    )
+  } catch (error) {
+    console.error('Destination URL collection failed (non-critical):', error)
+    // 에러를 throw하지 않음 - ad_performance 저장에는 영향 없음
+  }
 }
 
 // ============================================================================
@@ -616,4 +631,107 @@ function getActionValue(actions: any[], actionType: string): number {
 
   const action = actions.find(a => a.action_type === actionType)
   return action ? parseFloat(action.value) || 0 : 0
+}
+
+// ============================================================================
+// Destination URL 수집 (ad_performance 저장 완료 후 실행)
+// ============================================================================
+async function fetchAndSaveDestinationUrls(
+  supabase: any,
+  advertiserId: string,
+  adIds: string[],
+  accessToken: string,
+  apiVersion: string
+): Promise<void> {
+  if (!adIds || adIds.length === 0) {
+    console.log('No ad IDs to fetch destination URLs')
+    return
+  }
+
+  console.log(`Fetching destination URLs for ${adIds.length} ads`)
+
+  // Batch API로 destination URL 수집 (50개씩)
+  const batchSize = 50
+  const destinationUrls: Record<string, string> = {}
+
+  for (let i = 0; i < adIds.length; i += batchSize) {
+    const batch = adIds.slice(i, i + batchSize)
+
+    const batchRequests = batch.map(adId => ({
+      method: 'GET',
+      relative_url: `${apiVersion}/${adId}?fields=${encodeURIComponent('adcreatives{object_story_spec,asset_feed_spec}')}`
+    }))
+
+    const batchResponse = await fetch('https://graph.facebook.com', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        access_token: accessToken,
+        batch: batchRequests
+      })
+    })
+
+    if (!batchResponse.ok) {
+      console.error(`Batch API error: ${batchResponse.status}`)
+      continue
+    }
+
+    const batchResults = await batchResponse.json()
+
+    batchResults.forEach((res: any, index: number) => {
+      const adId = batch[index]
+
+      if (res.code !== 200) return
+
+      const body = JSON.parse(res.body)
+      if (!body.adcreatives?.data?.length) return
+
+      const creative = body.adcreatives.data[0]
+      const spec = creative.object_story_spec
+      const asset = creative.asset_feed_spec
+
+      if (!spec && !asset) return
+
+      // URL 추출 (4가지 경로 시도)
+      const url =
+        spec?.link_data?.link ||
+        spec?.video_data?.call_to_action?.value?.link ||
+        spec?.link_data?.child_attachments?.[0]?.link ||
+        asset?.link_urls?.[0]?.website_url ||
+        null
+
+      if (url) {
+        destinationUrls[adId] = url
+      }
+    })
+
+    if (i + batchSize < adIds.length) await delay(100)
+  }
+
+  console.log(`Extracted ${Object.keys(destinationUrls).length} destination URLs`)
+
+  // Step 3: ad_creatives 테이블에 destination_url 업데이트
+  let successCount = 0
+  let failCount = 0
+
+  for (const adId in destinationUrls) {
+    const { data, error } = await supabase
+      .from('ad_creatives')
+      .update({ destination_url: destinationUrls[adId] })
+      .eq('advertiser_id', advertiserId)
+      .eq('ad_id', adId)
+      .select()
+
+    if (error) {
+      console.error(`Failed to update destination_url for ad_id=${adId}:`, error)
+      failCount++
+    } else if (!data || data.length === 0) {
+      console.warn(`No rows updated for ad_id=${adId} (ad_creatives에 해당 ad_id가 없을 수 있음)`)
+      failCount++
+    } else {
+      successCount++
+    }
+  }
+
+  console.log(`Destination URLs saved: ${successCount} success, ${failCount} failed`)
 }

@@ -2189,11 +2189,21 @@ export const getAdDailyPerformance = async (adId, startDate, endDate) => {
   // 2. 광고 기본 정보 추출 (첫 번째 row에서)
   const advertiserId = data[0].advertiser_id;
   const source = data[0].source;
+
+  // 2-1. ad_creatives에서 destination_url 조회 (ad_id 중복 가능하므로 limit 1)
+  const { data: creativeData } = await supabase
+    .from('ad_creatives')
+    .select('destination_url')
+    .eq('ad_id', adId)
+    .limit(1)
+    .maybeSingle();
+
   const adInfo = {
     campaignName: data[0].campaign_name || '',
     adGroupName: data[0].ad_group_name || '',
     adName: data[0].ad_name || '',
     source: source || '',
+    destinationUrl: creativeData?.destination_url || null,
   };
 
   // 3. 광고주의 meta_conversion_type 조회

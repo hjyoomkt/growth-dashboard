@@ -206,6 +206,30 @@ export default function CreativeDetailModal({ isOpen, onClose, creative }) {
                           {adInfo?.adName || creative.adName || '-'}
                         </Text>
                       </Flex>
+
+                      {/* 랜딩 URL */}
+                      {adInfo?.destinationUrl && (
+                        <Flex justify='space-between' align='flex-start'>
+                          <Text fontSize='xs' color={textColorSecondary} fontWeight='500'>랜딩 URL</Text>
+                          <Text
+                            fontSize='sm'
+                            color='brand.500'
+                            fontWeight='600'
+                            maxW='75%'
+                            noOfLines={2}
+                            wordBreak='break-all'
+                            as='a'
+                            href={adInfo.destinationUrl}
+                            target='_blank'
+                            rel='noopener noreferrer'
+                            _hover={{ textDecoration: 'underline' }}
+                            cursor='pointer'
+                            title={adInfo.destinationUrl}
+                          >
+                            {adInfo.destinationUrl}
+                          </Text>
+                        </Flex>
+                      )}
                     </Flex>
 
                     {/* 구분선 */}
