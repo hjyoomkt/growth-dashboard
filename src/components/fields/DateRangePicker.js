@@ -23,6 +23,7 @@ import Card from 'components/card/Card';
 import Calendar from 'react-calendar';
 import 'react-calendar/dist/Calendar.css';
 import 'assets/css/MiniCalendar.css';
+import { getDownloadCSVData, supabase } from 'services/supabaseService';
 
 const DateRangePicker = () => {
   const {
@@ -43,7 +44,7 @@ const DateRangePicker = () => {
     updateComparisonRange,
   } = useDateRange();
 
-  const { user } = useAuth();
+  const { user, currentAdvertiserId, availableAdvertisers } = useAuth();
   const isDemoUser = user?.email === 'demo@zestdot.com';
 
   const [isStartOpen, setIsStartOpen] = useState(false);
@@ -134,75 +135,104 @@ const DateRangePicker = () => {
     updateComparisonRange(preset);
   };
 
-  const handleDownloadCSV = () => {
-    // CSV 데이터 생성
-    const generateCSVData = () => {
-      const headers = ['날짜', '매체', '캠페인명', '그룹', '광고명', '지출', '노출', '클릭', '전환', '전환금액', '장바구니', '장바구니담기', '조회기간'];
+  const handleDownloadCSV = async () => {
+    try {
+      // 광고주 정보 가져오기
+      const availableAdvertiserIds = (availableAdvertisers || []).map(adv => adv.id);
 
-      const mediaList = ["Google", "Naver", "Meta", "Kakao", "Criteo"];
-      const campaigns = ["봄 시즌 캠페인", "여름 프로모션", "신상품 런칭", "가을 세일", "겨울 특가"];
-      const groups = ["그룹A", "그룹B", "그룹C"];
-      const ads = ["광고1", "광고2", "광고3"];
-
-      const start = new Date(startDate);
-      const end = new Date(endDate);
-      const diffTime = Math.abs(end - start);
-      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
-
-      const dateRange = `${startDate} ~ ${endDate}`;
-      const rows = [];
-
-      // 일별 데이터 생성 (조회 기간 전체)
-      for (let i = 0; i < diffDays; i++) {
-        const currentDate = new Date(start);
-        currentDate.setDate(start.getDate() + i);
-        const dateStr = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, '0')}-${String(currentDate.getDate()).padStart(2, '0')}`;
-
-        mediaList.forEach((media) => {
-          campaigns.forEach((campaign) => {
-            groups.forEach((group) => {
-              ads.forEach((ad) => {
-                rows.push([
-                  dateStr,
-                  media,
-                  campaign,
-                  group,
-                  ad,
-                  Math.floor(Math.random() * 10000 + 5000), // 지출
-                  Math.floor(Math.random() * 20000 + 10000), // 노출
-                  Math.floor(Math.random() * 500 + 200), // 클릭
-                  Math.floor(Math.random() * 10 + 5), // 전환
-                  Math.floor(Math.random() * 100000 + 50000), // 전환금액
-                  Math.floor(Math.random() * 30 + 10), // 장바구니
-                  Math.floor(Math.random() * 50 + 20), // 장바구니담기
-                  dateRange, // 조회기간
-                ]);
-              });
-            });
-          });
-        });
+      // Meta 전환 타입 조회 (단일 광고주인 경우)
+      let metaConversionType = 'purchase';
+      if (currentAdvertiserId && currentAdvertiserId !== 'all') {
+        const { data: advertiserData } = await supabase
+          .from('advertisers')
+          .select('meta_conversion_type')
+          .eq('id', currentAdvertiserId)
+          .single();
+        metaConversionType = advertiserData?.meta_conversion_type || 'purchase';
       }
 
-      return [headers, ...rows];
-    };
+      console.log('[CSV 다운로드] 조회 시작:', {
+        currentAdvertiserId,
+        availableAdvertiserIds,
+        startDate,
+        endDate,
+        metaConversionType
+      });
 
-    const csvData = generateCSVData();
-    const csvContent = csvData.map(row => row.join(',')).join('\n');
+      // Supabase에서 실제 데이터 조회
+      const data = await getDownloadCSVData({
+        advertiserId: currentAdvertiserId,
+        availableAdvertiserIds,
+        startDate,
+        endDate,
+        metaConversionType
+      });
 
-    // UTF-8 BOM 추가 (엑셀에서 한글 깨짐 방지)
-    const BOM = '\uFEFF';
-    const blob = new Blob([BOM + csvContent], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement('a');
-    const url = URL.createObjectURL(blob);
+      console.log('[CSV 다운로드] 조회 완료:', { rowCount: data.length });
 
-    const fileName = `광고_상세데이터_${startDate}_${endDate}.csv`;
+      // 5만 건 이상 경고
+      if (data.length >= 50000) {
+        if (!window.confirm(`데이터가 ${data.length.toLocaleString()}건입니다. 다운로드 시 시간이 오래 걸릴 수 있습니다. 계속하시겠습니까?`)) {
+          return;
+        }
+      }
 
-    link.setAttribute('href', url);
-    link.setAttribute('download', fileName);
-    link.style.visibility = 'hidden';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+      // CSV 생성
+      const headers = ['날짜', '매체', '캠페인명', '그룹', '광고명', '지출', '노출', '클릭', '전환', '전환금액', '장바구니', '장바구니담기', '회원가입', '회원가입금액', '조회기간'];
+      const dateRange = `${startDate} ~ ${endDate}`;
+
+      // CSV 값 이스케이프 처리 (쉼표, 탭, 개행 등 특수문자 처리)
+      const escapeCSV = (value) => {
+        if (value === null || value === undefined) return '';
+        const str = String(value);
+        // 쉼표, 개행, 탭, 큰따옴표가 포함된 경우 큰따옴표로 감싸기
+        if (str.includes(',') || str.includes('\n') || str.includes('\t') || str.includes('"')) {
+          return `"${str.replace(/"/g, '""')}"`;
+        }
+        return str;
+      };
+
+      const rows = data.map(row => [
+        escapeCSV(row.date),
+        escapeCSV(row.source || ''),
+        escapeCSV(row.campaign_name || ''),
+        escapeCSV(row.ad_group_name || ''),
+        escapeCSV(row.ad_name || ''),
+        row.cost || 0,
+        row.impressions || 0,
+        row.clicks || 0,
+        row.conversions || 0,
+        row.conversion_value || 0,
+        row.add_to_cart || 0,
+        row.add_to_cart_value || 0,
+        row.complete_registrations || 0,
+        row.complete_registrations_value || 0,
+        escapeCSV(dateRange)
+      ]);
+
+      const csvData = [headers, ...rows];
+      const csvContent = csvData.map(row => row.join(',')).join('\n');
+
+      // UTF-8 BOM 추가 (엑셀에서 한글 깨짐 방지)
+      const BOM = '\uFEFF';
+      const blob = new Blob([BOM + csvContent], { type: 'text/csv;charset=utf-8;' });
+      const link = document.createElement('a');
+      const url = URL.createObjectURL(blob);
+
+      const fileName = `광고_상세데이터_${startDate}_${endDate}.csv`;
+
+      link.setAttribute('href', url);
+      link.setAttribute('download', fileName);
+      link.style.visibility = 'hidden';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+
+      console.log('[CSV 다운로드] 완료:', fileName);
+    } catch (error) {
+      console.error('[CSV 다운로드] 실패:', error);
+      alert(`CSV 다운로드에 실패했습니다.\n오류: ${error.message}`);
+    }
   };
 
   return (

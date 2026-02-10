@@ -2166,6 +2166,39 @@ export const getAllCreatives = async ({ advertiserId, availableAdvertiserIds, st
 };
 
 /**
+ * CSV 다운로드용 광고 성과 데이터 조회
+ * @param {Object} params - 조회 파라미터
+ * @param {string} params.advertiserId - 광고주 ID (null이면 전체)
+ * @param {Array} params.availableAdvertiserIds - 접근 가능한 광고주 ID 배열
+ * @param {string} params.startDate - 시작일 (YYYY-MM-DD)
+ * @param {string} params.endDate - 종료일 (YYYY-MM-DD)
+ * @param {string} params.metaConversionType - Meta 전환 타입 ('purchase' 또는 'complete_registration')
+ * @returns {Array} 광고 성과 데이터 배열
+ */
+export const getDownloadCSVData = async ({
+  advertiserId,
+  availableAdvertiserIds,
+  startDate,
+  endDate,
+  metaConversionType = 'purchase'
+}) => {
+  const { data, error } = await supabase.rpc('get_download_csv_data', {
+    p_advertiser_id: (advertiserId && advertiserId !== 'all') ? advertiserId : null,
+    p_advertiser_ids: (availableAdvertiserIds && availableAdvertiserIds.length > 0) ? availableAdvertiserIds : null,
+    p_start_date: startDate || null,
+    p_end_date: endDate || null,
+    p_meta_conversion_type: metaConversionType
+  });
+
+  if (error) {
+    console.error('[getDownloadCSVData] 조회 실패:', error);
+    throw error;
+  }
+
+  return data || [];
+};
+
+/**
  * 광고별 일자별 성과 데이터 조회 (크리에이티브 상세 모달용)
  * @param {string} adId - 광고 ID
  * @param {string} startDate - 시작일 (YYYY-MM-DD)
