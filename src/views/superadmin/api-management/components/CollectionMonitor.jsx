@@ -73,16 +73,51 @@ export default function CollectionMonitor() {
         }
       }
 
-      const { data, error } = await query
+      const { data: jobsData, error } = await query
         .order('created_at', { ascending: false })
         .limit(100);
 
       if (error) {
         console.error('Error fetching collection jobs:', error);
-      } else {
-        setJobs(data || []);
-        setCurrentPage(1); // 데이터 업데이트 시 1페이지로 리셋
+        setJobs([]);
+        setLoading(false);
+        return;
       }
+
+      // 광고주 정보 조회
+      const advertiserIds = [...new Set(jobsData.map(job => job.advertiser_id))];
+      const { data: advertisersData } = await supabase
+        .from('advertisers')
+        .select('id, name')
+        .in('id', advertiserIds);
+
+      // Integration 정보 조회
+      const { data: integrationsData } = await supabase
+        .from('integrations')
+        .select('id, advertiser_id, platform, legacy_account_id, legacy_customer_id, account_description')
+        .in('advertiser_id', advertiserIds)
+        .is('deleted_at', null);
+
+      // 데이터 결합
+      const enrichedJobs = jobsData.map(job => {
+        const advertiser = advertisersData?.find(a => a.id === job.advertiser_id);
+        const integration = integrationsData?.find(
+          i => i.advertiser_id === job.advertiser_id && i.platform === job.platform
+        );
+
+        return {
+          ...job,
+          advertisers: advertiser ? { name: advertiser.name } : null,
+          integrations: integration ? {
+            legacy_account_id: integration.legacy_account_id,
+            legacy_customer_id: integration.legacy_customer_id,
+            account_description: integration.account_description
+          } : null
+        };
+      });
+
+      setJobs(enrichedJobs);
+      setCurrentPage(1); // 데이터 업데이트 시 1페이지로 리셋
     } catch (error) {
       console.error('Exception fetching jobs:', error);
     } finally {
@@ -193,6 +228,12 @@ export default function CollectionMonitor() {
     }
   };
 
+  // 날짜 축약 (2026-01-11 -> 26-01-11)
+  const formatDateShort = (dateStr) => {
+    if (!dateStr) return '-';
+    return dateStr.replace(/^20/, '');
+  };
+
   // 페이지네이션 계산
   const totalPages = Math.ceil(jobs.length / itemsPerPage);
   const currentJobs = jobs.slice(
@@ -225,14 +266,17 @@ export default function CollectionMonitor() {
           <Table variant="simple">
             <Thead>
               <Tr>
-                <Th borderColor={borderColor}>플랫폼</Th>
-                <Th borderColor={borderColor}>유형</Th>
-                <Th borderColor={borderColor}>모드</Th>
-                <Th borderColor={borderColor}>수집 날짜/기간</Th>
-                <Th borderColor={borderColor}>상태</Th>
-                <Th borderColor={borderColor}>진행률</Th>
-                <Th borderColor={borderColor}>시작 시간</Th>
-                <Th borderColor={borderColor}>완료 시간</Th>
+                <Th borderColor={borderColor} whiteSpace="nowrap">광고주명</Th>
+                <Th borderColor={borderColor} whiteSpace="nowrap">플랫폼</Th>
+                <Th borderColor={borderColor} whiteSpace="nowrap">계정ID</Th>
+                <Th borderColor={borderColor} whiteSpace="nowrap">설명</Th>
+                <Th borderColor={borderColor} whiteSpace="nowrap">유형</Th>
+                <Th borderColor={borderColor} whiteSpace="nowrap">모드</Th>
+                <Th borderColor={borderColor} whiteSpace="nowrap">수집 날짜/기간</Th>
+                <Th borderColor={borderColor} whiteSpace="nowrap">상태</Th>
+                <Th borderColor={borderColor} whiteSpace="nowrap">진행률</Th>
+                <Th borderColor={borderColor} whiteSpace="nowrap">시작 시간</Th>
+                <Th borderColor={borderColor} whiteSpace="nowrap">완료 시간</Th>
               </Tr>
             </Thead>
             <Tbody>
@@ -244,8 +288,39 @@ export default function CollectionMonitor() {
                   title={job.error_message || ''}
                 >
                   <Td borderColor={borderColor}>
-                    <Text fontSize="sm" fontWeight="bold" color={textColor}>
+                    <Text
+                      fontSize="sm"
+                      fontWeight="bold"
+                      color={textColor}
+                      noOfLines={1}
+                      maxW="150px"
+                      title={job.advertisers?.name || '-'}
+                    >
+                      {job.advertisers?.name || '-'}
+                    </Text>
+                  </Td>
+                  <Td borderColor={borderColor}>
+                    <Text fontSize="sm" fontWeight="bold" color={textColor} whiteSpace="nowrap">
                       {job.platform}
+                    </Text>
+                  </Td>
+                  <Td borderColor={borderColor}>
+                    <Text fontSize="sm" color={textColor}>
+                      {job.platform === 'Google Ads'
+                        ? (job.integrations?.legacy_customer_id || '-')
+                        : (job.integrations?.legacy_account_id ||
+                           job.integrations?.legacy_customer_id || '-')}
+                    </Text>
+                  </Td>
+                  <Td borderColor={borderColor}>
+                    <Text
+                      fontSize="sm"
+                      color={textColor}
+                      noOfLines={1}
+                      maxW="200px"
+                      title={job.integrations?.account_description || '-'}
+                    >
+                      {job.integrations?.account_description || '-'}
                     </Text>
                   </Td>
                   <Td borderColor={borderColor}>
@@ -259,10 +334,10 @@ export default function CollectionMonitor() {
                     </Badge>
                   </Td>
                   <Td borderColor={borderColor}>
-                    <Text fontSize="sm" color={textColor}>
+                    <Text fontSize="sm" color={textColor} whiteSpace="pre-line">
                       {job.mode === 'daily'
-                        ? job.collection_date || '-'
-                        : `${job.start_date} ~ ${job.end_date}`}
+                        ? formatDateShort(job.collection_date)
+                        : `${formatDateShort(job.start_date)}\n~ ${formatDateShort(job.end_date)}`}
                     </Text>
                   </Td>
                   <Td borderColor={borderColor}>{getStatusBadge(job.status)}</Td>
