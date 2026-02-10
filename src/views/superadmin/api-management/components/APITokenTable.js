@@ -99,6 +99,7 @@ export default function APITokenTable(props) {
     updateMode: 'skipExisting', // skipExisting, updateAll
     startDate: '',
     endDate: '',
+    collectionTypes: [], // 선택된 수집 타입 배열 (Meta Ads 전용)
   });
 
   // Form states
@@ -1174,6 +1175,7 @@ export default function APITokenTable(props) {
       updateMode: 'skipExisting',
       startDate: '',
       endDate: '',
+      collectionTypes: [],
     });
     onSyncModalOpen();
   };
@@ -1275,6 +1277,7 @@ export default function APITokenTable(props) {
             integration_id: selectedToken.id,
             start_date: startDate,
             end_date: endDate,
+            collection_types: syncConfig.collectionTypes.length > 0 ? syncConfig.collectionTypes : undefined,
           }),
         }
       );
@@ -2819,6 +2822,197 @@ export default function APITokenTable(props) {
                   </Stack>
                 </RadioGroup>
               </FormControl>
+
+              {/* 연동 데이터 선택 (Meta Ads만) */}
+              {syncConfig.selectedPlatform &&
+               data.find(token => token.id === syncConfig.selectedPlatform)?.platform === 'Meta Ads' && (
+                <FormControl>
+                  <FormLabel fontSize="sm" fontWeight="500" mb={2}>
+                    연동 데이터 선택
+                  </FormLabel>
+                  <Stack spacing={2}>
+                    <Checkbox
+                      isChecked={syncConfig.collectionTypes.length === 0}
+                      onChange={(e) => {
+                        setSyncConfig({
+                          ...syncConfig,
+                          collectionTypes: []
+                        });
+                      }}
+                      colorScheme="brand"
+                      size="sm"
+                      sx={{
+                        '& .chakra-checkbox__control': {
+                          borderRadius: '50%',
+                        },
+                        '& .chakra-checkbox__control svg': {
+                          display: 'none',
+                        },
+                        '& .chakra-checkbox__control[data-checked]': {
+                          '&::before': {
+                            content: '""',
+                            display: 'inline-block',
+                            position: 'relative',
+                            width: '50%',
+                            height: '50%',
+                            borderRadius: '50%',
+                            bg: 'white',
+                          }
+                        }
+                      }}
+                    >
+                      <VStack align="start" spacing={0}>
+                        <Text fontSize="sm" fontWeight="500">전체</Text>
+                        <Text fontSize="xs" fontWeight="400" color="secondaryGray.600">
+                          광고 데이터 + 성별/연령 + 크리에이티브
+                        </Text>
+                      </VStack>
+                    </Checkbox>
+
+                    <Checkbox
+                      isChecked={syncConfig.collectionTypes.length > 0 && syncConfig.collectionTypes.includes('ads')}
+                      onChange={(e) => {
+                        if (syncConfig.collectionTypes.length === 0) {
+                          // 전체 모드에서 개별 모드로 전환
+                          setSyncConfig({ ...syncConfig, collectionTypes: ['ads'] });
+                        } else {
+                          // 개별 모드에서 토글
+                          const newTypes = e.target.checked
+                            ? [...syncConfig.collectionTypes, 'ads']
+                            : syncConfig.collectionTypes.filter(t => t !== 'ads');
+                          setSyncConfig({ ...syncConfig, collectionTypes: newTypes });
+                        }
+                      }}
+                      colorScheme="brand"
+                      size="sm"
+                      sx={{
+                        '& .chakra-checkbox__control': {
+                          borderRadius: '50%',
+                        },
+                        '& .chakra-checkbox__control svg': {
+                          display: 'none',
+                        },
+                        '& .chakra-checkbox__control[data-checked]': {
+                          '&::before': {
+                            content: '""',
+                            display: 'inline-block',
+                            position: 'relative',
+                            width: '50%',
+                            height: '50%',
+                            borderRadius: '50%',
+                            bg: 'white',
+                          }
+                        }
+                      }}
+                    >
+                      <VStack align="start" spacing={0}>
+                        <Text fontSize="sm" fontWeight="500">광고 데이터</Text>
+                        <Text fontSize="xs" fontWeight="400" color="secondaryGray.600">
+                          광고 성과 데이터만 수집합니다
+                        </Text>
+                      </VStack>
+                    </Checkbox>
+
+                    <Checkbox
+                      isChecked={syncConfig.collectionTypes.length > 0 && syncConfig.collectionTypes.includes('demographics')}
+                      onChange={(e) => {
+                        if (syncConfig.collectionTypes.length === 0) {
+                          // 전체 모드에서 개별 모드로 전환
+                          setSyncConfig({ ...syncConfig, collectionTypes: ['demographics'] });
+                        } else {
+                          // 개별 모드에서 토글
+                          const newTypes = e.target.checked
+                            ? [...syncConfig.collectionTypes, 'demographics']
+                            : syncConfig.collectionTypes.filter(t => t !== 'demographics');
+                          setSyncConfig({ ...syncConfig, collectionTypes: newTypes });
+                        }
+                      }}
+                      colorScheme="brand"
+                      size="sm"
+                      sx={{
+                        '& .chakra-checkbox__control': {
+                          borderRadius: '50%',
+                        },
+                        '& .chakra-checkbox__control svg': {
+                          display: 'none',
+                        },
+                        '& .chakra-checkbox__control[data-checked]': {
+                          '&::before': {
+                            content: '""',
+                            display: 'inline-block',
+                            position: 'relative',
+                            width: '50%',
+                            height: '50%',
+                            borderRadius: '50%',
+                            bg: 'white',
+                          }
+                        }
+                      }}
+                    >
+                      <VStack align="start" spacing={0}>
+                        <Text fontSize="sm" fontWeight="500">성별/연령 데이터</Text>
+                        <Text fontSize="xs" fontWeight="400" color="secondaryGray.600">
+                          성별 및 연령대별 성과 데이터를 수집합니다
+                        </Text>
+                      </VStack>
+                    </Checkbox>
+
+                    <Checkbox
+                      isChecked={syncConfig.collectionTypes.length > 0 && syncConfig.collectionTypes.includes('creatives')}
+                      onChange={(e) => {
+                        if (syncConfig.collectionTypes.length === 0) {
+                          // 전체 모드에서 개별 모드로 전환
+                          setSyncConfig({ ...syncConfig, collectionTypes: ['creatives'] });
+                        } else {
+                          // 개별 모드에서 토글
+                          const newTypes = e.target.checked
+                            ? [...syncConfig.collectionTypes, 'creatives']
+                            : syncConfig.collectionTypes.filter(t => t !== 'creatives');
+                          setSyncConfig({ ...syncConfig, collectionTypes: newTypes });
+                        }
+                      }}
+                      colorScheme="brand"
+                      size="sm"
+                      sx={{
+                        '& .chakra-checkbox__control': {
+                          borderRadius: '50%',
+                        },
+                        '& .chakra-checkbox__control svg': {
+                          display: 'none',
+                        },
+                        '& .chakra-checkbox__control[data-checked]': {
+                          '&::before': {
+                            content: '""',
+                            display: 'inline-block',
+                            position: 'relative',
+                            width: '50%',
+                            height: '50%',
+                            borderRadius: '50%',
+                            bg: 'white',
+                          }
+                        }
+                      }}
+                    >
+                      <VStack align="start" spacing={0}>
+                        <Text fontSize="sm" fontWeight="500">크리에이티브</Text>
+                        <Text fontSize="xs" fontWeight="400" color="secondaryGray.600">
+                          광고 크리에이티브(소재) 정보를 수집합니다
+                        </Text>
+                      </VStack>
+                    </Checkbox>
+                  </Stack>
+
+                  {syncConfig.collectionTypes.length > 0 && (
+                    <Alert status="info" mt={2} borderRadius="md">
+                      <AlertIcon />
+                      <Text fontSize="xs">
+                        선택한 데이터만 순차적으로 수집됩니다.
+                        일부 타입만 실패했을 때 재수집용으로 사용하세요.
+                      </Text>
+                    </Alert>
+                  )}
+                </FormControl>
+              )}
             </VStack>
           </ModalBody>
 

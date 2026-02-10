@@ -11,6 +11,7 @@ interface InitialCollectionRequest {
   integration_id: string
   start_date: string
   end_date: string
+  collection_types?: string[]
 }
 
 serve(async (req) => {
@@ -22,7 +23,7 @@ serve(async (req) => {
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
     const body: InitialCollectionRequest = await req.json()
 
-    const { integration_id, start_date, end_date } = body
+    const { integration_id, start_date, end_date, collection_types } = body
 
     if (!integration_id || !start_date || !end_date) {
       return jsonResponse({ error: 'Missing required fields' }, 400)
@@ -51,7 +52,7 @@ serve(async (req) => {
     console.log(`Accepted initial collection request for ${platform}`)
 
     // 백그라운드 작업 시작 (await 없이)
-    executeBackgroundCollection(integration_id, start_date, end_date, platform, supabase)
+    executeBackgroundCollection(integration_id, start_date, end_date, platform, supabase, collection_types)
       .catch(error => console.error('Background collection error:', error))
 
     return jsonResponse({
@@ -73,7 +74,8 @@ async function executeBackgroundCollection(
   startDate: string,
   endDate: string,
   platform: string,
-  supabase: any
+  supabase: any,
+  collectionTypes?: string[]
 ) {
   try {
     // Platform Config 조회
@@ -88,44 +90,91 @@ async function executeBackgroundCollection(
     }
 
     if (platform === 'Meta Ads') {
-      // Meta: 3단계 처리 (광고 → 연령대 → 크리에이티브)
       console.log('Starting Meta Ads initial collection')
 
-      // Step 1: 광고 데이터 수집 (의존성 없음)
-      const adsJob = await processCollectionWithChunks(
-        supabase,
-        integrationId,
-        startDate,
-        endDate,
-        'ads',
-        platformConfig.chunk_size_days,
-        'Meta 광고',
-        null
-      )
+      // collectionTypes가 없거나 빈 배열이면 전체 수집 (기존 로직)
+      if (!collectionTypes || collectionTypes.length === 0) {
+        console.log('[Meta Ads] 전체 수집 모드 (의존성 체인 유지)')
 
-      // Step 2: 연령대 수집 (광고 완료 후)
-      const demoJob = await processCollectionWithChunks(
-        supabase,
-        integrationId,
-        startDate,
-        endDate,
-        'demographics',
-        platformConfig.demographics_chunk_size_days || platformConfig.chunk_size_days,
-        'Meta 연령대',
-        adsJob.id
-      )
+        // Step 1: 광고 데이터 수집 (의존성 없음)
+        const adsJob = await processCollectionWithChunks(
+          supabase,
+          integrationId,
+          startDate,
+          endDate,
+          'ads',
+          platformConfig.chunk_size_days,
+          'Meta 광고',
+          null
+        )
 
-      // Step 3: 크리에이티브 수집 (연령대 완료 후)
-      await processCollectionWithChunks(
-        supabase,
-        integrationId,
-        startDate,
-        endDate,
-        'creatives',
-        9999, // 크리에이티브는 청크 없이 전체 기간 1번 호출
-        'Meta 크리에이티브',
-        demoJob.id
-      )
+        // Step 2: 연령대 수집 (광고 완료 후)
+        const demoJob = await processCollectionWithChunks(
+          supabase,
+          integrationId,
+          startDate,
+          endDate,
+          'demographics',
+          platformConfig.demographics_chunk_size_days || platformConfig.chunk_size_days,
+          'Meta 연령대',
+          adsJob.id
+        )
+
+        // Step 3: 크리에이티브 수집 (연령대 완료 후)
+        await processCollectionWithChunks(
+          supabase,
+          integrationId,
+          startDate,
+          endDate,
+          'creatives',
+          9999, // 크리에이티브는 청크 없이 전체 기간 1번 호출
+          'Meta 크리에이티브',
+          demoJob.id
+        )
+      } else {
+        // 선택된 타입만 수집 (의존성 체인 유지)
+        console.log(`[Meta Ads] 선택적 수집 모드: ${collectionTypes.join(', ')}`)
+
+        // 타입 정의 순서 (의존성 체인)
+        const typeOrder = ['ads', 'demographics', 'creatives']
+
+        // 선택된 타입을 정의 순서대로 정렬
+        const sortedTypes = collectionTypes.sort((a, b) =>
+          typeOrder.indexOf(a) - typeOrder.indexOf(b)
+        )
+
+        let previousJob = null
+
+        // 순차적으로 job 생성 (의존성 체인 유지)
+        for (const type of sortedTypes) {
+          let chunkSize = platformConfig.chunk_size_days
+          let jobName = 'Meta 광고'
+
+          if (type === 'demographics') {
+            chunkSize = platformConfig.demographics_chunk_size_days || platformConfig.chunk_size_days
+            jobName = 'Meta 연령대'
+          } else if (type === 'creatives') {
+            chunkSize = 9999  // 크리에이티브는 청크 없이 전체 기간 1번
+            jobName = 'Meta 크리에이티브'
+          }
+
+          // 이전 job이 있으면 의존성 설정 (순차 실행)
+          const currentJob = await processCollectionWithChunks(
+            supabase,
+            integrationId,
+            startDate,
+            endDate,
+            type,
+            chunkSize,
+            jobName,
+            previousJob?.id || null
+          )
+
+          console.log(`[Meta Ads] ${jobName} 수집 job 생성 완료${previousJob ? ` (depends on ${previousJob.collection_type})` : ' (즉시 실행)'}`)
+
+          previousJob = currentJob
+        }
+      }
 
     } else if (platform === 'Google Ads' || platform === 'Naver Ads') {
       // Google/Naver: 광고 데이터만 수집
