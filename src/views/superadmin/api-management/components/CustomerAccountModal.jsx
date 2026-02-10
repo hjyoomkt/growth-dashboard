@@ -33,7 +33,7 @@ export default function CustomerAccountModal({
 }) {
   const [loading, setLoading] = useState(true);
   const [customerAccounts, setCustomerAccounts] = useState([]);
-  const [selectedCustomerId, setSelectedCustomerId] = useState(null);
+  const [selectedCustomer, setSelectedCustomer] = useState(null);
   const [error, setError] = useState(null);
 
   const textColor = useColorModeValue('secondaryGray.900', 'white');
@@ -73,7 +73,7 @@ export default function CustomerAccountModal({
 
       // 계정이 1개면 자동 선택
       if (data.customers && data.customers.length === 1) {
-        setSelectedCustomerId(data.customers[0].id);
+        setSelectedCustomer(data.customers[0]);
       }
     } catch (err) {
       console.error('고객 계정 조회 오류:', err);
@@ -91,8 +91,11 @@ export default function CustomerAccountModal({
   };
 
   const handleNext = () => {
-    if (selectedCustomerId) {
-      onNext(selectedCustomerId);
+    if (selectedCustomer) {
+      onNext({
+        customerId: selectedCustomer.id,
+        customerName: selectedCustomer.name,
+      });
     }
   };
 
@@ -130,7 +133,13 @@ export default function CustomerAccountModal({
                 <FormLabel fontSize="sm" fontWeight="500" mb={3}>
                   고객 계정을 선택하세요 *
                 </FormLabel>
-                <RadioGroup value={selectedCustomerId} onChange={setSelectedCustomerId}>
+                <RadioGroup
+                  value={selectedCustomer?.id || ''}
+                  onChange={(customerId) => {
+                    const customer = customerAccounts.find(acc => acc.id === customerId);
+                    setSelectedCustomer(customer);
+                  }}
+                >
                   <Stack spacing={2}>
                     {customerAccounts.map((account) => (
                       <Radio
@@ -165,7 +174,7 @@ export default function CustomerAccountModal({
             colorScheme="brand"
             mr={3}
             onClick={handleNext}
-            isDisabled={!selectedCustomerId || loading || error}
+            isDisabled={!selectedCustomer || loading || error}
             fontSize="sm"
             fontWeight="500"
           >

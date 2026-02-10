@@ -249,8 +249,8 @@ export default function PlatformLoginFlow({
   };
 
   // Step 3: 고객 계정 선택 후 전환 액션 선택으로 이동
-  const handleCustomerSelect = (customerId) => {
-    setSelectedCustomerId(customerId);
+  const handleCustomerSelect = (data) => {
+    setSelectedCustomerId(data.customerId);
 
     // 기존 토큰을 다른 브랜드에서 재사용하는 경우 감지
     const isDifferentBrand =
@@ -265,7 +265,8 @@ export default function PlatformLoginFlow({
       refreshToken: refreshToken,
       integrationId: isDifferentBrand ? null : integrationId, // 다른 브랜드면 null
       sourceIntegrationId: isDifferentBrand ? integrationId : null, // 복사 원본 ID
-      customerId: customerId,
+      customerId: data.customerId,
+      customerName: data.customerName,
     });
 
     // 플로우 초기화 및 닫기

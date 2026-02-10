@@ -496,6 +496,7 @@ export default function APITokenTable(props) {
         .update({
           legacy_customer_id: formData.customerId,
           legacy_target_conversion_action_id: selectedConversionActions,
+          account_description: formData.accountDescription,
           updated_at: new Date().toISOString(),
         })
         .eq('id', selectedIntegrationId);
@@ -1091,6 +1092,7 @@ export default function APITokenTable(props) {
         platform: data.platform,
         refreshToken: data.refreshToken,
         customerId: data.customerId,
+        accountDescription: data.customerName,
       }));
 
       setSelectedIntegrationId(targetIntegrationId);

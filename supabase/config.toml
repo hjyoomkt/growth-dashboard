@@ -47,3 +47,12 @@ verify_jwt = false
 
 [functions.send-agency-deletion-email]
 verify_jwt = false
+
+[functions.oauth-initiate]
+verify_jwt = false
+
+[functions.google-conversion-actions]
+verify_jwt = false
+
+[functions.oauth-callback]
+verify_jwt = false
