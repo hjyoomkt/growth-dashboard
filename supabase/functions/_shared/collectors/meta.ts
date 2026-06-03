@@ -120,6 +120,11 @@ async function collectMetaAdInsights(
       add_to_cart_value: addToCartValue,
       complete_registrations: completeRegistrations,
       complete_registrations_value: completeRegistrationsValue,
+      // 맞춤전환 등 전체 action/value 보존 (대시보드에서 맞춤이벤트 전환 선택용)
+      additional_metrics: {
+        actions: buildActionsMap(item.actions),
+        action_values: buildActionsMap(item.action_values)
+      },
       collected_at: new Date().toISOString(),
       issue_status: (!item.campaign_name || !item.ad_name) ? '캠페인명/광고명 누락' : '정상'
     }
@@ -244,7 +249,12 @@ async function collectMetaDemographics(
       add_to_cart: addToCart,
       add_to_cart_value: addToCartValue,
       complete_registrations: completeRegistrations,
-      complete_registrations_value: completeRegistrationsValue
+      complete_registrations_value: completeRegistrationsValue,
+      // 맞춤전환 등 전체 action/value 보존 (성별/연령대별 맞춤이벤트 전환 선택용)
+      additional_metrics: {
+        actions: buildActionsMap(item.actions),
+        action_values: buildActionsMap(item.action_values)
+      }
     }
 
     const { error } = await supabase
@@ -631,6 +641,21 @@ function getActionValue(actions: any[], actionType: string): number {
 
   const action = actions.find(a => a.action_type === actionType)
   return action ? parseFloat(action.value) || 0 : 0
+}
+
+// actions/action_values 배열을 { action_type: number } 맵으로 변환
+// 맞춤전환(custom conversion) 등 모든 action_type을 additional_metrics에 보존하기 위함.
+// 기존 컬럼(conversions 등) 로직에는 전혀 영향 없음 (순수 추가 저장).
+function buildActionsMap(actions: any[]): Record<string, number> {
+  const map: Record<string, number> = {}
+  if (!Array.isArray(actions)) return map
+  for (const a of actions) {
+    if (a && a.action_type != null && a.value != null) {
+      const v = parseFloat(a.value)
+      if (!isNaN(v)) map[a.action_type] = v
+    }
+  }
+  return map
 }
 
 // ============================================================================

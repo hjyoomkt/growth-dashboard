@@ -56,3 +56,6 @@ verify_jwt = false
 
 [functions.oauth-callback]
 verify_jwt = false
+
+[functions.list-meta-custom-events]
+verify_jwt = false

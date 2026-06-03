@@ -21,9 +21,16 @@ import {
   MenuButton,
   MenuItem,
   MenuList,
+  MenuDivider,
+  Spinner,
+  Box,
 } from "@chakra-ui/react";
 import { MdKeyboardArrowDown } from "react-icons/md";
 import { supabase } from "config/supabase";
+
+// 맞춤이벤트 전환타입('custom:<action_type>')의 표시용 라벨
+const cleanCustomLabel = (actionType) =>
+  (actionType || "").replace(/^offsite_conversion\.custom\./, "").replace(/^offsite_/, "");
 
 export default function EditBrandModal({ isOpen, onClose, brand }) {
   const [formData, setFormData] = useState({
@@ -35,6 +42,10 @@ export default function EditBrandModal({ isOpen, onClose, brand }) {
   });
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
+  // 맞춤이벤트(custom conversion) 목록
+  const [customEvents, setCustomEvents] = useState([]);
+  const [loadingEvents, setLoadingEvents] = useState(false);
+  const [eventsError, setEventsError] = useState(null);
   const toast = useToast();
 
   const textColor = useColorModeValue("navy.700", "white");
@@ -54,6 +65,36 @@ export default function EditBrandModal({ isOpen, onClose, brand }) {
       });
     }
   }, [brand]);
+
+  // 모달 열릴 때 맞춤전환 목록 조회 (Meta 계정 기준)
+  useEffect(() => {
+    if (!isOpen || !brand?.id) return;
+    let cancelled = false;
+    const fetchCustomEvents = async () => {
+      setLoadingEvents(true);
+      setEventsError(null);
+      try {
+        const { data, error: fnError } = await supabase.functions.invoke('list-meta-custom-events', {
+          body: { advertiser_id: brand.id },
+        });
+        if (cancelled) return;
+        if (fnError) throw fnError;
+        if (data?.error && (!data?.events || data.events.length === 0)) {
+          setEventsError(data.error);
+        }
+        setCustomEvents(data?.events || []);
+      } catch (err) {
+        if (!cancelled) {
+          setEventsError(err.message || '맞춤전환 목록을 불러오지 못했습니다.');
+          setCustomEvents([]);
+        }
+      } finally {
+        if (!cancelled) setLoadingEvents(false);
+      }
+    };
+    fetchCustomEvents();
+    return () => { cancelled = true; };
+  }, [isOpen, brand?.id]);
 
   const handleChange = (e) => {
     setFormData({
@@ -230,7 +271,16 @@ export default function EditBrandModal({ isOpen, onClose, brand }) {
                     textAlign="left"
                     w="100%"
                   >
-                    {formData.metaConversionType === 'purchase' ? '구매 (conversions)' : '회원가입 (등록완료)'}
+                    {(() => {
+                      const t = formData.metaConversionType;
+                      if (t === 'purchase') return '구매 (conversions)';
+                      if (t === 'complete_registration') return '회원가입 (등록완료)';
+                      if (t?.startsWith('custom:')) {
+                        const found = customEvents.find((e) => `custom:${e.action_type}` === t);
+                        return `맞춤: ${found?.label || cleanCustomLabel(t.slice(7))}`;
+                      }
+                      return '구매 (conversions)';
+                    })()}
                   </MenuButton>
                   <MenuList minW="auto" w="100%" px="8px" py="8px">
                     <MenuItem
@@ -267,10 +317,72 @@ export default function EditBrandModal({ isOpen, onClose, brand }) {
                     >
                       회원가입 (등록완료)
                     </MenuItem>
+
+                    {/* 맞춤이벤트 (custom conversion) */}
+                    <MenuDivider />
+                    <Text fontSize="xs" color="gray.400" px="12px" py="4px" fontWeight="600">
+                      맞춤이벤트
+                    </Text>
+
+                    {loadingEvents && (
+                      <Box px="12px" py="8px" display="flex" alignItems="center">
+                        <Spinner size="sm" mr="8px" />
+                        <Text fontSize="sm" color="gray.500">불러오는 중...</Text>
+                      </Box>
+                    )}
+
+                    {!loadingEvents && customEvents.length === 0 && (
+                      <Text fontSize="xs" color="gray.500" px="12px" py="8px">
+                        {eventsError ? eventsError : '잡힌 맞춤전환이 없습니다.'}
+                      </Text>
+                    )}
+
+                    {!loadingEvents && customEvents.map((evt) => {
+                      const value = `custom:${evt.action_type}`;
+                      const selected = formData.metaConversionType === value;
+                      return (
+                        <MenuItem
+                          key={evt.action_type}
+                          onClick={() => setFormData({ ...formData, metaConversionType: value })}
+                          bg={selected ? brandColor : 'transparent'}
+                          color={selected ? 'white' : textColor}
+                          _hover={{ bg: selected ? brandColor : bgHover }}
+                          fontWeight={selected ? '600' : '500'}
+                          fontSize="sm"
+                          px="12px"
+                          py="8px"
+                          borderRadius="8px"
+                          justifyContent="flex-start"
+                          minH="auto"
+                        >
+                          {(evt.label || cleanCustomLabel(evt.action_type))} ({Number(evt.count).toLocaleString()}건)
+                        </MenuItem>
+                      );
+                    })}
+
+                    {/* 저장돼 있으나 목록에 없는 맞춤전환도 유지 표시 */}
+                    {!loadingEvents
+                      && formData.metaConversionType?.startsWith('custom:')
+                      && !customEvents.some((e) => `custom:${e.action_type}` === formData.metaConversionType) && (
+                      <MenuItem
+                        onClick={() => {}}
+                        bg={brandColor}
+                        color="white"
+                        fontWeight="600"
+                        fontSize="sm"
+                        px="12px"
+                        py="8px"
+                        borderRadius="8px"
+                        justifyContent="flex-start"
+                        minH="auto"
+                      >
+                        {cleanCustomLabel(formData.metaConversionType.slice(7))} (현재 설정)
+                      </MenuItem>
+                    )}
                   </MenuList>
                 </Menu>
                 <Text fontSize="xs" color="gray.500" mt="8px">
-                  메타 광고의 전환 지표를 선택하세요. 구매 또는 회원가입 중 하나를 선택할 수 있습니다.
+                  메타 광고의 전환 지표를 선택하세요. 구매·회원가입 또는 맞춤이벤트(최근 90일 기준) 중 선택할 수 있습니다. 맞춤이벤트는 선택 후 신규 수집분부터 반영됩니다.
                 </Text>
               </FormControl>
 

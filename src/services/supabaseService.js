@@ -1670,7 +1670,7 @@ export const getDailyAdSummaryWithDetails = async ({
     // Supabase 쿼리 빌더로 ad_performance 조회
     let query = supabase
       .from('ad_performance')
-      .select('date, source, campaign_name, cost, impressions, clicks, conversions, conversion_value, complete_registrations, complete_registrations_value')
+      .select('date, source, campaign_name, cost, impressions, clicks, conversions, conversion_value, complete_registrations, complete_registrations_value, additional_metrics')
       .is('deleted_at', null);
 
     // 광고주 필터
@@ -1710,7 +1710,12 @@ export const getDailyAdSummaryWithDetails = async ({
       grouped[key].clicks += Number(row.clicks) || 0;
 
       // Meta 전환 타입 처리
-      if (row.source === 'Meta' && metaConversionType === 'complete_registration') {
+      if (row.source === 'Meta' && metaConversionType.startsWith('custom:')) {
+        // 맞춤이벤트: additional_metrics에서 action_type 값 추출 (없으면 0)
+        const evt = metaConversionType.slice(7);
+        grouped[key].conversions += Number(row.additional_metrics?.actions?.[evt]) || 0;
+        grouped[key].conversion_value += Number(row.additional_metrics?.action_values?.[evt]) || 0;
+      } else if (row.source === 'Meta' && metaConversionType === 'complete_registration') {
         grouped[key].conversions += Number(row.complete_registrations) || 0;
         grouped[key].conversion_value += Number(row.complete_registrations_value) || 0;
       } else {
@@ -2209,7 +2214,7 @@ export const getAdDailyPerformance = async (adId, startDate, endDate) => {
   // 1. ad_performance에서 advertiser_id, source, campaign_name, ad_group_name 및 데이터 조회
   const { data, error } = await supabase
     .from('ad_performance')
-    .select('date, cost, impressions, clicks, conversions, conversion_value, complete_registrations, complete_registrations_value, advertiser_id, source, campaign_name, ad_group_name, ad_name')
+    .select('date, cost, impressions, clicks, conversions, conversion_value, complete_registrations, complete_registrations_value, additional_metrics, advertiser_id, source, campaign_name, ad_group_name, ad_name')
     .eq('ad_id', adId)
     .gte('date', startDate)
     .lte('date', endDate)
@@ -2253,6 +2258,9 @@ export const getAdDailyPerformance = async (adId, startDate, endDate) => {
 
   // 4. 메타 광고이고 complete_registration이면 해당 컬럼 사용
   const useRegistration = source === 'Meta' && metaConversionType === 'complete_registration';
+  // 4-1. 메타 광고이고 맞춤이벤트(custom:)이면 additional_metrics에서 추출
+  const useCustom = source === 'Meta' && metaConversionType.startsWith('custom:');
+  const customEvt = useCustom ? metaConversionType.slice(7) : null;
 
   // 5. 날짜별 집계 (동일 날짜 여러 행 가능)
   const aggregatedByDate = (data || []).reduce((acc, row) => {
@@ -2270,13 +2278,18 @@ export const getAdDailyPerformance = async (adId, startDate, endDate) => {
     acc[dateKey].cost += Number(row.cost) || 0;
     acc[dateKey].impressions += Number(row.impressions) || 0;
     acc[dateKey].clicks += Number(row.clicks) || 0;
-    // 메타 회원가입 전환 설정 적용
-    acc[dateKey].conversions += useRegistration
-      ? (Number(row.complete_registrations) || 0)
-      : (Number(row.conversions) || 0);
-    acc[dateKey].conversion_value += useRegistration
-      ? (Number(row.complete_registrations_value) || 0)
-      : (Number(row.conversion_value) || 0);
+    // 메타 전환 설정 적용 (맞춤이벤트 > 회원가입 > 기본 구매 순)
+    if (useCustom) {
+      acc[dateKey].conversions += Number(row.additional_metrics?.actions?.[customEvt]) || 0;
+      acc[dateKey].conversion_value += Number(row.additional_metrics?.action_values?.[customEvt]) || 0;
+    } else {
+      acc[dateKey].conversions += useRegistration
+        ? (Number(row.complete_registrations) || 0)
+        : (Number(row.conversions) || 0);
+      acc[dateKey].conversion_value += useRegistration
+        ? (Number(row.complete_registrations_value) || 0)
+        : (Number(row.conversion_value) || 0);
+    }
     return acc;
   }, {});
 

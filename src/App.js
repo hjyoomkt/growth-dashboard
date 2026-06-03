@@ -17,6 +17,7 @@ import { DateRangeProvider } from './contexts/DateRangeContext';
 import { AuthProvider } from './contexts/AuthContext';
 import { HelmetProvider } from 'react-helmet-async';
 import ErrorBoundary from './components/ErrorBoundary';
+import IdleLogout from './components/IdleLogout';
 // Chakra imports
 
 export default function Main() {
@@ -28,6 +29,7 @@ export default function Main() {
         <ChakraProvider theme={currentTheme}>
           <AuthProvider>
             <DateRangeProvider>
+              <IdleLogout />
               <Routes>
                 <Route path="/" element={<Landing />} />
                 <Route path="/main" element={<Landing />} />
