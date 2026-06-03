@@ -1,7 +1,16 @@
-User-Agent: *
+# Facebook / Meta 스크래퍼는 전체 허용 (공유 미리보기 · 앱 심사 데이터 삭제 URL 스크랩용)
+User-agent: facebookexternalhit
 Allow: /
 
-# Disallow admin and authentication pages from search engines
+User-agent: facebookexternalhit/1.1
+Allow: /
+
+User-agent: Facebot
+Allow: /
+
+User-agent: *
+Allow: /auth/data-deletion
+
 Disallow: /admin/
 Disallow: /auth/
 Disallow: /superadmin/
